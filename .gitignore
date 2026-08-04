@@ -1,0 +1,28 @@
+# Dependencies and build output
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Secrets. The example is tracked; anything real is not.
+#
+# This matters more here than in most projects: FAC_PEPPER is what stops a
+# leaked database from yielding the six-digit Founder Authorisation Code, and
+# a pepper in git history is a pepper you have to rotate.
+.env
+.env.*
+!.env.example
+
+# Logs and editor noise
+*.log
+npm-debug.log*
+yarn-error.log*
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local scratch
+tmp/
+.cache/

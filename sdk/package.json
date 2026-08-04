@@ -1,0 +1,56 @@
+{
+  "name": "@lrmc/sdk",
+  "version": "1.0.0",
+  "description": "Unified TypeScript SDK for the LRMC (Legacy Rental Management Consortium) + Ususu Rideshare API. Auto-selects fetch in the browser and axios in Node / server / mobile.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "generate": "tsx scripts/generate.ts",
+    "build": "npm run generate && tsup",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify": "tsx scripts/verify-sdk.ts",
+    "test": "npm run generate && npm run typecheck && npm run verify",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "axios": ">=1.6.0"
+  },
+  "peerDependenciesMeta": {
+    "axios": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.0",
+    "axios": "^1.7.0",
+    "tsup": "^8.2.4",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4"
+  },
+  "keywords": [
+    "lrmc",
+    "ususu",
+    "sdk",
+    "typescript",
+    "openapi"
+  ]
+}

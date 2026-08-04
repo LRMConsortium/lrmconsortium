@@ -1,0 +1,1635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>LRMC Governance &amp; Administration Layer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest" defer></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        base: { 900:'#0a0e1a',800:'#0d1225',700:'#111827',600:'#1a2035',500:'#1f2937',400:'#2a3347',300:'#374151' },
+                        gold: { 100:'#fef6e0',200:'#f5e6b8',300:'#e8d08a',400:'#d4b96a',500:'#c9a84c',600:'#b8952f',700:'#9a7a1e',800:'#7a6018' },
+                        txtc: { 100:'#f9fafb',200:'#e5e7eb',300:'#d1d5db',400:'#9ca3af',500:'#6b7280' },
+                        success:'#22c55e', danger:'#ef4444', info:'#3b82f6', warning:'#f59e0b',
+                    },
+                    fontFamily: { sans: ['Inter','system-ui','sans-serif'] },
+                },
+            },
+        };
+    </script>
+    <style>
+        * { box-sizing: border-box; }
+        body { background:#0a0e1a; color:#e5e7eb; font-family:'Inter',system-ui,sans-serif; }
+        ::-webkit-scrollbar { width:6px; }
+        ::-webkit-scrollbar-track { background:#111827; }
+        ::-webkit-scrollbar-thumb { background:#374151; border-radius:3px; }
+        ::-webkit-scrollbar-thumb:hover { background:#4b5563; }
+        .screen { display:none; opacity:0; transition:opacity .35s ease; }
+        .screen.active { display:block; opacity:1; }
+        .nav-item { transition:all .2s ease; }
+        .nav-item:hover:not(:disabled) { background:rgba(201,168,76,.08); }
+        .nav-item.active { background:rgba(201,168,76,.15); border-left:3px solid #c9a84c; }
+        .nav-item:disabled { opacity:.35; cursor:not-allowed; }
+        .stat-card { transition:transform .2s ease, box-shadow .2s ease; }
+        .stat-card:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,.3); }
+        .fac-digit {
+            width:52px; height:60px; background:#111827; border:2px solid #1f2937;
+            border-radius:10px; text-align:center; font-size:1.5rem; font-weight:700;
+            color:#e5e7eb; caret-color:#c9a84c; outline:none;
+            transition:border-color .2s ease, box-shadow .2s ease;
+        }
+        .fac-digit:focus { border-color:#c9a84c; box-shadow:0 0 0 3px rgba(201,168,76,.25); }
+        .fac-digit:disabled { opacity:.4; cursor:not-allowed; }
+        .fac-digit.success { border-color:#22c55e; box-shadow:0 0 12px rgba(34,197,94,.4); animation:successPulse .5s ease; }
+        .fac-digit.error { border-color:#ef4444; box-shadow:0 0 12px rgba(239,68,68,.4); }
+        .shake { animation:shake .4s ease; }
+        @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(6px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
+        @keyframes successPulse { 0%{transform:scale(1)} 50%{transform:scale(1.05)} 100%{transform:scale(1)} }
+        @keyframes fadeInUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        .fade-in-up { animation:fadeInUp .4s ease forwards; }
+        .tier-card { transition:all .3s ease; }
+        .tier-card:hover { transform:translateY(-2px); }
+        .locked-overlay { backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); }
+        .health-bar-fill { transition:width .8s ease; }
+        .flow-arrow { width:40px; display:flex; align-items:center; justify-content:center; color:#c9a84c; font-size:1.2rem; }
+        .modal-backdrop { background:rgba(10,14,26,.85); backdrop-filter:blur(8px); }
+        .badge-pulse { animation:pulse 2s infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+        .toast { animation:fadeInUp .3s ease forwards; }
+        @media (max-width:767px) { .fac-digit { width:44px; height:52px; font-size:1.25rem; } }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+<!-- LOCKOUT MODAL -->
+<div id="lockout-modal" class="hidden fixed inset-0 z-[100] modal-backdrop flex items-center justify-center p-4">
+    <div class="bg-base-700 border border-danger/30 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
+        <div class="w-16 h-16 rounded-full bg-danger/20 flex items-center justify-center mx-auto mb-4">
+            <i data-lucide="lock" class="w-8 h-8 text-danger"></i>
+        </div>
+        <h2 class="text-xl font-bold text-danger mb-2">FAC ACCESS LOCKED</h2>
+        <p class="text-txtc-400 text-sm mb-4">Maximum attempts exceeded. Access is suspended for this account.</p>
+        <div class="bg-base-900 rounded-xl p-4 mb-4">
+            <p class="text-xs text-txtc-500 uppercase tracking-wider mb-1">Lockout Expires In</p>
+            <p id="lockout-timer" class="text-3xl font-bold text-danger tabular-nums">—</p>
+        </div>
+        <p class="text-xs text-txtc-500 mb-1">The lockout applies to <span class="text-txtc-300 font-medium">your account only</span>. Other founders are unaffected.</p>
+        <p class="text-xs text-txtc-500">All attempts, including those made while locked, are recorded in the ledger.</p>
+        <button id="lockout-dismiss" class="mt-5 px-6 py-2 rounded-xl bg-base-500 text-txtc-300 text-sm font-medium hover:bg-base-400 transition-colors">Dismiss</button>
+    </div>
+</div>
+
+<!-- CODE ISSUED MODAL -->
+<div id="issued-modal" class="hidden fixed inset-0 z-[100] modal-backdrop flex items-center justify-center p-4">
+    <div class="bg-base-700 border border-gold-500/40 rounded-2xl p-8 max-w-lg w-full shadow-2xl">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-11 h-11 rounded-full bg-gold-500/20 flex items-center justify-center">
+                <i data-lucide="key-round" class="w-5 h-5 text-gold-500"></i>
+            </div>
+            <div>
+                <h2 class="text-lg font-bold text-gold-500">Generation <span id="issued-gen">—</span> issued</h2>
+                <p class="text-xs text-txtc-500">The previous code no longer works.</p>
+            </div>
+        </div>
+        <div class="bg-base-900 rounded-xl p-5 text-center mb-4">
+            <p class="text-[10px] text-txtc-500 uppercase tracking-widest mb-2">Shown once — not recoverable</p>
+            <p id="issued-code" class="text-4xl font-extrabold text-gold-400 tracking-[0.35em] tabular-nums">——————</p>
+        </div>
+        <div class="bg-danger/10 border border-danger/25 rounded-xl p-3 mb-5 flex items-start gap-2">
+            <i data-lucide="alert-triangle" class="w-4 h-4 text-danger mt-0.5 flex-shrink-0"></i>
+            <p class="text-xs text-danger">Record this now. There is no endpoint that returns it again and no support procedure that recovers it — losing it means issuing another generation.</p>
+        </div>
+        <div class="flex gap-3">
+            <button id="issued-copy" class="flex-1 py-2.5 rounded-xl bg-base-500 text-txtc-200 text-sm font-medium hover:bg-base-400 transition-colors">Copy</button>
+            <button id="issued-dismiss" class="flex-1 py-2.5 rounded-xl bg-gold-500 text-base-900 text-sm font-bold hover:bg-gold-400 transition-colors">I have recorded it</button>
+        </div>
+    </div>
+</div>
+
+<div id="toasts" class="fixed bottom-5 right-5 z-[90] space-y-2 w-[320px] max-w-[calc(100vw-2.5rem)]"></div>
+<div id="mobile-overlay" class="hidden fixed inset-0 bg-black/60 z-40 md:hidden"></div>
+
+<div class="flex min-h-screen">
+    <!-- SIDEBAR -->
+    <aside id="sidebar" class="fixed md:sticky top-0 left-0 z-50 md:z-auto w-[260px] h-screen md:h-auto md:min-h-screen bg-base-800 border-r border-base-500/50 flex flex-col transform -translate-x-full md:translate-x-0 transition-transform duration-300 overflow-y-auto">
+        <div class="p-5 border-b border-base-500/50">
+            <div class="flex flex-col items-center">
+                <div id="seal" class="w-16 h-16 rounded-xl border-2 border-base-500 bg-base-700 flex items-center justify-center mb-2 transition-colors">
+                    <i data-lucide="shield" class="w-9 h-9 text-txtc-500"></i>
+                </div>
+                <h1 class="text-sm font-bold text-txtc-200 tracking-wider">LRMC</h1>
+                <p id="seal-caption" class="text-[10px] font-semibold text-txtc-500 uppercase tracking-widest mt-1 text-center leading-tight">Seal restricted</p>
+            </div>
+        </div>
+        <nav class="flex-1 py-4 px-3 space-y-1">
+            <button data-screen="dashboard" class="nav-item active w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-txtc-200">
+                <i data-lucide="layout-dashboard" class="w-[18px] h-[18px] text-gold-500"></i><span>Dashboard</span>
+            </button>
+            <button data-screen="governance" data-requires="governance" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-txtc-400">
+                <i data-lucide="shield" class="w-[18px] h-[18px]"></i><span>Governance Layer</span>
+            </button>
+            <button data-screen="fac" data-requires="fac" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-txtc-400">
+                <i data-lucide="lock" class="w-[18px] h-[18px]"></i><span>FAC Access</span>
+                <span class="ml-auto text-[10px] font-bold bg-danger/20 text-danger px-2 py-0.5 rounded-full">GATED</span>
+            </button>
+            <button data-screen="members" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-txtc-400">
+                <i data-lucide="users" class="w-[18px] h-[18px]"></i><span>Member Portal</span>
+            </button>
+            <button data-screen="staff" data-requires="staff" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-txtc-400">
+                <i data-lucide="briefcase" class="w-[18px] h-[18px]"></i><span>Staff Portal</span>
+            </button>
+            <button data-screen="hq" data-requires="hq" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-txtc-400">
+                <i data-lucide="building" class="w-[18px] h-[18px]"></i><span>HQ Portal</span>
+            </button>
+            <button data-screen="audit" data-requires="audit" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-txtc-400">
+                <i data-lucide="clock" class="w-[18px] h-[18px]"></i><span>Audit Ledger</span>
+            </button>
+        </nav>
+        <div class="p-4 border-t border-base-500/50 space-y-3">
+            <div id="clearance-chip" class="hidden rounded-lg bg-success/10 border border-success/25 px-3 py-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-[10px] font-bold text-success uppercase tracking-wider">FAC clearance</span>
+                    <span id="clearance-countdown" class="text-xs font-bold text-success tabular-nums">--:--</span>
+                </div>
+                <button id="stand-down" class="mt-1.5 w-full text-[10px] text-txtc-400 hover:text-danger transition-colors text-left">Stand down now →</button>
+            </div>
+            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-base-700">
+                <div class="w-7 h-7 rounded-full bg-gold-500/20 flex items-center justify-center">
+                    <i data-lucide="user" class="w-3.5 h-3.5 text-gold-500"></i>
+                </div>
+                <div class="min-w-0">
+                    <p id="chip-role-label" class="text-xs font-bold text-gold-500 tracking-wider truncate">—</p>
+                    <p id="chip-tier-label" class="text-[10px] text-txtc-500 truncate">—</p>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <div class="flex-1 flex flex-col min-w-0">
+        <!-- HEADER -->
+        <header class="sticky top-0 z-30 bg-base-800/90 backdrop-blur-md border-b border-base-500/50 px-4 md:px-6 py-3">
+            <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3 min-w-0">
+                    <button id="mobile-menu-btn" class="md:hidden p-2 rounded-lg hover:bg-base-600 text-txtc-300">
+                        <i data-lucide="menu" class="w-5 h-5"></i>
+                    </button>
+                    <div class="min-w-0">
+                        <h1 class="text-sm md:text-base font-bold text-txtc-100 tracking-wide truncate">LRMC — Governance &amp; Administration Layer</h1>
+                        <p class="text-[11px] text-txtc-500 hidden md:block">Institutional Management System</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 md:gap-3">
+                    <div id="mode-pill" class="hidden sm:flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full bg-warning/15 text-warning uppercase tracking-wider">
+                        <span class="w-1.5 h-1.5 rounded-full bg-warning"></span><span id="mode-label">Offline fixture</span>
+                    </div>
+                    <div class="flex items-center bg-base-700 rounded-xl p-0.5 border border-base-500/50">
+                        <button data-lens="founder" class="lens-btn text-xs font-semibold px-2.5 md:px-3 py-1.5 rounded-lg bg-gold-500 text-base-900 transition-all">Founder</button>
+                        <button data-lens="hqExecutive" class="lens-btn text-xs font-semibold px-2.5 md:px-3 py-1.5 rounded-lg text-txtc-400 hover:text-txtc-200 transition-all">HQ</button>
+                        <button data-lens="backOfficeStaff" class="lens-btn text-xs font-semibold px-2.5 md:px-3 py-1.5 rounded-lg text-txtc-400 hover:text-txtc-200 transition-all">Staff</button>
+                        <button data-lens="tenant" class="lens-btn text-xs font-semibold px-2.5 md:px-3 py-1.5 rounded-lg text-txtc-400 hover:text-txtc-200 transition-all">Member</button>
+                    </div>
+                    <button id="refresh-btn" class="p-2 rounded-lg hover:bg-base-600 text-txtc-400 hover:text-txtc-200 transition-colors" title="Reload from the server">
+                        <i data-lucide="refresh-cw" class="w-[18px] h-[18px]"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 p-4 md:p-6 overflow-y-auto">
+
+            <!-- 1 · DASHBOARD -->
+            <section id="screen-dashboard" class="screen active">
+                <div class="fade-in-up">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6" id="dash-stats"></div>
+                    <div class="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6">
+                        <div class="lg:col-span-2 bg-base-700 rounded-xl p-5 border border-base-500/40">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-sm font-semibold text-txtc-200">Governance Health</h3>
+                                <span id="health-band" class="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">—</span>
+                            </div>
+                            <div class="w-full h-3 bg-base-500 rounded-full overflow-hidden mb-3">
+                                <div id="health-bar" class="health-bar-fill h-full rounded-full" style="width:0%"></div>
+                            </div>
+                            <div class="flex items-center justify-between mb-1">
+                                <p id="health-score" class="text-2xl font-bold tabular-nums">—</p>
+                                <p id="health-note" class="text-xs text-txtc-500 text-right"></p>
+                            </div>
+                            <div id="health-components" class="mt-4 space-y-2"></div>
+                            <div id="health-unmeasured" class="mt-3 text-[11px] text-txtc-500"></div>
+                        </div>
+                        <div class="lg:col-span-3 bg-base-700 rounded-xl p-5 border border-base-500/40">
+                            <h3 class="text-sm font-semibold text-txtc-200 mb-4">Recent Access Activity</h3>
+                            <div id="dash-activity" class="space-y-3"></div>
+                        </div>
+                    </div>
+                    <div class="bg-base-700 rounded-xl p-5 border border-base-500/40">
+                        <h3 class="text-sm font-semibold text-txtc-200 mb-4">Quick Actions</h3>
+                        <div id="quick-actions" class="flex flex-wrap gap-3"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2 · GOVERNANCE LAYER -->
+            <section id="screen-governance" class="screen">
+                <div class="fade-in-up">
+                    <div class="mb-6">
+                        <h2 class="text-lg md:text-xl font-bold text-txtc-100">Governance Layer — Structural Overview</h2>
+                        <p id="gov-subtitle" class="text-sm text-txtc-500 mt-1">Hierarchical access and operational structure</p>
+                    </div>
+                    <div id="tier-stack" class="space-y-4 max-w-3xl mx-auto"></div>
+                    <div class="mt-6 bg-base-600/50 rounded-xl p-4 border border-gold-500/20 max-w-3xl mx-auto">
+                        <div class="flex items-start gap-2">
+                            <i data-lucide="info" class="w-4 h-4 text-gold-500 mt-0.5 flex-shrink-0"></i>
+                            <p class="text-xs text-gold-300">Seal visibility requires the Founders tier <em>and</em> a live FAC clearance. Role alone is not enough — a founder who has not entered the code this session sees the same placeholder a member does.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3 · FAC ACCESS -->
+            <section id="screen-fac" class="screen">
+                <div class="fade-in-up">
+                    <div class="mb-6">
+                        <h2 class="text-lg md:text-xl font-bold text-txtc-100">Founder Authorisation Code — Access Management</h2>
+                        <p class="text-sm text-txtc-500 mt-1">Six digits, in front of Zone A</p>
+                    </div>
+                    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+                        <div class="bg-base-700 rounded-xl p-6 border border-base-500/40">
+                            <div class="flex items-center justify-between mb-1">
+                                <h3 class="text-sm font-semibold text-txtc-200">Code Entry</h3>
+                                <span id="fac-gen-chip" class="text-[10px] font-bold text-txtc-400 bg-base-600 px-2 py-0.5 rounded-full">—</span>
+                            </div>
+                            <p class="text-xs text-txtc-500 mb-6">Enter the six-digit Founder Authorisation Code</p>
+                            <div id="fac-inputs" class="flex justify-center gap-2 md:gap-3 mb-2">
+                                <input type="password" maxlength="1" inputmode="numeric" autocomplete="one-time-code" class="fac-digit" data-index="0" />
+                                <input type="password" maxlength="1" inputmode="numeric" class="fac-digit" data-index="1" />
+                                <input type="password" maxlength="1" inputmode="numeric" class="fac-digit" data-index="2" />
+                                <div class="flex items-center px-1"><span class="text-txtc-500 text-lg">—</span></div>
+                                <input type="password" maxlength="1" inputmode="numeric" class="fac-digit" data-index="3" />
+                                <input type="password" maxlength="1" inputmode="numeric" class="fac-digit" data-index="4" />
+                                <input type="password" maxlength="1" inputmode="numeric" class="fac-digit" data-index="5" />
+                            </div>
+                            <p id="fac-message" class="text-center text-xs min-h-[1.25rem] mb-4"></p>
+                            <button id="fac-submit" class="w-full py-3 rounded-xl bg-gold-500 text-base-900 font-bold text-sm hover:bg-gold-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">SUBMIT CODE</button>
+                            <div class="text-center mt-3">
+                                <button id="fac-reset-request" class="text-xs text-gold-500 hover:text-gold-400 transition-colors">Request Code Reset</button>
+                            </div>
+                            <div class="mt-6 grid grid-cols-2 gap-3">
+                                <div class="bg-base-600 rounded-lg p-3 text-center">
+                                    <p class="text-[10px] text-txtc-500 uppercase tracking-wider mb-1">Code Status</p>
+                                    <p id="fac-status" class="text-sm font-bold text-txtc-400">—</p>
+                                </div>
+                                <div class="bg-base-600 rounded-lg p-3 text-center">
+                                    <p class="text-[10px] text-txtc-500 uppercase tracking-wider mb-1">Attempts Remaining</p>
+                                    <p id="fac-attempts" class="text-sm font-bold text-txtc-200 tabular-nums">—</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-base-700 rounded-xl p-6 border border-base-500/40">
+                            <h3 class="text-sm font-semibold text-txtc-200 mb-4">Published Policy</h3>
+                            <div id="fac-rules" class="space-y-3"></div>
+                            <div id="fac-entropy" class="mt-5 bg-base-900/60 rounded-lg p-3 border border-base-500/40"></div>
+                        </div>
+                    </div>
+
+                    <div class="bg-base-700 rounded-xl p-6 border border-base-500/40 mb-6">
+                        <h3 class="text-sm font-semibold text-txtc-200 mb-4">Seal &amp; Clearance Matrix</h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead><tr class="border-b border-base-500/40">
+                                    <th class="text-left py-3 px-4 text-xs font-semibold text-txtc-500 uppercase tracking-wider">Tier</th>
+                                    <th class="text-left py-3 px-4 text-xs font-semibold text-txtc-500 uppercase tracking-wider hidden sm:table-cell">Roles</th>
+                                    <th class="text-center py-3 px-4 text-xs font-semibold text-txtc-500 uppercase tracking-wider">Seal</th>
+                                    <th class="text-center py-3 px-4 text-xs font-semibold text-txtc-500 uppercase tracking-wider">FAC</th>
+                                    <th class="text-center py-3 px-4 text-xs font-semibold text-txtc-500 uppercase tracking-wider">Admin</th>
+                                </tr></thead>
+                                <tbody id="matrix-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="bg-base-700 rounded-xl p-6 border border-base-500/40 mb-6">
+                        <h3 class="text-sm font-semibold text-txtc-200 mb-5">Code Lifecycle</h3>
+                        <div class="flex flex-wrap items-center justify-center gap-2 md:gap-0">
+                            <div class="flex flex-col items-center w-28 md:w-32"><div class="w-12 h-12 rounded-xl bg-gold-500/20 border border-gold-500/40 flex items-center justify-center mb-2"><i data-lucide="send" class="w-5 h-5 text-gold-500"></i></div><p class="text-xs font-semibold text-txtc-200 text-center">Issued</p><p class="text-[10px] text-txtc-500 text-center mt-0.5">Founder, shown once</p></div>
+                            <div class="flow-arrow hidden md:flex"><i data-lucide="chevron-right" class="w-5 h-5"></i></div>
+                            <div class="flex flex-col items-center w-28 md:w-32"><div class="w-12 h-12 rounded-xl bg-success/20 border border-success/40 flex items-center justify-center mb-2"><i data-lucide="shield-check" class="w-5 h-5 text-success"></i></div><p class="text-xs font-semibold text-txtc-200 text-center">Active</p><p class="text-[10px] text-txtc-500 text-center mt-0.5">90 days</p></div>
+                            <div class="flow-arrow hidden md:flex"><i data-lucide="chevron-right" class="w-5 h-5"></i></div>
+                            <div class="flex flex-col items-center w-28 md:w-32"><div class="w-12 h-12 rounded-xl bg-warning/20 border border-warning/40 flex items-center justify-center mb-2"><i data-lucide="alert-triangle" class="w-5 h-5 text-warning"></i></div><p class="text-xs font-semibold text-txtc-200 text-center">Expiring</p><p class="text-[10px] text-txtc-500 text-center mt-0.5">7 days out</p></div>
+                            <div class="flow-arrow hidden md:flex"><i data-lucide="chevron-right" class="w-5 h-5"></i></div>
+                            <div class="flex flex-col items-center w-28 md:w-32"><div class="w-12 h-12 rounded-xl bg-danger/20 border border-danger/40 flex items-center justify-center mb-2"><i data-lucide="rotate-cw" class="w-5 h-5 text-danger"></i></div><p class="text-xs font-semibold text-txtc-200 text-center">Superseded</p><p class="text-[10px] text-txtc-500 text-center mt-0.5">On re-issue</p></div>
+                            <div class="flow-arrow hidden md:flex"><i data-lucide="chevron-right" class="w-5 h-5"></i></div>
+                            <div class="flex flex-col items-center w-28 md:w-32"><div class="w-12 h-12 rounded-xl bg-gold-500/20 border border-gold-500/40 flex items-center justify-center mb-2"><i data-lucide="check-circle" class="w-5 h-5 text-gold-500"></i></div><p class="text-xs font-semibold text-txtc-200 text-center">Re-issued</p><p class="text-[10px] text-txtc-500 text-center mt-0.5">Generation +1</p></div>
+                        </div>
+                        <div id="fac-founder-actions" class="hidden mt-6 pt-5 border-t border-base-500/40 flex flex-wrap gap-3"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4 · MEMBER PORTAL -->
+            <section id="screen-members" class="screen">
+                <div class="fade-in-up">
+                    <div class="mb-6"><h2 class="text-lg md:text-xl font-bold text-txtc-100">Member Portal</h2><p class="text-sm text-txtc-500 mt-1">Own profile, documents, leases and payments</p></div>
+                    <div id="member-notice" class="bg-base-600/60 rounded-xl p-4 mb-6 border border-gold-500/20 flex items-center gap-3">
+                        <i data-lucide="info" class="w-5 h-5 text-gold-500 flex-shrink-0"></i>
+                        <p class="text-sm text-gold-300">Access level: <span id="member-access" class="font-bold text-gold-500">—</span></p>
+                    </div>
+                    <div class="bg-base-700 rounded-xl p-6 border border-base-500/40 mb-6">
+                        <div class="flex flex-col sm:flex-row items-start gap-5">
+                            <div class="w-20 h-20 rounded-2xl bg-base-500 flex items-center justify-center flex-shrink-0"><i data-lucide="user" class="w-10 h-10 text-txtc-400"></i></div>
+                            <div class="flex-1 w-full">
+                                <div class="flex items-center gap-2 flex-wrap mb-1">
+                                    <h3 id="member-name" class="text-lg font-bold text-txtc-100">—</h3>
+                                    <span class="text-[10px] font-bold bg-success/15 text-success px-2 py-0.5 rounded-full uppercase tracking-wider">Active</span>
+                                </div>
+                                <div id="member-facts" class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="bg-base-700 rounded-xl p-5 border border-base-500/40">
+                            <div class="flex items-center gap-2 mb-4"><i data-lucide="file-text" class="w-4 h-4 text-gold-500"></i><h3 class="text-sm font-semibold text-txtc-200">My Documents</h3></div>
+                            <div id="member-documents" class="space-y-3"></div>
+                        </div>
+                        <div class="bg-base-700 rounded-xl p-5 border border-base-500/40">
+                            <div class="flex items-center gap-2 mb-4"><i data-lucide="wallet" class="w-4 h-4 text-info"></i><h3 class="text-sm font-semibold text-txtc-200">Rent &amp; Ledger</h3></div>
+                            <div id="member-ledger" class="space-y-3"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 5 · STAFF PORTAL -->
+            <section id="screen-staff" class="screen">
+                <div class="fade-in-up">
+                    <div class="mb-6"><h2 class="text-lg md:text-xl font-bold text-txtc-100">Staff Portal — Operations Desk</h2><p class="text-sm text-txtc-500 mt-1">Tier 3 · document review, maintenance dispatch and field coordination</p></div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6" id="staff-stats"></div>
+                    <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-6">
+                        <div class="bg-base-700 rounded-xl p-5 border border-base-500/40">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="flex items-center gap-2"><i data-lucide="file-check" class="w-4 h-4 text-gold-500"></i><h3 class="text-sm font-semibold text-txtc-200">Document Queue</h3></div>
+                                <span class="text-[10px] text-txtc-500 uppercase tracking-wider">Oldest first</span>
+                            </div>
+                            <p class="text-[11px] text-txtc-500 mb-3">Narrowed to the desks your role reviews. A queue sorted any other way starves its tail.</p>
+                            <div id="staff-queue" class="space-y-2"></div>
+                        </div>
+                        <div class="bg-base-700 rounded-xl p-5 border border-base-500/40">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="flex items-center gap-2"><i data-lucide="wrench" class="w-4 h-4 text-warning"></i><h3 class="text-sm font-semibold text-txtc-200">Maintenance &amp; SLA</h3></div>
+                                <span class="text-[10px] text-txtc-500 uppercase tracking-wider">By urgency</span>
+                            </div>
+                            <div id="staff-maintenance" class="space-y-2"></div>
+                        </div>
+                    </div>
+                    <div class="bg-base-700 rounded-xl p-5 border border-base-500/40">
+                        <div class="flex items-center gap-2 mb-4"><i data-lucide="shield-off" class="w-4 h-4 text-txtc-400"></i><h3 class="text-sm font-semibold text-txtc-200">What this desk cannot do</h3></div>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div class="bg-base-600/50 rounded-lg p-3"><p class="text-xs font-semibold text-txtc-300 mb-1">Enter the FAC</p><p class="text-[11px] text-txtc-500">Tier 3 holds no <code class="text-gold-500">fac:verify</code> grant. The entry form is not reachable.</p></div>
+                            <div class="bg-base-600/50 rounded-lg p-3"><p class="text-xs font-semibold text-txtc-300 mb-1">See the seal</p><p class="text-[11px] text-txtc-500">Seal eligibility is Tier 1 only, and additionally requires a live clearance.</p></div>
+                            <div class="bg-base-600/50 rounded-lg p-3"><p class="text-xs font-semibold text-txtc-300 mb-1">Read Tier 1</p><p class="text-[11px] text-txtc-500">Nobody sees above themselves. The tier list comes back short, and says so.</p></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 6 · HQ PORTAL -->
+            <section id="screen-hq" class="screen">
+                <div class="fade-in-up">
+                    <div class="mb-6"><h2 class="text-lg md:text-xl font-bold text-txtc-100">HQ Portal — Executive Command</h2><p class="text-sm text-txtc-500 mt-1">Tier 2 · institutional health, verification throughput and regional performance</p></div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6" id="hq-stats"></div>
+                    <div class="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-6">
+                        <div class="xl:col-span-2 bg-base-700 rounded-xl p-5 border border-base-500/40">
+                            <h3 class="text-sm font-semibold text-txtc-200 mb-1">Health Components</h3>
+                            <p class="text-[11px] text-txtc-500 mb-4">A component with no data is excluded, not scored zero — a consortium with no leases yet is not unhealthy.</p>
+                            <div id="hq-components" class="space-y-3"></div>
+                        </div>
+                        <div class="bg-base-700 rounded-xl p-5 border border-base-500/40">
+                            <h3 class="text-sm font-semibold text-txtc-200 mb-4">Document Verification</h3>
+                            <div id="hq-documents" class="space-y-3"></div>
+                        </div>
+                    </div>
+                    <div class="bg-base-700 rounded-xl p-5 border border-base-500/40">
+                        <h3 class="text-sm font-semibold text-txtc-200 mb-4">Tier Headcount</h3>
+                        <div id="hq-tiers" class="space-y-3"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 7 · AUDIT LEDGER -->
+            <section id="screen-audit" class="screen">
+                <div class="fade-in-up">
+                    <div class="mb-6"><h2 class="text-lg md:text-xl font-bold text-txtc-100">Audit Ledger</h2><p class="text-sm text-txtc-500 mt-1">Zone A · append-only. Every attempt is recorded, including those refused while locked.</p></div>
+                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6" id="audit-stats"></div>
+                    <div class="bg-base-700 rounded-xl p-5 border border-base-500/40 mb-6">
+                        <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
+                            <h3 class="text-sm font-semibold text-txtc-200">FAC Attempt Ledger</h3>
+                            <div id="audit-filters" class="flex items-center gap-1 bg-base-600 rounded-lg p-0.5">
+                                <button data-filter="all" class="audit-filter text-[11px] font-semibold px-2.5 py-1 rounded-md bg-base-400 text-txtc-100">All</button>
+                                <button data-filter="pass" class="audit-filter text-[11px] font-semibold px-2.5 py-1 rounded-md text-txtc-400">Pass</button>
+                                <button data-filter="fail" class="audit-filter text-[11px] font-semibold px-2.5 py-1 rounded-md text-txtc-400">Fail</button>
+                                <button data-filter="blocked" class="audit-filter text-[11px] font-semibold px-2.5 py-1 rounded-md text-txtc-400">Blocked</button>
+                                <button data-filter="cleared" class="audit-filter text-[11px] font-semibold px-2.5 py-1 rounded-md text-txtc-400">Cleared</button>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead><tr class="border-b border-base-500/40">
+                                    <th class="text-left py-2.5 px-3 text-xs font-semibold text-txtc-500 uppercase tracking-wider">Timestamp</th>
+                                    <th class="text-left py-2.5 px-3 text-xs font-semibold text-txtc-500 uppercase tracking-wider">Actor</th>
+                                    <th class="text-center py-2.5 px-3 text-xs font-semibold text-txtc-500 uppercase tracking-wider hidden sm:table-cell">Gen</th>
+                                    <th class="text-center py-2.5 px-3 text-xs font-semibold text-txtc-500 uppercase tracking-wider">Attempt</th>
+                                    <th class="text-center py-2.5 px-3 text-xs font-semibold text-txtc-500 uppercase tracking-wider">Result</th>
+                                </tr></thead>
+                                <tbody id="audit-body" class="text-txtc-300"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="bg-base-600/50 rounded-xl p-4 border border-info/20">
+                        <div class="flex items-start gap-2">
+                            <i data-lucide="info" class="w-4 h-4 text-info mt-0.5 flex-shrink-0"></i>
+                            <p class="text-xs text-info/90">Source addresses are stored as a SHA-256 prefix, never raw — the ledger correlates attempts from one source without becoming a log of where founders were sitting.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ACCESS DENIED -->
+            <section id="screen-denied" class="screen">
+                <div class="fade-in-up max-w-md mx-auto text-center py-16">
+                    <div class="w-16 h-16 rounded-full bg-danger/15 flex items-center justify-center mx-auto mb-4">
+                        <i data-lucide="shield-x" class="w-8 h-8 text-danger"></i>
+                    </div>
+                    <h2 class="text-lg font-bold text-danger mb-2">Not reachable from your tier</h2>
+                    <p id="denied-detail" class="text-sm text-txtc-400"></p>
+                </div>
+            </section>
+
+        </main>
+    </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+ * TRANSPORT
+ *
+ * One function reaches the API. Set `API_BASE` (and a token) and every screen
+ * runs against the real backend; leave it null and the fixture below answers
+ * instead — shaped exactly like the real responses, so nothing downstream
+ * knows the difference. That is the point: the rendering code is written
+ * against the contract, not against a mock.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+const API_BASE = null;   // e.g. 'https://api.lrmconsortium.africa/api/v1'
+const API_TOKEN = null;  // e.g. localStorage.getItem('accessToken')
+
+class ApiError extends Error {
+    constructor(status, code, message, details) {
+        super(message);
+        this.status = status; this.code = code; this.details = details || [];
+    }
+}
+
+async function call(path, { method = 'GET', body } = {}) {
+    if (!API_BASE) return fixture(path, method, body);
+    const res = await fetch(API_BASE + path, {
+        method,
+        headers: {
+            'Content-Type': 'application/json',
+            ...(API_TOKEN ? { Authorization: 'Bearer ' + API_TOKEN } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+    });
+    const envelope = await res.json().catch(() => ({}));
+    if (!res.ok || envelope.success === false) {
+        const err = envelope.error || {};
+        /* CLEARANCE_REQUIRED and ZONE_RESTRICTED are both 403. They mean
+         * opposite things to a user: one is "type your code", the other is
+         * "you will never be allowed here". Reading `code` rather than status
+         * is the only way to tell, which is why the server sends a distinct
+         * one. */
+        throw new ApiError(res.status, err.code || 'UNKNOWN', err.message || res.statusText, err.details);
+    }
+    return envelope.data;
+}
+
+/* Method names mirror @lrmc/sdk exactly, so swapping the transport for the
+ * real package is a one-line change rather than a rewrite. */
+const api = {
+    governance: {
+        myVisibility: () => call('/governance/me/visibility'),
+        tiers:        () => call('/governance/tiers'),
+        visibilityMatrix: () => call('/governance/visibility-matrix'),
+        health:       () => call('/governance/health'),
+    },
+    fac: {
+        clearance:    () => call('/fac/me/clearance'),
+        verify:       (body) => call('/fac/verify', { method: 'POST', body }),
+        standDown:    () => call('/fac/me/clearance/revoke', { method: 'POST' }),
+        requestReset: (body) => call('/fac/reset-requests', { method: 'POST', body }),
+        issue:        (body) => call('/fac-codes', { method: 'POST', body }),
+        attempts:     (q) => call('/fac/attempts' + (q || '')),
+        lockouts:     () => call('/fac/lockouts'),
+        lockoutClear: (actorId, body) => call(`/fac/lockout/${encodeURIComponent(actorId)}/clear`, { method: 'POST', body }),
+    },
+    documents: {
+        queue:     () => call('/staff/me/document-queue'),
+        mine:      () => call('/member/me/documents'),
+        analytics: () => call('/hq/documents/analytics'),
+    },
+    maintenance: { myQueue: () => call('/vendor/me/maintenance-queue') },
+    payments:    { mineAsTenant: () => call('/tenant/me/payments') },
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * OFFLINE FIXTURE
+ *
+ * Stateful on purpose: the FAC flow has to actually work — attempts decrement,
+ * three failures lock the account, a success grants a clearance that expires.
+ * The rules mirror the server's (`attempts.ts`, `facRules.ts`) so the console
+ * can be exercised end to end without one.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+const POLICY = { codeLength:6, rotationDays:90, maxAttempts:3, lockoutHours:24, clearanceMinutes:30, entropyBits:19.93, expectedBruteForceYears:456.3 };
+const DEMO_CODE = '418293';   // passes every weakness rule in facRules.ts
+
+const fx = {
+    issuedAt: new Date(Date.now() - 67 * 864e5),
+    generation: 4,
+    attemptsByActor: {},           // per actor, exactly as the server counts
+    lockedUntilByActor: {},
+    clearanceByActor: {},
+    ledger: [
+        { actor:'mustafa_f',  role:'founder',     gen:4, at:new Date(Date.now()-14*6e4),  result:'pass',    n:1, remaining:3 },
+        { actor:'r.garcia',   role:'hqExecutive', gen:4, at:new Date(Date.now()-3*864e5), result:'pass',    n:1, remaining:3 },
+        { actor:'j.daniels',  role:'hqExecutive', gen:4, at:new Date(Date.now()-5*864e5), result:'blocked', n:4, remaining:0 },
+        { actor:'j.daniels',  role:'hqExecutive', gen:4, at:new Date(Date.now()-5*864e5-36e5), result:'fail', n:3, remaining:0 },
+        { actor:'j.daniels',  role:'hqExecutive', gen:4, at:new Date(Date.now()-5*864e5-37e5), result:'fail', n:2, remaining:1 },
+        { actor:'j.daniels',  role:'hqExecutive', gen:4, at:new Date(Date.now()-5*864e5-38e5), result:'fail', n:1, remaining:2 },
+        { actor:'a.mensah',   role:'founder',     gen:3, at:new Date(Date.now()-40*864e5), result:'pass',   n:1, remaining:3 },
+    ],
+};
+
+const TIERS = [
+    { tier:'founders', ordinal:1, label:'Founders Council', roles:['founder'], facRequired:true, sealEligible:true, adminAccess:'full', headcount:3,
+      summary:'Supreme governance authority. Full institutional powers including FAC issuance, policy ratification and veto over every resolution.',
+      visibleTiers:['founders','hq','staff','membership'], zones:['FOUNDER_COMMAND_CENTER','HQ_EXECUTIVE','BACK_OFFICE','MEMBER_PORTAL','PUBLIC_PORTAL'] },
+    { tier:'hq', ordinal:2, label:'HQ Administration', roles:['hqExecutive'], facRequired:true, sealEligible:false, adminAccess:'partial', headcount:7,
+      summary:'Administrative command centre. Executive dashboards, regional performance, onboarding approval and campaign review.',
+      visibleTiers:['hq','staff','membership'], zones:['HQ_EXECUTIVE','BACK_OFFICE','MEMBER_PORTAL','PUBLIC_PORTAL'] },
+    { tier:'staff', ordinal:3, label:'Staff Operations', roles:['backOfficeStaff','coordinator'], facRequired:false, sealEligible:false, adminAccess:'limited', headcount:18,
+      summary:'Operational support. Member and vendor administration, document review, field coordination and maintenance dispatch.',
+      visibleTiers:['staff','membership'], zones:['BACK_OFFICE','MEMBER_PORTAL','PUBLIC_PORTAL'] },
+    { tier:'membership', ordinal:4, label:'General Membership', roles:['vendor','landlord','tenant','airbnbHost','hotelManager','resortManager','rentalCarCompany','driver','rider','advertiser','publicUser'], facRequired:false, sealEligible:false, adminAccess:'none', headcount:219,
+      summary:'Standard access. Own profile, own documents, own leases, rides and payments. No visibility into governance structures.',
+      visibleTiers:['membership'], zones:['MEMBER_PORTAL','PUBLIC_PORTAL'] },
+];
+
+const tierOf = (role) => (TIERS.find((t) => t.roles.includes(role)) || TIERS[3]).tier;
+const tierDef = (t) => TIERS.find((x) => x.tier === t);
+
+function fxClock() {
+    const expiresAt = new Date(fx.issuedAt.getTime() + POLICY.rotationDays * 864e5);
+    const days = Math.round((new Date(expiresAt.toDateString()) - new Date(new Date().toDateString())) / 864e5);
+    const expired = days < 0, warning = !expired && days <= 7;
+    return { expiresAt, daysRemaining: days, health: expired ? 'expired' : warning ? 'expiringSoon' : 'active', warning,
+             description: expired ? `expired ${-days} days ago` : days === 0 ? 'expires today' : `expires in ${days} day${days===1?'':'s'}` };
+}
+
+function fxAttemptState(actor) {
+    const used = fx.attemptsByActor[actor] || 0;
+    const until = fx.lockedUntilByActor[actor];
+    const locked = until && until > Date.now();
+    if (until && !locked) { fx.attemptsByActor[actor] = 0; delete fx.lockedUntilByActor[actor]; }
+    const effective = locked ? used : (until ? 0 : used);
+    return {
+        used: effective, remaining: Math.max(0, POLICY.maxAttempts - effective), max: POLICY.maxAttempts,
+        allowed: !locked, refusal: locked ? 'lockedOut' : null,
+        lockedUntil: locked ? new Date(until).toISOString() : null,
+        lockoutSecondsRemaining: locked ? Math.ceil((until - Date.now()) / 1000) : 0,
+        lockoutHours: POLICY.lockoutHours,
+    };
+}
+
+function fxClearance(actor) {
+    const at = fx.clearanceByActor[actor];
+    if (!at) return { granted:false, grantedAt:null, expiresAt:null, secondsRemaining:0, active:false };
+    const expiresAt = at + POLICY.clearanceMinutes * 6e4;
+    const secondsRemaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+    return { granted:true, grantedAt:new Date(at).toISOString(), expiresAt:new Date(expiresAt).toISOString(), secondsRemaining, active: secondsRemaining > 0 };
+}
+
+function fxVisibility(role) {
+    const t = tierOf(role), d = tierDef(t), clearance = fxClearance(state.lens);
+    return { role, roles:[role], tier:t, tierLabel:d.label, facRequired:d.facRequired,
+             sealEligible:d.sealEligible, sealVisible:d.sealEligible && clearance.active,
+             adminAccess:d.adminAccess, visibleTiers:d.visibleTiers, clearance };
+}
+
+function fixture(path, method, body) {
+    const actor = state.lens;
+    const clock = fxClock();
+    const codeSummary = { generation:fx.generation, status:'active', issuedAt:fx.issuedAt.toISOString(),
+        expiresAt:clock.expiresAt.toISOString(), daysRemaining:clock.daysRemaining, health:clock.health,
+        warning:clock.warning, description:clock.description, rotationDays:POLICY.rotationDays };
+
+    // ── FAC ──────────────────────────────────────────────────────────────
+    if (path === '/fac/me/clearance') {
+        return Promise.resolve({ actor, tier:tierOf(actor), code:codeSummary,
+            attempts:fxAttemptState(actor), clearance:fxClearance(actor), policy:POLICY });
+    }
+    if (path === '/fac/verify' && method === 'POST') {
+        const st = fxAttemptState(actor);
+        if (!st.allowed) {
+            fx.ledger.unshift({ actor, role:actor, gen:fx.generation, at:new Date(), result:'blocked', n:st.used+1, remaining:0 });
+            return Promise.reject(new ApiError(423, 'LOCKED',
+                `FAC access is locked for another ${Math.ceil(st.lockoutSecondsRemaining/60)} minutes`,
+                [{ lockedUntil: st.lockedUntil, secondsRemaining: st.lockoutSecondsRemaining }]));
+        }
+        if (body.code !== DEMO_CODE) {
+            const used = (fx.attemptsByActor[actor] || 0) + 1;
+            fx.attemptsByActor[actor] = used;
+            const locks = used >= POLICY.maxAttempts;
+            if (locks) fx.lockedUntilByActor[actor] = Date.now() + POLICY.lockoutHours * 36e5;
+            fx.ledger.unshift({ actor, role:actor, gen:fx.generation, at:new Date(), result:'fail', n:used, remaining:Math.max(0, POLICY.maxAttempts-used) });
+            return Promise.reject(new ApiError(422, 'VALIDATION_FAILED',
+                locks ? `Incorrect code. Maximum attempts exceeded — FAC access is locked for ${POLICY.lockoutHours} hours.`
+                      : `Incorrect code. ${POLICY.maxAttempts - used} attempt(s) remaining.`,
+                [{ field:'code', message:'incorrect' }]));
+        }
+        fx.attemptsByActor[actor] = 0;
+        fx.clearanceByActor[actor] = Date.now();
+        fx.ledger.unshift({ actor, role:actor, gen:fx.generation, at:new Date(), result:'pass', n:1, remaining:POLICY.maxAttempts });
+        return Promise.resolve({ verified:true, clearance:fxClearance(actor), generation:fx.generation,
+            visibility:fxVisibility(actor), attempts:{ used:0, remaining:POLICY.maxAttempts, max:POLICY.maxAttempts } });
+    }
+    if (path === '/fac/me/clearance/revoke') {
+        const had = Boolean(fx.clearanceByActor[actor]);
+        delete fx.clearanceByActor[actor];
+        return Promise.resolve({ revoked: had ? 1 : 0, clearance: fxClearance(actor) });
+    }
+    if (path === '/fac/lockouts') {
+        const now = Date.now();
+        const rows = Object.entries(fx.lockedUntilByActor)
+            .filter(([, until]) => until > now)
+            .map(([who, until]) => ({ actor:who, email:`${who}@africalrmc.com`, roles:[who],
+                lockedUntil:new Date(until).toISOString(),
+                secondsRemaining:Math.ceil((until - now) / 1000),
+                attemptsUsed:fx.attemptsByActor[who] || POLICY.maxAttempts }));
+        return Promise.resolve({ lockouts:rows, count:rows.length, asOf:new Date().toISOString() });
+    }
+    if (/^\/fac\/lockout\/[^/]+\/clear$/.test(path) && method === 'POST') {
+        const who = decodeURIComponent(path.split('/')[3]);
+        // The server refuses this outright; the fixture mirrors it so the
+        // console is exercised against the same rule.
+        if (who === actor) {
+            return Promise.reject(new ApiError(400, 'BAD_REQUEST',
+                'A founder cannot clear their own lockout — that is what the second founder is for'));
+        }
+        const wasLocked = (fx.lockedUntilByActor[who] || 0) > Date.now();
+        if (!wasLocked) {
+            return Promise.resolve({ cleared:false, actor:who, reason:'that actor is not locked out' });
+        }
+        delete fx.lockedUntilByActor[who];
+        fx.attemptsByActor[who] = 0;
+        // A `cleared` row, never a forged `pass` — the ledger says a colleague
+        // let them in, not that they entered the code.
+        fx.ledger.unshift({ actor:who, role:who, gen:fx.generation, at:new Date(), result:'cleared',
+            n:POLICY.maxAttempts, remaining:POLICY.maxAttempts, clearedBy:actor });
+        return Promise.resolve({ cleared:true, actor:who, clearedBy:actor, reason:body.reason,
+            at:new Date().toISOString(),
+            attempts:{ used:0, remaining:POLICY.maxAttempts, allowed:true },
+            note:'The failed attempts remain in the ledger. This records that they were set aside, not that they did not happen.' });
+    }
+    if (path === '/fac/reset-requests') {
+        return Promise.resolve({ requested:true, reason:body.reason, foundersNotified:3,
+            note:'Only a founder can issue a new generation. This request does not rotate the code.' });
+    }
+    if (path === '/fac-codes' && method === 'POST') {
+        // Mirrors the server: rejection-sample until the weakness rules pass.
+        const weak = (c) => new Set(c).size === 1 || /^(19|20)\d{2}/.test(c) || /(19|20)\d{2}$/.test(c)
+            || c === [...c].reverse().join('') || c.slice(0,2) === c.slice(2,4) && c.slice(2,4) === c.slice(4,6)
+            || [...c].every((d,i,a) => i===0 || +d === (+a[i-1]+1)%10)
+            || [...c].every((d,i,a) => i===0 || +d === (+a[i-1]+9)%10)
+            || (+c.slice(0,2) >= 1 && +c.slice(0,2) <= 31 && +c.slice(2,4) >= 1 && +c.slice(2,4) <= 12);
+        let code; do { code = String(Math.floor(Math.random()*1e6)).padStart(6,'0'); } while (weak(code));
+        const previous = fx.generation;
+        fx.generation += 1; fx.issuedAt = new Date();
+        fx.clearanceByActor = {};
+        return Promise.resolve({ code, issuedOnce:true, generation:fx.generation,
+            warning:'This code is shown once and is not recoverable.',
+            issuedAt:fx.issuedAt.toISOString(), expiresAt:new Date(fx.issuedAt.getTime()+POLICY.rotationDays*864e5).toISOString(),
+            rotationDays:POLICY.rotationDays, trigger:body?.trigger || 'manual',
+            supersededGeneration:previous, clearancesRevoked:true });
+    }
+    if (path.startsWith('/fac/attempts')) {
+        const items = fx.ledger.map((r, i) => ({ _id:'a'+i, actor:r.actor, actorLabel:r.actor, actorRole:r.role,
+            codeGeneration:r.gen, at:r.at.toISOString(), result:r.result, attemptNumber:r.n, attemptsRemaining:r.remaining }));
+        return Promise.resolve({ items, meta:{ page:1, limit:25, total:items.length, totalPages:1, hasNext:false, hasPrev:false } });
+    }
+
+    // ── Governance ───────────────────────────────────────────────────────
+    if (path === '/governance/me/visibility') return Promise.resolve(fxVisibility(actor));
+    if (path === '/governance/visibility-matrix') {
+        return Promise.resolve({ rows: TIERS.map(({ tier, ordinal, label, roles, sealEligible, facRequired, adminAccess }) =>
+            ({ tier, ordinal, label, roles, sealEligible, facRequired, adminAccess })) });
+    }
+    if (path === '/governance/tiers') {
+        const viewer = tierOf(actor), visible = TIERS.filter((t) => tierDef(viewer).visibleTiers.includes(t.tier));
+        return Promise.resolve({ viewerTier:viewer, viewerTierLabel:tierDef(viewer).label,
+            total:TIERS.length, visible:visible.length, withheld:TIERS.length - visible.length, tiers:visible });
+    }
+    if (path === '/governance/health') {
+        const components = [
+            { component:'facCompliance',        score: clock.expired ? 0 : 100, measured:true, detail: clock.description },
+            { component:'rentCollection',       score:92,  measured:true, detail:'92 of 100 leases current' },
+            { component:'auditIntegrity',       score:100, measured:true, detail:'80 of 80 trails verified intact' },
+            { component:'documentBacklog',      score:85,  measured:true, detail:'12 of 80 awaiting review' },
+            { component:'verificationCoverage', score:0,   measured:false, detail:'no members on file' },
+        ];
+        const m = components.filter((c) => c.measured);
+        const W = { facCompliance:.3, rentCollection:.2, auditIntegrity:.25, documentBacklog:.15, verificationCoverage:.1 };
+        const total = m.reduce((s,c) => s + W[c.component], 0);
+        let score = Math.round((m.reduce((s,c) => s + c.score * W[c.component], 0) / total) * 10) / 10;
+        const capped = components[0].score === 0 && score > 40;
+        if (capped) score = 40;
+        return Promise.resolve({ score, band: score<40?'critical':score<70?'degraded':score<88?'healthy':'strong',
+            components, measured:m.map((c)=>c.component), unmeasured:components.filter((c)=>!c.measured).map((c)=>c.component),
+            cappedBy: capped ? 'facCompliance' : null,
+            weakest: m.reduce((lo,c)=>c.score<lo.score?c:lo).component, code:codeSummary, activeLockouts:Object.keys(fx.lockedUntilByActor).length });
+    }
+
+    // ── Operational reads ────────────────────────────────────────────────
+    if (path === '/staff/me/document-queue') {
+        return Promise.resolve({ items:[
+            { _id:'d1', reference:'DOC-4A21F0', type:'identity', status:'submitted', desk:'backOffice', submittedAt:new Date(Date.now()-4*864e5).toISOString(), score:{ overall:91, band:'excellent', weakest:'crossDocument' } },
+            { _id:'d2', reference:'DOC-77C3B1', type:'proofOfResidency', status:'underReview', desk:'coordinator', submittedAt:new Date(Date.now()-2*864e5).toISOString(), score:{ overall:64, band:'fair', weakest:'clarity' } },
+            { _id:'d3', reference:'DOC-19E4A8', type:'rentalAgreement', status:'submitted', desk:'backOffice', submittedAt:new Date(Date.now()-31*36e5).toISOString(), score:{ overall:78, band:'good', weakest:'completeness' } },
+            { _id:'d4', reference:'DOC-6B2D55', type:'employmentVerification', status:'submitted', desk:'backOffice', submittedAt:new Date(Date.now()-9*36e5).toISOString(), score:{ overall:55, band:'fair', weakest:'clarity' } },
+        ], meta:{ page:1, limit:25, total:4, totalPages:1, hasNext:false, hasPrev:false } });
+    }
+    if (path === '/member/me/documents') {
+        return Promise.resolve({ items:[
+            { _id:'m1', reference:'DOC-91B4C2', type:'identity', status:'verified', expiry:{ state:'valid', daysRemaining:1840, expired:false, escalation:'none' } },
+            { _id:'m2', reference:'DOC-2F8A10', type:'proofOfResidency', status:'needsMoreInfo', infoRequestReason:'the scan is illegible below the photo', expiry:{ state:'expiringSoon', daysRemaining:30, expired:false, escalation:'notifyHolder' } },
+            { _id:'m3', reference:'DOC-55E0D7', type:'incomeProof', status:'expired', expiry:{ state:'expired', daysRemaining:-12, expired:true, escalation:'notifyCoordinator' } },
+        ], meta:{ page:1, limit:25, total:3, totalPages:1, hasNext:false, hasPrev:false } });
+    }
+    if (path === '/vendor/me/maintenance-queue') {
+        return Promise.resolve({ items:[
+            { _id:'r1', reference:'MNT-A31C8E', title:'Kitchen tap leaking', priority:'high', status:'assigned', slaHours:24, createdAt:new Date(Date.now()-26*36e5).toISOString() },
+            { _id:'r2', reference:'MNT-77D9B0', title:'No power to second floor', priority:'emergency', status:'inProgress', slaHours:4, createdAt:new Date(Date.now()-3*36e5).toISOString() },
+            { _id:'r3', reference:'MNT-1E4402', title:'Repaint stairwell', priority:'low', status:'open', slaHours:168, createdAt:new Date(Date.now()-40*36e5).toISOString() },
+        ], meta:{ page:1, limit:25, total:3, totalPages:1, hasNext:false, hasPrev:false } });
+    }
+    if (path === '/hq/documents/analytics') {
+        return Promise.resolve({ total:412, byStatus:{ submitted:31, underReview:14, needsMoreInfo:22, verified:298, rejected:39, expired:8 },
+            backlog:45, awaitingHolder:61, verified:298, rejected:39, verificationRate:88.4, rejectionRate:11.6,
+            averageScore:81.2, averageTurnaroundHours:19.4, expiringSoon:26, expired:8, truncated:false });
+    }
+    if (path === '/tenant/me/payments') {
+        return Promise.resolve({ items:[
+            { _id:'p1', reference:'PAY-C41A90', kind:'rent', amount:2500, currency:'GHS', status:'succeeded', paidAt:new Date(Date.now()-11*864e5).toISOString() },
+            { _id:'p2', reference:'PAY-88F102', kind:'rent', amount:2500, currency:'GHS', status:'succeeded', paidAt:new Date(Date.now()-42*864e5).toISOString() },
+            { _id:'p3', reference:'PAY-2B7E31', kind:'deposit', amount:5000, currency:'GHS', status:'succeeded', paidAt:new Date(Date.now()-150*864e5).toISOString() },
+        ], meta:{ page:1, limit:25, total:3, totalPages:1, hasNext:false, hasPrev:false } });
+    }
+
+    return Promise.reject(new ApiError(404, 'NOT_FOUND', 'No fixture for ' + path));
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * STATE & HELPERS
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+const state = { lens:'founder', screen:'dashboard', visibility:null, clearanceState:null, tiers:null, health:null, matrix:null, auditFilter:'all', ledger:[] };
+
+const $  = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const icons = () => window.lucide && window.lucide.createIcons();
+
+const ROLE_LABEL = { founder:'FOUNDER', hqExecutive:'HQ EXECUTIVE', backOfficeStaff:'BACK OFFICE', tenant:'TENANT' };
+const ACCESS_STYLE = { full:'text-gold-500 bg-gold-500/15', partial:'text-warning bg-warning/15', limited:'text-txtc-300 bg-base-500/40', none:'text-txtc-500 bg-base-500/20' };
+const BAND_STYLE = { strong:'text-success bg-success/15', healthy:'text-success bg-success/15', degraded:'text-warning bg-warning/15', critical:'text-danger bg-danger/15' };
+const PRIORITY_STYLE = { emergency:'text-danger bg-danger/15', high:'text-warning bg-warning/15', normal:'text-info bg-info/15', low:'text-txtc-400 bg-base-500/30' };
+
+function fmtTime(iso) {
+    const d = new Date(iso);
+    return d.toISOString().slice(0, 16).replace('T', ' ');
+}
+function ago(iso) {
+    const s = Math.floor((Date.now() - new Date(iso)) / 1000);
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.floor(s / 60) + ' min ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    return Math.floor(s / 86400) + 'd ago';
+}
+function hms(seconds) {
+    const h = Math.floor(seconds / 3600), m = Math.floor((seconds % 3600) / 60), s = seconds % 60;
+    return [h, m, s].map((n) => String(n).padStart(2, '0')).join(':');
+}
+function ms(seconds) {
+    const m = Math.floor(seconds / 60), s = seconds % 60;
+    return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
+function toast(message, kind = 'info') {
+    const colours = { info:'border-info/40 text-info', success:'border-success/40 text-success', danger:'border-danger/40 text-danger', warning:'border-warning/40 text-warning' };
+    const el = document.createElement('div');
+    el.className = `toast bg-base-700 border ${colours[kind]} rounded-xl px-4 py-3 shadow-xl text-xs`;
+    el.textContent = message;
+    $('#toasts').appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 300); }, 4200);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * SCREEN ACCESS
+ *
+ * Which screens a tier may open comes from `visibility.visibleTiers` and the
+ * grants the tier holds — the same rule the server enforces. The nav is
+ * disabled rather than hidden, so a member can see that Zone A exists without
+ * being able to open it, which is what the tier model actually says.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+const SCREEN_RULES = {
+    governance: (v) => v.visibleTiers.length > 1 || v.tier !== 'membership',
+    fac:        (v) => v.facRequired,
+    staff:      (v) => ['founders','hq','staff'].includes(v.tier),
+    hq:         (v) => ['founders','hq'].includes(v.tier),
+    audit:      (v) => v.tier === 'founders',
+};
+const DENIAL_REASON = {
+    governance: 'The governance structure is not visible from the membership tier.',
+    fac:        'Only tiers that require the code may submit one. Your tier holds no `fac:verify` grant.',
+    staff:      'The operations desk is Tier 3 and above.',
+    hq:         'Executive command is Tier 2 and above.',
+    audit:      'The attempt ledger is Zone A. It names who tried and when, so only the Founders tier reads it.',
+};
+
+function mayOpen(screen) {
+    const rule = SCREEN_RULES[screen];
+    return !rule || (state.visibility && rule(state.visibility));
+}
+
+function showScreen(name) {
+    if (!mayOpen(name)) {
+        $('#denied-detail').textContent = DENIAL_REASON[name] || '';
+        $$('.screen').forEach((s) => s.classList.remove('active'));
+        $('#screen-denied').classList.add('active');
+        icons();
+        return;
+    }
+    state.screen = name;
+    $$('.screen').forEach((s) => s.classList.remove('active'));
+    const el = $('#screen-' + name);
+    if (el) el.classList.add('active');
+    $$('.nav-item').forEach((b) => {
+        const on = b.dataset.screen === name;
+        b.classList.toggle('active', on);
+        b.classList.toggle('text-txtc-200', on);
+        b.classList.toggle('text-txtc-400', !on);
+    });
+    if (window.innerWidth < 768) closeSidebar();
+    icons();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * RENDERERS
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+function renderChrome() {
+    const v = state.visibility;
+    if (!v) return;
+
+    // The seal: eligibility is the tier, visibility additionally needs a live
+    // clearance. Rendering on role alone would make it a picture in the CSS.
+    const seal = $('#seal'), caption = $('#seal-caption');
+    if (v.sealVisible) {
+        seal.className = 'w-16 h-16 rounded-xl border-2 border-gold-500 bg-base-700 flex items-center justify-center mb-2 transition-colors';
+        seal.innerHTML = '<i data-lucide="crown" class="w-9 h-9 text-gold-500"></i>';
+        caption.className = 'text-[10px] font-semibold text-gold-500 uppercase tracking-widest mt-1 badge-pulse text-center leading-tight';
+        caption.textContent = 'Seal visible';
+    } else {
+        seal.className = 'w-16 h-16 rounded-xl border-2 border-base-500 bg-base-700 flex items-center justify-center mb-2 transition-colors';
+        seal.innerHTML = '<i data-lucide="shield" class="w-9 h-9 text-txtc-500"></i>';
+        caption.className = 'text-[10px] font-semibold text-txtc-500 uppercase tracking-widest mt-1 text-center leading-tight';
+        caption.textContent = v.sealEligible ? 'Seal withheld — code required' : 'Seal restricted';
+    }
+
+    $('#chip-role-label').textContent = ROLE_LABEL[v.role] || v.role;
+    $('#chip-tier-label').textContent = `Tier ${tierDef(v.tier).ordinal} · ${v.tierLabel}`;
+
+    const chip = $('#clearance-chip');
+    if (v.clearance && v.clearance.active) {
+        chip.classList.remove('hidden');
+        $('#clearance-countdown').textContent = ms(v.clearance.secondsRemaining);
+    } else {
+        chip.classList.add('hidden');
+    }
+
+    $$('.nav-item').forEach((b) => {
+        const req = b.dataset.requires;
+        const ok = !req || mayOpen(b.dataset.screen);
+        b.disabled = !ok;
+        b.title = ok ? '' : (DENIAL_REASON[b.dataset.screen] || '');
+    });
+
+    $('#mode-pill').classList.remove('hidden');
+    $('#mode-label').textContent = API_BASE ? 'Live API' : 'Offline fixture';
+    $('#mode-pill').className = 'hidden sm:flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ' +
+        (API_BASE ? 'bg-success/15 text-success' : 'bg-warning/15 text-warning');
+    icons();
+}
+
+function renderDashboard() {
+    const v = state.visibility, h = state.health, c = state.clearanceState;
+    const code = (c && c.code) || (h && h.code);
+
+    const cards = [];
+    if (h) cards.push({ label:'Governance Health', value:h.score + '%', icon:'activity',
+        tone: h.band === 'critical' ? 'text-danger' : h.band === 'degraded' ? 'text-warning' : 'text-success',
+        note: h.cappedBy ? 'capped by ' + h.cappedBy : h.band });
+    if (code) cards.push({ label:'FAC Code', value: code.daysRemaining === null ? '—' : code.daysRemaining + 'd', icon:'key-round',
+        tone: code.health === 'expired' ? 'text-danger' : code.health === 'expiringSoon' ? 'text-warning' : 'text-gold-500',
+        note: `Generation ${code.generation ?? '—'} · ${code.description}` });
+    if (c) cards.push({ label:'Your Attempts', value:`${c.attempts.remaining}/${c.attempts.max}`, icon:'shield',
+        tone: c.attempts.remaining === 0 ? 'text-danger' : c.attempts.remaining < c.attempts.max ? 'text-warning' : 'text-txtc-100',
+        note: c.attempts.allowed ? 'per account, not per code' : 'locked out' });
+    cards.push({ label:'Your Tier', value:'T' + tierDef(v.tier).ordinal, icon:'layers', tone:'text-txtc-100',
+        note: `${v.tierLabel} · ${v.adminAccess} admin` });
+
+    $('#dash-stats').innerHTML = cards.map((c2) => `
+        <div class="stat-card bg-base-700 rounded-xl p-5 border border-base-500/40">
+            <div class="flex items-center justify-between mb-3">
+                <p class="text-xs font-medium text-txtc-500 uppercase tracking-wider">${esc(c2.label)}</p>
+                <i data-lucide="${c2.icon}" class="w-4 h-4 text-gold-500"></i>
+            </div>
+            <p class="text-3xl font-bold tabular-nums ${c2.tone}">${esc(c2.value)}</p>
+            <p class="text-xs text-txtc-500 mt-1">${esc(c2.note)}</p>
+        </div>`).join('');
+
+    if (h) {
+        $('#health-bar').style.width = h.score + '%';
+        $('#health-bar').className = 'health-bar-fill h-full rounded-full ' +
+            (h.band === 'critical' ? 'bg-danger' : h.band === 'degraded' ? 'bg-warning' : 'bg-gradient-to-r from-gold-600 to-success');
+        $('#health-score').textContent = h.score + '%';
+        $('#health-score').className = 'text-2xl font-bold tabular-nums ' + (h.band === 'critical' ? 'text-danger' : h.band === 'degraded' ? 'text-warning' : 'text-success');
+        $('#health-band').textContent = h.band;
+        $('#health-band').className = 'text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ' + BAND_STYLE[h.band];
+        $('#health-note').innerHTML = h.cappedBy
+            ? `<span class="text-danger">capped — no code in force</span>`
+            : `weakest: ${esc(h.weakest || '—')}`;
+        $('#health-components').innerHTML = h.components.filter((x) => x.measured).map((x) => `
+            <div class="flex items-center justify-between text-xs">
+                <span class="text-txtc-400">${esc(x.component)}</span>
+                <span class="font-medium ${x.score >= 85 ? 'text-success' : x.score >= 60 ? 'text-warning' : 'text-danger'}">${x.score}%</span>
+            </div>`).join('');
+        $('#health-unmeasured').innerHTML = h.unmeasured.length
+            ? `<i data-lucide="minus-circle" class="w-3 h-3 inline -mt-0.5"></i> Excluded, not scored zero: ${h.unmeasured.map(esc).join(', ')}`
+            : '';
+    } else {
+        $('#health-band').textContent = 'restricted';
+        $('#health-band').className = 'text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider text-txtc-500 bg-base-500/30';
+        $('#health-note').textContent = 'Health is an HQ read';
+        $('#health-components').innerHTML = '<p class="text-xs text-txtc-500">Not reachable from your tier.</p>';
+    }
+
+    const recent = state.ledger.slice(0, 4);
+    $('#dash-activity').innerHTML = recent.length ? recent.map((r) => {
+        const tone = r.result === 'pass'    ? ['success','shield-check']
+                   : r.result === 'fail'    ? ['danger','shield-alert']
+                   : r.result === 'cleared' ? ['info','key-round']
+                   : ['warning','lock'];
+        const text = r.result === 'pass'    ? 'FAC verified — clearance granted'
+                   : r.result === 'fail'    ? `Failed FAC attempt ${r.attemptNumber}/3`
+                   : r.result === 'cleared' ? 'Lockout lifted by another founder'
+                   : 'Attempt refused — account already locked';
+        return `<div class="flex items-start gap-3 p-3 rounded-lg bg-base-600/50">
+            <div class="w-8 h-8 rounded-full bg-${tone[0]}/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <i data-lucide="${tone[1]}" class="w-4 h-4 text-${tone[0]}"></i></div>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm text-txtc-200">${esc(text)}</p>
+                <p class="text-xs text-txtc-500 mt-0.5">${esc(r.actorLabel || r.actor)} · gen ${r.codeGeneration ?? '—'} · ${ago(r.at)}</p>
+            </div></div>`;
+    }).join('') : '<p class="text-xs text-txtc-500">The attempt ledger is Zone A. Not reachable from your tier.</p>';
+
+    const actions = [];
+    if (mayOpen('fac')) actions.push(['qa-fac','key-round','Enter FAC Code','bg-gold-500 text-base-900 hover:bg-gold-400']);
+    if (state.visibility.tier === 'founders') actions.push(['qa-issue','rotate-cw','Issue New Generation','bg-base-500 text-txtc-200 hover:bg-base-400']);
+    if (mayOpen('audit')) actions.push(['qa-audit','scroll-text','Open Audit Ledger','bg-base-500 text-txtc-200 hover:bg-base-400']);
+    if (mayOpen('staff')) actions.push(['qa-queue','file-check','Document Queue','bg-base-500 text-txtc-200 hover:bg-base-400']);
+    $('#quick-actions').innerHTML = actions.length ? actions.map(([id, icon, label, cls]) =>
+        `<button id="${id}" class="flex items-center gap-2 px-4 py-2.5 rounded-xl ${cls} text-sm font-semibold transition-colors">
+            <i data-lucide="${icon}" class="w-4 h-4"></i> ${esc(label)}</button>`).join('')
+        : '<p class="text-xs text-txtc-500">No administrative actions are available at your tier.</p>';
+
+    const bind = (id, fn) => { const el = $('#' + id); if (el) el.onclick = fn; };
+    bind('qa-fac', () => showScreen('fac'));
+    bind('qa-audit', () => showScreen('audit'));
+    bind('qa-queue', () => showScreen('staff'));
+    bind('qa-issue', issueCode);
+    icons();
+}
+
+function renderGovernance() {
+    const t = state.tiers, v = state.visibility;
+    if (!t) return;
+    $('#gov-subtitle').innerHTML = t.withheld > 0
+        ? `Viewing as <span class="text-txtc-300 font-medium">${esc(t.viewerTierLabel)}</span> — <span class="text-warning">${t.withheld} tier(s) withheld</span>. Nobody sees above themselves.`
+        : `Viewing as <span class="text-txtc-300 font-medium">${esc(t.viewerTierLabel)}</span> — all ${t.total} tiers visible.`;
+
+    const withheld = TIERS.filter((all) => !t.tiers.some((x) => x.tier === all.tier));
+    const cards = [];
+
+    withheld.forEach((w) => {
+        cards.push(`<div class="relative">
+            <div class="tier-card bg-base-700 rounded-xl p-5 border-2 border-danger/25 relative overflow-hidden">
+                <div class="absolute inset-0 locked-overlay bg-base-900/75 z-10 flex flex-col items-center justify-center rounded-xl">
+                    <i data-lucide="lock" class="w-8 h-8 text-danger mb-2"></i>
+                    <p class="text-sm font-bold text-danger">TIER ${w.ordinal} — WITHHELD</p>
+                    <p class="text-xs text-txtc-500 mt-1">Not visible from ${esc(t.viewerTierLabel)}</p>
+                </div>
+                <div class="h-[132px]"></div>
+            </div></div>`);
+        cards.push('<div class="flex justify-center"><div class="w-0.5 h-6 bg-base-500"></div></div>');
+    });
+
+    t.tiers.forEach((tier, i) => {
+        const accent = tier.tier === 'founders' ? 'gold-500' : tier.tier === 'hq' ? 'info' : 'base-500';
+        const textAccent = tier.tier === 'founders' ? 'text-gold-500' : tier.tier === 'hq' ? 'text-info' : 'text-txtc-200';
+        cards.push(`
+            <div class="tier-card bg-base-700 rounded-xl p-5 border ${tier.tier==='founders'?'border-2 border-gold-500/60':`border-${accent}/40`}">
+                <div class="flex items-center gap-4 mb-3">
+                    <div class="w-10 h-10 rounded-lg bg-${accent}/20 flex items-center justify-center flex-shrink-0">
+                        <i data-lucide="${tier.tier==='founders'?'crown':tier.tier==='hq'?'building':tier.tier==='staff'?'briefcase':'users'}" class="w-5 h-5 ${textAccent}"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <h3 class="text-base font-bold ${textAccent}">${esc(tier.label)}</h3>
+                            <span class="text-[10px] font-bold bg-${accent}/20 ${textAccent} px-2 py-0.5 rounded-full uppercase tracking-wider">Tier ${tier.ordinal}</span>
+                            ${tier.facRequired ? '<span class="text-[10px] font-bold bg-danger/15 text-danger px-2 py-0.5 rounded-full uppercase tracking-wider">FAC</span>' : ''}
+                            ${tier.sealEligible ? '<span class="text-[10px] font-bold bg-gold-500/15 text-gold-500 px-2 py-0.5 rounded-full uppercase tracking-wider">Seal</span>' : ''}
+                        </div>
+                        <p class="text-xs text-txtc-500 mt-0.5">${tier.roles.length} role${tier.roles.length===1?'':'s'} · ${esc(tier.adminAccess)} admin access</p>
+                    </div>
+                    <div class="text-right hidden sm:block">
+                        <p class="text-lg font-bold text-txtc-200 tabular-nums">${tier.headcount}</p>
+                        <p class="text-[10px] text-txtc-500 uppercase tracking-wider">Accounts</p>
+                    </div>
+                </div>
+                <p class="text-xs text-txtc-400">${esc(tier.summary)}</p>
+                <div class="mt-3 flex flex-wrap gap-1.5">
+                    ${tier.zones.map((z) => `<span class="text-[10px] font-medium bg-base-600 text-txtc-400 px-2 py-0.5 rounded">${esc(z.replace(/_/g,' '))}</span>`).join('')}
+                </div>
+            </div>`);
+        if (i < t.tiers.length - 1) cards.push('<div class="flex justify-center"><div class="w-0.5 h-6 bg-base-500"></div></div>');
+    });
+
+    $('#tier-stack').innerHTML = cards.join('');
+    icons();
+}
+
+function renderFac() {
+    const c = state.clearanceState, m = state.matrix, v = state.visibility;
+    if (!c) return;
+    const { code, attempts, policy, clearance } = c;
+
+    $('#fac-gen-chip').textContent = 'Generation ' + (code.generation ?? '—');
+    $('#fac-status').textContent = code.status.toUpperCase();
+    $('#fac-status').className = 'text-sm font-bold ' + (code.health === 'expired' ? 'text-danger' : code.health === 'expiringSoon' ? 'text-warning' : 'text-success');
+    $('#fac-attempts').textContent = `${attempts.remaining}/${attempts.max}`;
+    $('#fac-attempts').className = 'text-sm font-bold tabular-nums ' + (attempts.remaining === 0 ? 'text-danger' : attempts.remaining < attempts.max ? 'text-warning' : 'text-txtc-200');
+
+    const locked = !attempts.allowed;
+    const cleared = clearance && clearance.active;
+    $$('#fac-inputs .fac-digit').forEach((i2) => { i2.disabled = locked || cleared; });
+    $('#fac-submit').disabled = locked || cleared;
+    $('#fac-submit').textContent = cleared ? 'CLEARANCE ACTIVE' : locked ? 'LOCKED OUT' : 'SUBMIT CODE';
+    if (cleared) setMessage(`Clearance active — ${ms(clearance.secondsRemaining)} remaining.`, 'success');
+    else if (locked) setMessage(`Locked for ${hms(attempts.lockoutSecondsRemaining)}. This applies to your account alone.`, 'danger');
+
+    $('#fac-rules').innerHTML = [
+        ['rotate-cw','gold-500', `Rotates every <span class="text-txtc-100 font-semibold">${policy.rotationDays} days</span>`],
+        ['shield-x','danger', `<span class="text-txtc-100 font-semibold">${policy.maxAttempts} failed attempts</span> then lockout — <em>per account</em>, never per code`],
+        ['timer','warning', `Lockout: <span class="text-txtc-100 font-semibold">${policy.lockoutHours} hours</span>`],
+        ['hourglass','info', `Clearance lasts <span class="text-txtc-100 font-semibold">${policy.clearanceMinutes} minutes</span>, then the code is needed again`],
+        ['crown','gold-500', `Issued by <span class="text-txtc-100 font-semibold">founders only</span>, shown once, never recoverable`],
+        ['scroll-text','info', `Every attempt logged — including those <span class="text-txtc-100 font-semibold">refused while locked</span>`],
+    ].map(([icon, tone, text]) => `
+        <div class="flex items-start gap-3">
+            <div class="w-6 h-6 rounded-md bg-${tone}/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <i data-lucide="${icon}" class="w-3.5 h-3.5 text-${tone}"></i></div>
+            <p class="text-sm text-txtc-300">${text}</p>
+        </div>`).join('');
+
+    // Stated honestly rather than implied. Six digits is weak; the attempt
+    // limit is what makes it workable, and saying so is the point.
+    $('#fac-entropy').innerHTML = `
+        <p class="text-[10px] text-txtc-500 uppercase tracking-wider mb-1.5">Strength, stated plainly</p>
+        <p class="text-xs text-txtc-400 leading-relaxed">
+            Six digits is <span class="text-txtc-200 font-semibold tabular-nums">${policy.entropyBits} bits</span> —
+            weak as a secret on its own. What makes it workable is that it is never offered to an unbounded attacker:
+            ${policy.maxAttempts} attempts per ${policy.lockoutHours}h gives an expected brute-force time of
+            <span class="text-success font-semibold tabular-nums">~${Math.round(policy.expectedBruteForceYears)} years</span>.
+            It is a second factor over an already-authenticated principal, not a password.
+        </p>`;
+
+    if (m) {
+        $('#matrix-body').innerHTML = m.rows.map((r) => {
+            const yes = (b) => b
+                ? '<span class="text-[10px] font-bold text-success bg-success/15 px-2 py-0.5 rounded-full">Yes</span>'
+                : '<span class="text-[10px] font-bold text-danger bg-danger/15 px-2 py-0.5 rounded-full">No</span>';
+            const mine = r.tier === v.tier;
+            return `<tr class="border-b border-base-500/20 ${mine ? 'bg-gold-500/5' : ''}">
+                <td class="py-3 px-4 font-semibold ${r.tier==='founders'?'text-gold-500':r.tier==='hq'?'text-info':r.tier==='staff'?'text-txtc-300':'text-txtc-400'}">
+                    ${esc(r.label)}${mine ? ' <span class="text-[9px] text-gold-500">◂ you</span>' : ''}</td>
+                <td class="py-3 px-4 text-xs text-txtc-500 hidden sm:table-cell">${esc(r.roles.slice(0,3).join(', '))}${r.roles.length>3?` +${r.roles.length-3}`:''}</td>
+                <td class="py-3 px-4 text-center">${yes(r.sealEligible)}</td>
+                <td class="py-3 px-4 text-center">${yes(r.facRequired)}</td>
+                <td class="py-3 px-4 text-center"><span class="text-[10px] font-bold px-2.5 py-0.5 rounded-full ${ACCESS_STYLE[r.adminAccess]}">${esc(r.adminAccess)}</span></td>
+            </tr>`;
+        }).join('');
+    }
+
+    const fa = $('#fac-founder-actions');
+    if (v.tier === 'founders') {
+        fa.classList.remove('hidden');
+        fa.innerHTML = `
+            <button id="fac-issue" class="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gold-500 text-base-900 text-sm font-semibold hover:bg-gold-400 transition-colors">
+                <i data-lucide="rotate-cw" class="w-4 h-4"></i> Issue New Generation</button>
+            <p class="text-[11px] text-txtc-500 self-center max-w-md">Supersedes generation ${code.generation ?? '—'} immediately. A compromise or role-change trigger also closes every live clearance.</p>`;
+        $('#fac-issue').onclick = issueCode;
+    } else {
+        fa.classList.add('hidden');
+    }
+    icons();
+}
+
+function renderMember() {
+    const v = state.visibility;
+    $('#member-access').textContent = `${v.tierLabel.toUpperCase()} · ${v.adminAccess.toUpperCase()} ADMIN`;
+    $('#member-name').textContent = ROLE_LABEL[v.role] || v.role;
+    $('#member-facts').innerHTML = [
+        ['Tier', 'Tier ' + tierDef(v.tier).ordinal],
+        ['Roles', v.roles.join(', ')],
+        ['FAC required', v.facRequired ? 'Yes' : 'No'],
+        ['Seal', v.sealVisible ? 'Visible' : v.sealEligible ? 'Withheld' : 'Restricted'],
+    ].map(([k, val]) => `<div><p class="text-[10px] text-txtc-500 uppercase tracking-wider">${esc(k)}</p><p class="text-sm font-semibold text-txtc-200 truncate">${esc(val)}</p></div>`).join('');
+
+    Promise.all([api.documents.mine().catch(() => null), api.payments.mineAsTenant().catch(() => null)])
+        .then(([docs, pays]) => {
+            $('#member-documents').innerHTML = docs && docs.items.length ? docs.items.map((d) => {
+                const tone = d.status === 'verified' ? 'success' : d.status === 'expired' ? 'danger' : d.status === 'needsMoreInfo' ? 'warning' : 'info';
+                return `<div class="p-3 bg-base-600/50 rounded-lg">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="min-w-0">
+                            <p class="text-sm text-txtc-200 truncate">${esc(d.type)}</p>
+                            <p class="text-xs text-txtc-500">${esc(d.reference)}</p>
+                        </div>
+                        <span class="text-[10px] font-bold text-${tone} bg-${tone}/15 px-2 py-0.5 rounded-full flex-shrink-0">${esc(d.status)}</span>
+                    </div>
+                    ${d.infoRequestReason ? `<p class="text-[11px] text-warning mt-1.5">“${esc(d.infoRequestReason)}”</p>` : ''}
+                    ${d.expiry && d.expiry.state !== 'valid' ? `<p class="text-[11px] text-txtc-500 mt-1">${d.expiry.expired ? `expired ${-d.expiry.daysRemaining}d ago` : `expires in ${d.expiry.daysRemaining}d`}</p>` : ''}
+                </div>`;
+            }).join('') : '<p class="text-xs text-txtc-500">No documents.</p>';
+
+            $('#member-ledger').innerHTML = pays && pays.items.length ? pays.items.map((p) => `
+                <div class="flex items-center justify-between p-3 bg-base-600/50 rounded-lg">
+                    <div><p class="text-sm text-txtc-200">${esc(p.kind)} · ${p.amount.toLocaleString()} ${esc(p.currency)}</p>
+                    <p class="text-xs text-txtc-500">${esc(p.reference)} · ${fmtTime(p.paidAt).slice(0,10)}</p></div>
+                    <span class="text-[10px] font-bold text-success bg-success/15 px-2 py-0.5 rounded-full">${esc(p.status)}</span>
+                </div>`).join('') : '<p class="text-xs text-txtc-500">No ledger entries.</p>';
+            icons();
+        });
+}
+
+function renderStaff() {
+    Promise.all([api.documents.queue().catch(() => null), api.maintenance.myQueue().catch(() => null)])
+        .then(([q, mt]) => {
+            const docs = (q && q.items) || [], jobs = (mt && mt.items) || [];
+            $('#staff-stats').innerHTML = [
+                ['Queue Depth', docs.length, 'file-check', 'text-gold-500'],
+                ['Open Jobs', jobs.length, 'wrench', 'text-warning'],
+                ['Emergencies', jobs.filter((j) => j.priority === 'emergency').length, 'siren', 'text-danger'],
+                ['Below Score Floor', docs.filter((d) => d.score && d.score.overall < 60).length, 'trending-down', 'text-danger'],
+            ].map(([label, value, icon, tone]) => `
+                <div class="stat-card bg-base-700 rounded-xl p-5 border border-base-500/40">
+                    <div class="flex items-center justify-between mb-3">
+                        <p class="text-xs font-medium text-txtc-500 uppercase tracking-wider">${esc(label)}</p>
+                        <i data-lucide="${icon}" class="w-4 h-4 ${tone}"></i></div>
+                    <p class="text-3xl font-bold tabular-nums text-txtc-100">${value}</p></div>`).join('');
+
+            $('#staff-queue').innerHTML = docs.length ? docs.map((d) => {
+                const band = d.score ? d.score.band : null;
+                const tone = !band ? 'txtc-400' : band === 'excellent' || band === 'good' ? 'success' : band === 'fair' ? 'warning' : 'danger';
+                const floor = d.score && d.score.overall < 60;
+                return `<div class="p-3 bg-base-600/50 rounded-lg">
+                    <div class="flex items-center justify-between gap-2 mb-1">
+                        <p class="text-sm text-txtc-200 truncate">${esc(d.type)}</p>
+                        <span class="text-[10px] font-bold text-${tone} bg-${tone}/15 px-2 py-0.5 rounded-full flex-shrink-0 tabular-nums">${d.score ? d.score.overall : '—'}</span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-xs text-txtc-500">${esc(d.reference)}</span>
+                        <span class="text-[10px] text-txtc-500">·</span>
+                        <span class="text-[10px] font-medium text-txtc-400 bg-base-500/40 px-1.5 py-0.5 rounded">${esc(d.desk)}</span>
+                        <span class="text-[10px] font-medium text-info bg-info/15 px-1.5 py-0.5 rounded">${esc(d.status)}</span>
+                        <span class="text-[10px] text-txtc-500 ml-auto">${ago(d.submittedAt)}</span>
+                    </div>
+                    ${floor ? `<p class="text-[11px] text-danger mt-1.5">Below the score floor of 60 — verification is refused until the weakest dimension (${esc(d.score.weakest)}) improves.</p>` : ''}
+                </div>`;
+            }).join('') : '<p class="text-xs text-txtc-500">Queue is empty.</p>';
+
+            const order = { emergency:0, high:1, normal:2, low:3 };
+            $('#staff-maintenance').innerHTML = jobs.length ? [...jobs].sort((a, b) => order[a.priority] - order[b.priority]).map((j) => {
+                const elapsed = (Date.now() - new Date(j.createdAt)) / 36e5;
+                const pctElapsed = Math.min(999, Math.round((elapsed / j.slaHours) * 100));
+                const tone = pctElapsed >= 100 ? 'danger' : pctElapsed >= 80 ? 'warning' : 'success';
+                return `<div class="p-3 bg-base-600/50 rounded-lg">
+                    <div class="flex items-center justify-between gap-2 mb-1.5">
+                        <p class="text-sm text-txtc-200 truncate">${esc(j.title)}</p>
+                        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${PRIORITY_STYLE[j.priority]}">${esc(j.priority)}</span>
+                    </div>
+                    <div class="w-full h-1.5 bg-base-500 rounded-full overflow-hidden mb-1">
+                        <div class="h-full bg-${tone} rounded-full" style="width:${Math.min(100, pctElapsed)}%"></div>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-[10px] text-txtc-500">${esc(j.reference)} · ${j.slaHours}h SLA</span>
+                        <span class="text-[10px] font-medium text-${tone} tabular-nums">${pctElapsed}% elapsed</span>
+                    </div></div>`;
+            }).join('') : '<p class="text-xs text-txtc-500">No open jobs.</p>';
+            icons();
+        });
+}
+
+function renderHq() {
+    const h = state.health, t = state.tiers;
+    api.documents.analytics().catch(() => null).then((a) => {
+        $('#hq-stats').innerHTML = [
+            ['Governance Health', h ? h.score + '%' : '—', 'activity', h && h.band === 'critical' ? 'text-danger' : 'text-success'],
+            ['Verification Rate', a ? a.verificationRate + '%' : '—', 'shield-check', 'text-success'],
+            ['Review Backlog', a ? a.backlog : '—', 'inbox', 'text-warning'],
+            ['Avg Turnaround', a ? a.averageTurnaroundHours + 'h' : '—', 'timer', 'text-info'],
+        ].map(([label, value, icon, tone]) => `
+            <div class="stat-card bg-base-700 rounded-xl p-5 border border-base-500/40">
+                <div class="flex items-center justify-between mb-3">
+                    <p class="text-xs font-medium text-txtc-500 uppercase tracking-wider">${esc(label)}</p>
+                    <i data-lucide="${icon}" class="w-4 h-4 ${tone}"></i></div>
+                <p class="text-3xl font-bold tabular-nums ${tone}">${esc(String(value))}</p></div>`).join('');
+
+        $('#hq-components').innerHTML = h ? h.components.map((c) => {
+            const tone = !c.measured ? 'txtc-500' : c.score >= 85 ? 'success' : c.score >= 60 ? 'warning' : 'danger';
+            return `<div class="p-3 bg-base-600/50 rounded-lg">
+                <div class="flex items-center justify-between gap-2 mb-1.5">
+                    <p class="text-sm text-txtc-200">${esc(c.component)}</p>
+                    ${c.measured
+                        ? `<span class="text-xs font-bold text-${tone} tabular-nums">${c.score}%</span>`
+                        : '<span class="text-[10px] font-bold text-txtc-500 bg-base-500/30 px-2 py-0.5 rounded-full">excluded</span>'}
+                </div>
+                ${c.measured ? `<div class="w-full h-1.5 bg-base-500 rounded-full overflow-hidden mb-1.5">
+                    <div class="h-full bg-${tone} rounded-full" style="width:${c.score}%"></div></div>` : ''}
+                <p class="text-[11px] text-txtc-500">${esc(c.detail)}</p></div>`;
+        }).join('') : '';
+
+        $('#hq-documents').innerHTML = a ? Object.entries(a.byStatus).map(([status, n]) => `
+            <div class="flex items-center justify-between text-xs">
+                <span class="text-txtc-400">${esc(status)}</span>
+                <span class="font-semibold text-txtc-200 tabular-nums">${n}</span></div>`).join('')
+            + `<div class="pt-3 mt-3 border-t border-base-500/40 space-y-2">
+                <div class="flex items-center justify-between text-xs"><span class="text-txtc-400">Expiring soon</span><span class="font-semibold text-warning tabular-nums">${a.expiringSoon}</span></div>
+                <div class="flex items-center justify-between text-xs"><span class="text-txtc-400">Expired</span><span class="font-semibold text-danger tabular-nums">${a.expired}</span></div>
+                <div class="flex items-center justify-between text-xs"><span class="text-txtc-400">Average score</span><span class="font-semibold text-txtc-200 tabular-nums">${a.averageScore}</span></div>
+              </div>` : '';
+
+        $('#hq-tiers').innerHTML = t ? t.tiers.map((tier) => `
+            <div class="flex items-center gap-3">
+                <div class="w-24 flex-shrink-0"><p class="text-xs font-semibold text-txtc-300">Tier ${tier.ordinal}</p><p class="text-[10px] text-txtc-500 truncate">${esc(tier.label)}</p></div>
+                <div class="flex-1 h-2.5 bg-base-500 rounded-full overflow-hidden">
+                    <div class="h-full bg-gradient-to-r from-gold-600 to-gold-400 rounded-full" style="width:${Math.round((tier.headcount / 247) * 100)}%"></div></div>
+                <span class="text-sm font-bold text-txtc-200 tabular-nums w-12 text-right">${tier.headcount}</span>
+            </div>`).join('') : '';
+        icons();
+    });
+}
+
+function renderAudit() {
+    const rows = state.auditFilter === 'all' ? state.ledger : state.ledger.filter((r) => r.result === state.auditFilter);
+    const all = state.ledger;
+    $('#audit-stats').innerHTML = [
+        ['Total', all.length, 'text-txtc-100'],
+        ['Passed', all.filter((r) => r.result === 'pass').length, 'text-success'],
+        ['Failed', all.filter((r) => r.result === 'fail').length, 'text-danger'],
+        ['Blocked', all.filter((r) => r.result === 'blocked').length, 'text-warning'],
+        ['Cleared', all.filter((r) => r.result === 'cleared').length, 'text-info'],
+    ].map(([label, n, tone]) => `
+        <div class="bg-base-700 rounded-xl p-4 border border-base-500/40">
+            <p class="text-xs font-medium text-txtc-500 uppercase tracking-wider mb-2">${esc(label)}</p>
+            <p class="text-2xl font-bold tabular-nums ${tone}">${n}</p></div>`).join('');
+
+    $('#audit-body').innerHTML = rows.length ? rows.map((r) => {
+        const tone = r.result === 'pass' ? 'success'
+                   : r.result === 'fail' ? 'danger'
+                   : r.result === 'cleared' ? 'info'
+                   : 'warning';
+        return `<tr class="border-b border-base-500/20">
+            <td class="py-2.5 px-3 text-xs tabular-nums whitespace-nowrap">${esc(fmtTime(r.at))}</td>
+            <td class="py-2.5 px-3 text-xs">${esc(r.actorLabel || r.actor)}<span class="text-txtc-500"> · ${esc(r.actorRole || '')}</span></td>
+            <td class="py-2.5 px-3 text-xs text-center tabular-nums hidden sm:table-cell">${r.codeGeneration ?? '—'}</td>
+            <td class="py-2.5 px-3 text-xs text-center tabular-nums">${r.attemptNumber}/3</td>
+            <td class="py-2.5 px-3 text-center"><span class="text-[10px] font-bold text-${tone} bg-${tone}/15 px-2 py-0.5 rounded-full uppercase">${esc(r.result)}</span></td>
+        </tr>`;
+    }).join('') : '<tr><td colspan="5" class="py-6 text-center text-xs text-txtc-500">No entries match this filter.</td></tr>';
+    icons();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * FAC CODE ENTRY
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+const digits = () => $$('#fac-inputs .fac-digit');
+const readCode = () => digits().map((d) => d.value).join('');
+
+function setMessage(text, kind) {
+    const el = $('#fac-message');
+    el.textContent = text || '';
+    el.className = 'text-center text-xs min-h-[1.25rem] mb-4 ' +
+        (kind === 'danger' ? 'text-danger' : kind === 'success' ? 'text-success' : kind === 'warning' ? 'text-warning' : 'text-txtc-500');
+}
+function markDigits(cls) {
+    digits().forEach((d) => { d.classList.remove('success', 'error'); if (cls) d.classList.add(cls); });
+}
+function clearDigits() {
+    digits().forEach((d) => { d.value = ''; });
+    markDigits(null);
+    const first = digits()[0];
+    if (first && !first.disabled) first.focus();
+}
+
+function wireDigits() {
+    digits().forEach((input, i) => {
+        input.addEventListener('input', () => {
+            input.value = input.value.replace(/\D/g, '').slice(0, 1);
+            markDigits(null);
+            setMessage('');
+            if (input.value && i < digits().length - 1) digits()[i + 1].focus();
+            if (readCode().length === 6) submitCode();
+        });
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Backspace' && !input.value && i > 0) { digits()[i - 1].focus(); digits()[i - 1].value = ''; e.preventDefault(); }
+            if (e.key === 'ArrowLeft' && i > 0) digits()[i - 1].focus();
+            if (e.key === 'ArrowRight' && i < digits().length - 1) digits()[i + 1].focus();
+            if (e.key === 'Enter') submitCode();
+        });
+        // Pasting the whole code into any box fills all six — nobody types a
+        // code into six boxes one digit at a time if they can help it.
+        input.addEventListener('paste', (e) => {
+            const text = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 6);
+            if (!text) return;
+            e.preventDefault();
+            digits().forEach((d, j) => { d.value = text[j] || ''; });
+            markDigits(null);
+            if (text.length === 6) submitCode(); else digits()[Math.min(text.length, 5)].focus();
+        });
+    });
+}
+
+let submitting = false;
+async function submitCode() {
+    if (submitting) return;
+    const code = readCode();
+    if (code.length !== 6) { setMessage('Enter all six digits.', 'warning'); return; }
+    submitting = true;
+    $('#fac-submit').disabled = true;
+
+    try {
+        const result = await api.fac.verify({ code });
+        markDigits('success');
+        setMessage(`Verified against generation ${result.generation}. Clearance active for ${Math.round(result.clearance.secondsRemaining / 60)} minutes.`, 'success');
+        toast('FAC clearance granted', 'success');
+        // Held for a beat so the success pulse is visible, then cleared — the
+        // code must not sit in six boxes on an unattended screen.
+        setTimeout(() => { digits().forEach((d) => { d.value = ''; }); }, 900);
+        await refresh();
+    } catch (err) {
+        markDigits('error');
+        $('#fac-inputs').classList.add('shake');
+        setTimeout(() => $('#fac-inputs').classList.remove('shake'), 420);
+
+        setMessage(err.message, 'danger');
+        await refresh();
+
+        // Whether the account is now locked, and for how long, comes from the
+        // server's own state rather than from parsing the error. The two paths
+        // that lock differ — the *third failure* is a 422 that says "locked",
+        // and a *fourth attempt* is a 423 — and reading the state after the
+        // fact covers both without the console having to know which it got.
+        const now = state.clearanceState && state.clearanceState.attempts;
+        if (now && !now.allowed) {
+            openLockout(now.lockoutSecondsRemaining || 0);
+            toast('Account locked out', 'danger');
+        } else {
+            toast(err.message, 'danger');
+        }
+        // Cleared synchronously, not on a timer: a founder who starts retyping
+        // immediately must not have their first digit wiped a moment later.
+        // The error borders stay until the next keystroke clears them.
+        digits().forEach((d) => { d.value = ''; });
+        const first = digits()[0];
+        if (first && !first.disabled) first.focus();
+    } finally {
+        submitting = false;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * LOCKOUT & CLEARANCE COUNTDOWNS
+ *
+ * Both tick from a server-supplied `secondsRemaining` rather than a hardcoded
+ * string — the wireframe's `23:59:45` was decorative; this is the real clock.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+let lockoutTicker = null;
+function openLockout(seconds) {
+    let remaining = seconds;
+    $('#lockout-modal').classList.remove('hidden');
+    $('#lockout-timer').textContent = hms(remaining);
+    icons();
+    clearInterval(lockoutTicker);
+    lockoutTicker = setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) { clearInterval(lockoutTicker); closeLockout(); refresh(); return; }
+        $('#lockout-timer').textContent = hms(remaining);
+    }, 1000);
+}
+function closeLockout() {
+    clearInterval(lockoutTicker);
+    $('#lockout-modal').classList.add('hidden');
+}
+
+let clearanceTicker = null;
+function startClearanceTicker() {
+    clearInterval(clearanceTicker);
+    clearanceTicker = setInterval(() => {
+        const v = state.visibility;
+        if (!v || !v.clearance || !v.clearance.active) return;
+        v.clearance.secondsRemaining -= 1;
+        if (v.clearance.secondsRemaining <= 0) {
+            v.clearance.active = false;
+            toast('FAC clearance expired', 'warning');
+            refresh();
+            return;
+        }
+        $('#clearance-countdown').textContent = ms(v.clearance.secondsRemaining);
+        if (state.screen === 'fac' && state.clearanceState && state.clearanceState.clearance) {
+            state.clearanceState.clearance.secondsRemaining = v.clearance.secondsRemaining;
+            setMessage(`Clearance active — ${ms(v.clearance.secondsRemaining)} remaining.`, 'success');
+        }
+    }, 1000);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * ACTIONS
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+async function issueCode() {
+    if (!confirm('Issue a new generation? The current code stops working immediately, and the new one is shown only once.')) return;
+    try {
+        const result = await api.fac.issue({ trigger: 'manual' });
+        $('#issued-gen').textContent = result.generation;
+        $('#issued-code').textContent = result.code;
+        $('#issued-modal').classList.remove('hidden');
+        $('#issued-copy').onclick = () => {
+            navigator.clipboard?.writeText(result.code).then(
+                () => toast('Copied. It will not be shown again.', 'success'),
+                () => toast('Copy failed — record it by hand.', 'warning'));
+        };
+        icons();
+        await refresh();
+    } catch (err) {
+        toast(err.message, 'danger');
+    }
+}
+
+async function requestReset() {
+    const reason = prompt('Why is a rotation needed? Founders will see this verbatim.');
+    if (!reason || reason.trim().length < 5) { toast('A reason of at least 5 characters is required.', 'warning'); return; }
+    try {
+        const r = await api.fac.requestReset({ reason: reason.trim() });
+        toast(`${r.foundersNotified} founder(s) notified. This does not rotate the code.`, 'info');
+    } catch (err) {
+        toast(err.message, 'danger');
+    }
+}
+
+async function standDown() {
+    try {
+        await api.fac.standDown();
+        toast('Clearance stood down.', 'info');
+        await refresh();
+    } catch (err) {
+        toast(err.message, 'danger');
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * LOAD
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+async function refresh() {
+    // `myVisibility` is the only call every tier can make, so it comes first
+    // and everything else is attempted on top of it — a 403 on an HQ read is
+    // an expected outcome for a staff lens, not an error to surface.
+    state.visibility = await api.governance.myVisibility();
+
+    const [clearance, tiers, matrix, health, ledger] = await Promise.all([
+        mayOpen('fac')   ? api.fac.clearance().catch(() => null) : Promise.resolve(null),
+        api.governance.tiers().catch(() => null),
+        api.governance.visibilityMatrix().catch(() => null),
+        mayOpen('hq')    ? api.governance.health().catch(() => null) : Promise.resolve(null),
+        mayOpen('audit') ? api.fac.attempts().catch(() => null) : Promise.resolve(null),
+    ]);
+
+    state.clearanceState = clearance;
+    state.tiers = tiers;
+    state.matrix = matrix;
+    state.health = health;
+    state.ledger = (ledger && ledger.items) || [];
+
+    renderChrome();
+    renderDashboard();
+    if (tiers) renderGovernance();
+    if (clearance) renderFac();
+    renderMember();
+    if (mayOpen('staff')) renderStaff();
+    if (mayOpen('hq')) renderHq();
+    if (mayOpen('audit')) renderAudit();
+
+    if (!mayOpen(state.screen)) showScreen('dashboard');
+    startClearanceTicker();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * WIRING
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+function openSidebar()  { $('#sidebar').classList.remove('-translate-x-full'); $('#mobile-overlay').classList.remove('hidden'); }
+function closeSidebar() { $('#sidebar').classList.add('-translate-x-full'); $('#mobile-overlay').classList.add('hidden'); }
+
+document.addEventListener('DOMContentLoaded', async () => {
+    icons();
+    wireDigits();
+
+    $$('.nav-item').forEach((b) => b.addEventListener('click', () => { if (!b.disabled) showScreen(b.dataset.screen); }));
+
+    // The lens is a demonstration control, not an app feature: in the real
+    // console the role comes from the token. It re-fetches everything so the
+    // server's own answer decides what is visible, rather than the UI hiding
+    // things it already holds.
+    $$('.lens-btn').forEach((b) => b.addEventListener('click', async () => {
+        $$('.lens-btn').forEach((x) => {
+            const on = x === b;
+            x.className = 'lens-btn text-xs font-semibold px-2.5 md:px-3 py-1.5 rounded-lg transition-all ' +
+                (on ? 'bg-gold-500 text-base-900' : 'text-txtc-400 hover:text-txtc-200');
+        });
+        state.lens = b.dataset.lens;
+        closeLockout();
+        clearDigits();
+        setMessage('');
+        await refresh();
+    }));
+
+    $('#mobile-menu-btn').addEventListener('click', openSidebar);
+    $('#mobile-overlay').addEventListener('click', closeSidebar);
+    $('#refresh-btn').addEventListener('click', () => refresh().then(() => toast('Reloaded', 'info')));
+    $('#fac-submit').addEventListener('click', submitCode);
+    $('#fac-reset-request').addEventListener('click', requestReset);
+    $('#stand-down').addEventListener('click', standDown);
+    $('#lockout-dismiss').addEventListener('click', closeLockout);
+    $('#issued-dismiss').addEventListener('click', () => $('#issued-modal').classList.add('hidden'));
+
+    $$('.audit-filter').forEach((b) => b.addEventListener('click', () => {
+        state.auditFilter = b.dataset.filter;
+        $$('.audit-filter').forEach((x) => {
+            const on = x === b;
+            x.className = 'audit-filter text-[11px] font-semibold px-2.5 py-1 rounded-md ' + (on ? 'bg-base-400 text-txtc-100' : 'text-txtc-400');
+        });
+        renderAudit();
+    }));
+
+    try {
+        await refresh();
+        if (!API_BASE) toast(`Offline fixture — the demo code is ${DEMO_CODE}`, 'info');
+    } catch (err) {
+        toast('Could not load: ' + err.message, 'danger');
+    }
+});
+</script>
+</body>
+</html>
