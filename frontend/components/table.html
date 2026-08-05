@@ -1,0 +1,28 @@
+<!-- LRMC TABLE — the standard data table.
+
+     Three rules baked in:
+     • <caption> names the table for screen readers (visually hidden).
+     • scope="col" on headers, so a screen reader can announce which column
+       a cell belongs to when reading row by row.
+     • Numbers right-aligned and tabular, so columns of money line up.
+
+     Load rows with HTMX: hx-get the endpoint, hx-target the tbody. -->
+<div class="lrmc-card overflow-x-auto">
+  <table class="lrmc-table">
+    <caption class="lrmc-sr-only">Describe what this table lists</caption>
+    <thead>
+      <tr>
+        <th scope="col">Reference</th>
+        <th scope="col">Party</th>
+        <th scope="col">Status</th>
+        <th scope="col" class="lrmc-td-num">Amount</th>
+      </tr>
+    </thead>
+    <tbody id="table-body"
+           hx-get="/api/v1/leases"
+           hx-trigger="load"
+           hx-swap="innerHTML">
+      <tr><td colspan="4" class="p-6 text-center text-xs text-ink-500">Loading…</td></tr>
+    </tbody>
+  </table>
+</div>

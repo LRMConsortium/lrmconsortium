@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<!--
+ LEGACY RENTAL MANAGEMENT CONSORTIUM (LRMC) — PUBLIC LAYOUT
+
+ For pages anyone can reach: the marketing site, pricing, contact. No
+ authentication, no sidebar, no data-zone. A visitor is not an actor.
+
+ Copy this, fill the SLOTs, done.
+-->
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Legacy Rental Management Consortium</title>
+  <meta name="description" content="Legacy Rental Management Consortium — institutional property and mobility management in Ghana." />
+
+  <link rel="icon" href="/assets/img/lrmc-favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: {
+      colors: {
+        base: { 900:'#0a0e1a', 800:'#0d1225', 700:'#111827', 600:'#1a2035', 500:'#1f2937', 400:'#2a3347', 300:'#374151' },
+        gold: { 100:'#fef6e0', 200:'#f5e6b8', 300:'#e8d08a', 400:'#d4b96a', 500:'#c9a84c', 600:'#b8952f', 700:'#9a7a1e', 800:'#7a6018' },
+        ink:  { 100:'#f9fafb', 200:'#e5e7eb', 300:'#d1d5db', 400:'#9ca3af', 500:'#6b7280' },
+        success:'#22c55e', warning:'#f59e0b', danger:'#ef4444', info:'#3b82f6',
+      },
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+    } } };
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/theme.css" />
+  <link rel="stylesheet" href="/assets/css/utilities.css" />
+
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="/assets/js/sdk.js" defer></script>
+  <script src="/assets/js/ui.js" defer></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+</head>
+
+<body class="h-full antialiased flex flex-col" x-data="{ menu: false }">
+
+<a href="#lrmc-main" class="lrmc-skip-link">Skip to main content</a>
+
+<header class="border-b border-base-500/60 bg-base-800/80 backdrop-blur sticky top-0 z-20">
+  <div class="max-w-7xl mx-auto px-4 lg:px-6 h-16 flex items-center gap-4">
+    <a href="/public/index.html" class="flex items-center gap-3 min-w-0">
+      <img src="/assets/img/lrmc-logo.svg" alt="Legacy Rental Management Consortium" class="w-9 h-9 flex-shrink-0" />
+      <span class="text-sm font-extrabold text-gold-500 tracking-wide hidden sm:inline">LRMC</span>
+    </a>
+
+    <nav class="hidden md:flex items-center gap-1 ml-6 flex-1" aria-label="Main">
+      <a href="/public/about.html"   class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">About</a>
+      <a href="/public/pricing.html" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Pricing</a>
+      <a href="/public/contact.html" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Contact</a>
+    </nav>
+
+    <div class="ml-auto flex items-center gap-2">
+      <a href="/public/login.html"    class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Sign in</a>
+      <a href="/public/register.html" class="lrmc-btn lrmc-btn-primary lrmc-btn-sm">Get started</a>
+    </div>
+  </div>
+</header>
+
+<main id="lrmc-main" class="flex-1">
+  <!-- SLOT: page content -->
+</main>
+
+<footer class="border-t border-base-500/60 mt-16">
+  <div class="max-w-7xl mx-auto px-4 lg:px-6 py-8">
+    <div class="flex items-center gap-3 mb-4">
+      <img src="/assets/img/lrmc-logo.svg" alt="" class="w-8 h-8" />
+      <p class="text-sm font-bold text-gold-500">Legacy Rental Management Consortium</p>
+    </div>
+    <p class="text-xs text-ink-500 max-w-md">
+      Institutional property and mobility management. Accra, Ghana.
+    </p>
+    <p class="text-[11px] text-ink-500 mt-6">
+      © <span class="lrmc-year"></span> Legacy Rental Management Consortium. All rights reserved.
+    </p>
+  </div>
+</footer>
+
+<div id="lrmc-toasts" aria-live="polite" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 items-end"></div>
+
+<script>
+  document.querySelectorAll('.lrmc-year').forEach(function (el) { el.textContent = new Date().getFullYear(); });
+  document.addEventListener('DOMContentLoaded', function () { if (window.lucide) window.lucide.createIcons(); });
+  document.body.addEventListener('htmx:afterSwap', function () { if (window.lucide) window.lucide.createIcons(); });
+</script>
+</body>
+</html>

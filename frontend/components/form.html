@@ -1,0 +1,39 @@
+<!-- LRMC FORM — posts through HTMX, renders the outcome into #form-result.
+
+     Accessibility that is not optional here:
+     • Every input has a <label for>. A placeholder is not a label — it
+       disappears the moment someone types.
+     • Errors are text, not just a red border.
+     • aria-live on the result region, so a screen reader hears the outcome
+       instead of silence. -->
+<form hx-post="/api/v1/leases" hx-target="#form-result" hx-swap="innerHTML" class="space-y-4">
+
+  <div>
+    <label class="lrmc-label" for="field-reference">Reference</label>
+    <input class="lrmc-input" id="field-reference" name="reference" type="text" required />
+    <p class="lrmc-field-hint">Internal reference for this record.</p>
+  </div>
+
+  <div>
+    <label class="lrmc-label" for="field-amount">Amount (GH₵)</label>
+    <input class="lrmc-input" id="field-amount" name="amount" type="number" step="0.01" min="0" required />
+  </div>
+
+  <div>
+    <label class="lrmc-label" for="field-status">Status</label>
+    <select class="lrmc-select" id="field-status" name="status">
+      <option value="draft">Draft</option>
+      <option value="active">Active</option>
+    </select>
+  </div>
+
+  <div class="flex gap-2 pt-2">
+    <button type="submit" class="lrmc-btn lrmc-btn-primary">
+      Save
+      <span class="htmx-indicator"><i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i></span>
+    </button>
+    <button type="reset" class="lrmc-btn lrmc-btn-secondary">Reset</button>
+  </div>
+
+  <div id="form-result" aria-live="polite"></div>
+</form>

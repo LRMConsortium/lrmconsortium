@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<!--
+ ═══════════════════════════════════════════════════════════════════════════
+ LEGACY RENTAL MANAGEMENT CONSORTIUM (LRMC) — BASE LAYOUT
+
+ Every LRMC page starts from this file. It loads Tailwind, HTMX, Alpine and
+ the LRMC global scripts, in the one order that works:
+
+   theme.css → utilities.css   tokens before the classes that consume them
+   htmx                        before auth.js, which attaches to its events
+   sdk.js → auth.js → ui.js    auth needs the client; ui needs neither
+   alpine (defer)              last, so its init sees everything registered
+
+ Copy this file, fill the three slots marked SLOT, and you have a page that
+ is branded, authenticated and consistent with the rest of the platform.
+ ═══════════════════════════════════════════════════════════════════════════
+-->
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- SLOT: page title. Always ends with the institution's name. -->
+  <title>Legacy Rental Management Consortium</title>
+  <meta name="description" content="Legacy Rental Management Consortium — institutional property and mobility management." />
+
+  <link rel="icon" href="/assets/img/lrmc-favicon.svg" type="image/svg+xml" />
+
+  <!-- Inter. LRMC's institutional typeface. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!--
+    Tailwind via CDN — no build step, per the LRMC frontend stack decision.
+    The config below teaches Tailwind the LRMC palette so `bg-base-700` and
+    `text-gold-500` work in markup. The same values live in theme.css as CSS
+    variables for the component classes; change both together, or better,
+    change theme.css and mirror it here.
+  -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            base: { 900:'#0a0e1a', 800:'#0d1225', 700:'#111827', 600:'#1a2035', 500:'#1f2937', 400:'#2a3347', 300:'#374151' },
+            gold: { 100:'#fef6e0', 200:'#f5e6b8', 300:'#e8d08a', 400:'#d4b96a', 500:'#c9a84c', 600:'#b8952f', 700:'#9a7a1e', 800:'#7a6018' },
+            ink:  { 100:'#f9fafb', 200:'#e5e7eb', 300:'#d1d5db', 400:'#9ca3af', 500:'#6b7280' },
+            success:'#22c55e', warning:'#f59e0b', danger:'#ef4444', info:'#3b82f6',
+          },
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+        },
+      },
+    };
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/theme.css" />
+  <link rel="stylesheet" href="/assets/css/utilities.css" />
+
+  <!--
+    HTMX and Alpine from CDN. To self-host (recommended for production, and
+    required if the Accra office ever works offline), download both into
+    /assets/js/ and swap the two lines below for the commented ones.
+    /assets/js/htmx.min.js and /assets/js/alpine.js explain how.
+  -->
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <!-- <script src="/assets/js/htmx.min.js"></script> -->
+
+  <script src="/assets/js/sdk.js" defer></script>
+  <script src="/assets/js/auth.js" defer></script>
+  <script src="/assets/js/ui.js" defer></script>
+
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <!-- <script src="/assets/js/alpine.js" defer></script> -->
+
+  <!-- Lucide icons, referenced as <i data-lucide="name"> -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+
+  <!-- SLOT: page-specific <style> or <script>, if any. -->
+</head>
+
+<!--
+  data-zone tells auth.js which HQ zone to declare on every request from this
+  page. Set it on dashboard pages; leave it off public ones.
+-->
+<body class="h-full antialiased" data-zone="">
+
+  <!-- First stop for a keyboard user, on every page. -->
+  <a href="#lrmc-main" class="lrmc-skip-link">Skip to main content</a>
+
+  <!-- SLOT: page body. -->
+
+  <div id="lrmc-toasts" aria-live="polite"
+       class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 items-end"></div>
+
+  <script>
+    /* Icons are drawn after HTMX swaps content in, or every fragment loaded
+     * after first paint arrives without them. */
+    document.addEventListener('DOMContentLoaded', function () {
+      if (window.lucide) window.lucide.createIcons();
+    });
+    document.body.addEventListener('htmx:afterSwap', function () {
+      if (window.lucide) window.lucide.createIcons();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<!--
+ LEGACY RENTAL MANAGEMENT CONSORTIUM (LRMC) — AUTH LAYOUT
+
+ Sign in, register, password reset. One centred card, nothing else on screen.
+ No navigation on purpose: a person on this page has exactly one job, and
+ every link away from it is a way to fail at that job.
+-->
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign in · Legacy Rental Management Consortium</title>
+
+  <link rel="icon" href="/assets/img/lrmc-favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: {
+      colors: {
+        base: { 900:'#0a0e1a', 800:'#0d1225', 700:'#111827', 600:'#1a2035', 500:'#1f2937', 400:'#2a3347', 300:'#374151' },
+        gold: { 100:'#fef6e0', 200:'#f5e6b8', 300:'#e8d08a', 400:'#d4b96a', 500:'#c9a84c', 600:'#b8952f', 700:'#9a7a1e', 800:'#7a6018' },
+        ink:  { 100:'#f9fafb', 200:'#e5e7eb', 300:'#d1d5db', 400:'#9ca3af', 500:'#6b7280' },
+        success:'#22c55e', warning:'#f59e0b', danger:'#ef4444', info:'#3b82f6',
+      },
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+    } } };
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/theme.css" />
+  <link rel="stylesheet" href="/assets/css/utilities.css" />
+
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="/assets/js/sdk.js" defer></script>
+  <script src="/assets/js/auth.js" defer></script>
+  <script src="/assets/js/ui.js" defer></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+</head>
+
+<body class="h-full antialiased flex flex-col items-center justify-center p-4">
+
+  <main id="lrmc-main" class="w-full max-w-sm">
+
+    <div class="flex flex-col items-center mb-8">
+      <img src="/assets/img/lrmc-logo.svg" alt="" class="w-14 h-14 mb-3" />
+      <p class="text-lg font-extrabold text-gold-500 tracking-wide">LRMC</p>
+      <p class="text-[11px] text-ink-500 text-center mt-1">Legacy Rental Management Consortium</p>
+    </div>
+
+    <div class="lrmc-card">
+      <!-- SLOT: the form -->
+    </div>
+
+    <p class="text-[11px] text-ink-500 text-center mt-6">
+      © <span class="lrmc-year"></span> Legacy Rental Management Consortium · Accra, Ghana
+    </p>
+  </main>
+
+  <div id="lrmc-toasts" aria-live="polite" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 items-end"></div>
+
+  <script>
+    document.querySelectorAll('.lrmc-year').forEach(function (el) { el.textContent = new Date().getFullYear(); });
+    document.addEventListener('DOMContentLoaded', function () { if (window.lucide) window.lucide.createIcons(); });
+  </script>
+</body>
+</html>

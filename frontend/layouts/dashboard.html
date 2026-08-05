@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<!--
+ ═══════════════════════════════════════════════════════════════════════════
+ LEGACY RENTAL MANAGEMENT CONSORTIUM (LRMC) — DASHBOARD LAYOUT
+
+ Everything in base.html, plus the LRMC sidebar, topbar and <main> slot that
+ every signed-in surface shares: HQ, Members, Staff, POS, Marketplace.
+
+ To build a dashboard page:
+   1. Copy this file.
+   2. Set <title>, <body data-zone="…"> and the page heading.
+   3. Mark the current sidebar link with `active`.
+   4. Replace the SLOT comment in <main> with the page.
+
+ Four things are deliberate and worth not undoing:
+
+ • The sidebar is `aria-hidden` when closed, so a screen reader does not read
+   out an offscreen menu the sighted user cannot see.
+ • Every nav item is a real <a href>. Middle-click, bookmark and back all
+   work, which they do not when navigation is JavaScript.
+ • The Founder Command Center prompt lives here rather than on each page, so
+   any Zone A page gets it for free.
+ • Content loads through HTMX with `hx-trigger="load"`, so the shell paints
+   immediately and each panel fills as its data arrives. One slow endpoint
+   delays one card, not the page.
+ ═══════════════════════════════════════════════════════════════════════════
+-->
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard · Legacy Rental Management Consortium</title>
+
+  <link rel="icon" href="/assets/img/lrmc-favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: {
+        colors: {
+          base: { 900:'#0a0e1a', 800:'#0d1225', 700:'#111827', 600:'#1a2035', 500:'#1f2937', 400:'#2a3347', 300:'#374151' },
+          gold: { 100:'#fef6e0', 200:'#f5e6b8', 300:'#e8d08a', 400:'#d4b96a', 500:'#c9a84c', 600:'#b8952f', 700:'#9a7a1e', 800:'#7a6018' },
+          ink:  { 100:'#f9fafb', 200:'#e5e7eb', 300:'#d1d5db', 400:'#9ca3af', 500:'#6b7280' },
+          success:'#22c55e', warning:'#f59e0b', danger:'#ef4444', info:'#3b82f6',
+        },
+        fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+      } },
+    };
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/theme.css" />
+  <link rel="stylesheet" href="/assets/css/utilities.css" />
+
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="/assets/js/sdk.js" defer></script>
+  <script src="/assets/js/auth.js" defer></script>
+  <script src="/assets/js/ui.js" defer></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+</head>
+
+<!-- SLOT: set data-zone to this surface's HQ zone. -->
+<body class="h-full antialiased" data-zone="HQ_EXECUTIVE" x-data="lrmcShell">
+
+<a href="#lrmc-main" class="lrmc-skip-link">Skip to main content</a>
+
+<div class="flex h-full">
+
+  <!-- ═══ SIDEBAR ═══════════════════════════════════════════════════════ -->
+  <aside
+    class="fixed lg:static inset-y-0 left-0 z-40 w-[260px] bg-base-800 border-r border-base-500/60
+           flex flex-col transition-transform duration-200 lg:translate-x-0"
+    :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
+    :aria-hidden="(!sidebarOpen && window.innerWidth < 1024).toString()"
+  >
+
+    <!-- LRMC mark -->
+    <div class="h-16 flex items-center gap-3 px-5 border-b border-base-500/60 flex-shrink-0">
+      <img src="/assets/img/lrmc-logo.svg" alt="" class="w-9 h-9 flex-shrink-0" />
+      <div class="min-w-0">
+        <p class="text-sm font-extrabold text-gold-500 leading-tight tracking-wide">LRMC</p>
+        <p class="text-[10px] text-ink-500 leading-tight truncate">Legacy Rental Management Consortium</p>
+      </div>
+    </div>
+
+    <!-- SLOT: navigation for this portal. Mark the current page `active`. -->
+    <nav class="flex-1 overflow-y-auto px-3 py-4" aria-label="Main">
+      <p class="lrmc-nav-section">Overview</p>
+      <a href="/hq/index.html" class="lrmc-nav-item active">
+        <i data-lucide="layout-dashboard" class="w-[18px] h-[18px]"></i><span>Command Center</span>
+      </a>
+    </nav>
+
+    <!-- Signed-in identity -->
+    <div class="border-t border-base-500/60 p-3 flex-shrink-0">
+      <div class="flex items-center gap-3 px-2 py-2">
+        <div class="w-8 h-8 rounded-full bg-gold-500/20 flex items-center justify-center flex-shrink-0">
+          <i data-lucide="user" class="w-4 h-4 text-gold-500"></i>
+        </div>
+        <div class="min-w-0 flex-1">
+          <p id="lrmc-actor-name" class="text-xs font-semibold text-ink-200 truncate">—</p>
+          <p id="lrmc-actor-role" class="text-[10px] font-bold text-gold-500 tracking-wider uppercase truncate">—</p>
+        </div>
+        <button type="button" onclick="LrmcAuth.signOut().then(()=>location.href='/public/login.html')"
+                class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm !min-h-0 !p-1.5" aria-label="Sign out">
+          <i data-lucide="log-out" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Backdrop, small screens only -->
+  <div x-show="sidebarOpen" x-cloak @click="close()"
+       class="fixed inset-0 bg-black/60 z-30 lg:hidden" aria-hidden="true"></div>
+
+  <!-- ═══ MAIN COLUMN ═══════════════════════════════════════════════════ -->
+  <div class="flex-1 flex flex-col min-w-0">
+
+    <header class="h-16 bg-base-800/80 backdrop-blur border-b border-base-500/60
+                   flex items-center gap-4 px-4 lg:px-6 flex-shrink-0 sticky top-0 z-20">
+      <button type="button" @click="toggle()" class="lg:hidden lrmc-btn lrmc-btn-ghost !min-h-0 !p-2"
+              aria-label="Toggle navigation">
+        <i data-lucide="menu" class="w-5 h-5"></i>
+      </button>
+
+      <!-- SLOT: page heading -->
+      <div class="min-w-0 flex-1">
+        <h1 class="text-base font-bold text-ink-100 truncate">Dashboard</h1>
+        <p class="text-xs text-ink-500 truncate">Legacy Rental Management Consortium</p>
+      </div>
+
+      <button type="button" class="lrmc-btn lrmc-btn-ghost !min-h-0 !p-2 relative" aria-label="Notifications">
+        <i data-lucide="bell" class="w-5 h-5"></i>
+      </button>
+    </header>
+
+    <main id="lrmc-main" class="flex-1 overflow-y-auto p-4 lg:p-6">
+      <!-- SLOT: page content. -->
+    </main>
+
+    <footer class="border-t border-base-500/60 px-4 lg:px-6 py-3 flex-shrink-0">
+      <p class="text-[11px] text-ink-500">
+        © <span id="lrmc-year"></span> Legacy Rental Management Consortium · Accra, Ghana
+      </p>
+    </footer>
+  </div>
+</div>
+
+<!-- ═══ FOUNDER AUTHORISATION CODE ═════════════════════════════════════════
+     Raised by auth.js whenever the backend answers CLEARANCE_REQUIRED. Here
+     rather than per page, so every Zone A surface prompts correctly.
+-->
+<div x-data="lrmcClearance" x-show="open" x-cloak
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+     role="dialog" aria-modal="true" aria-labelledby="lrmc-clearance-title">
+  <div class="lrmc-card lrmc-card-institutional max-w-md w-full" @click.outside="hide()">
+    <div class="flex items-start gap-3 mb-4">
+      <div class="w-10 h-10 rounded-full bg-gold-500/20 flex items-center justify-center flex-shrink-0">
+        <i data-lucide="key-round" class="w-5 h-5 text-gold-500"></i>
+      </div>
+      <div>
+        <h2 id="lrmc-clearance-title" class="text-base font-bold text-gold-500">Founder Command Center</h2>
+        <p class="text-xs text-ink-400 mt-0.5" x-text="instruction"></p>
+      </div>
+    </div>
+    <div class="flex gap-2">
+      <a href="/hq/governance.html" class="lrmc-btn lrmc-btn-primary flex-1">Continue</a>
+      <button type="button" class="lrmc-btn lrmc-btn-secondary" @click="hide()">Not now</button>
+    </div>
+  </div>
+</div>
+
+<div id="lrmc-toasts" aria-live="polite" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 items-end"></div>
+
+<script>
+  document.getElementById('lrmc-year').textContent = new Date().getFullYear();
+
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.lucide) window.lucide.createIcons();
+
+    var actor = window.LrmcAuth && LrmcAuth.actor();
+    if (actor) {
+      document.getElementById('lrmc-actor-name').textContent = actor.name || actor.email || '—';
+      document.getElementById('lrmc-actor-role').textContent = actor.primaryRole || '—';
+    }
+  });
+
+  document.body.addEventListener('htmx:afterSwap', function () {
+    if (window.lucide) window.lucide.createIcons();
+  });
+</script>
+</body>
+</html>

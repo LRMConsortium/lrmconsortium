@@ -1,0 +1,310 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+ * LRMC — COMPONENT CLASSES
+ *
+ * Tailwind handles one-off layout. This file holds the pieces that must look
+ * identical on every page: buttons, cards, tables, forms, badges. A button
+ * spelled out in nine Tailwind classes gets spelled differently on page
+ * eleven; `.lrmc-btn` cannot.
+ *
+ * Everything resolves to a token in theme.css. Nothing here hard-codes a
+ * colour.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+
+.lrmc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.125rem;
+  border-radius: var(--lrmc-radius);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+  white-space: nowrap;
+  /* 44px min touch target — this platform is used on phones in the field. */
+  min-height: 2.75rem;
+}
+
+.lrmc-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+.lrmc-btn-primary { background: var(--lrmc-gold-500); color: var(--lrmc-base-900); }
+.lrmc-btn-primary:hover:not(:disabled) { background: var(--lrmc-gold-400); }
+
+.lrmc-btn-secondary {
+  background: var(--lrmc-base-500);
+  color: var(--lrmc-ink-200);
+  border-color: var(--lrmc-base-300);
+}
+.lrmc-btn-secondary:hover:not(:disabled) { background: var(--lrmc-base-400); }
+
+.lrmc-btn-ghost { background: transparent; color: var(--lrmc-ink-300); }
+.lrmc-btn-ghost:hover:not(:disabled) { background: var(--lrmc-base-600); color: var(--lrmc-ink-100); }
+
+/* Destructive actions are outlined rather than filled. A wall of red buttons
+ * trains people to click red, which is the opposite of what danger means. */
+.lrmc-btn-danger {
+  background: transparent;
+  color: var(--lrmc-danger);
+  border-color: rgba(239, 68, 68, .45);
+}
+.lrmc-btn-danger:hover:not(:disabled) { background: rgba(239, 68, 68, .12); }
+
+.lrmc-btn-sm { padding: .375rem .75rem; font-size: .8125rem; min-height: 2.25rem; }
+
+/* ── Cards ───────────────────────────────────────────────────────────── */
+
+.lrmc-card {
+  background: var(--lrmc-base-700);
+  border: 1px solid rgba(31, 41, 55, .8);
+  border-radius: var(--lrmc-radius-lg);
+  padding: 1.25rem;
+}
+
+.lrmc-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.lrmc-card-title {
+  font-size: .875rem;
+  font-weight: 600;
+  color: var(--lrmc-ink-200);
+  margin: 0;
+}
+
+/* The seal-bearing card. Reserved for Founder Command Center surfaces. */
+.lrmc-card-institutional { border-color: rgba(201, 168, 76, .35); }
+
+/* ── Stat tiles ──────────────────────────────────────────────────────── */
+
+.lrmc-stat {
+  background: var(--lrmc-base-700);
+  border: 1px solid rgba(31, 41, 55, .8);
+  border-radius: var(--lrmc-radius-lg);
+  padding: 1.125rem 1.25rem;
+}
+
+.lrmc-stat-label {
+  font-size: .6875rem;
+  font-weight: 500;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--lrmc-ink-500);
+  margin: 0 0 .5rem;
+}
+
+/* The number is the point of the tile, so it is the biggest thing in it. */
+.lrmc-stat-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--lrmc-ink-100);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.lrmc-stat-meta { font-size: .75rem; color: var(--lrmc-ink-400); margin: .375rem 0 0; }
+
+/* ── Tables ──────────────────────────────────────────────────────────── */
+
+.lrmc-table { width: 100%; border-collapse: collapse; font-size: .8125rem; }
+
+.lrmc-table thead th {
+  text-align: left;
+  padding: .625rem .75rem;
+  font-size: .6875rem;
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--lrmc-ink-500);
+  border-bottom: 1px solid var(--lrmc-base-500);
+  white-space: nowrap;
+}
+
+.lrmc-table tbody td {
+  padding: .75rem;
+  border-bottom: 1px solid rgba(31, 41, 55, .5);
+  color: var(--lrmc-ink-300);
+  vertical-align: middle;
+}
+
+.lrmc-table tbody tr:hover { background: rgba(26, 32, 53, .5); }
+.lrmc-table .lrmc-td-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ── Badges ──────────────────────────────────────────────────────────────
+ * Every status badge carries a word. Colour is the fast read; the word is
+ * the one that works for a colour-blind reader and in a printed report.
+ */
+
+.lrmc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .3125rem;
+  padding: .1875rem .5rem;
+  border-radius: 999px;
+  font-size: .6875rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.lrmc-badge-success { color: var(--lrmc-success); background: rgba(34, 197, 94, .14); }
+.lrmc-badge-warning { color: var(--lrmc-warning); background: rgba(245, 158, 11, .14); }
+.lrmc-badge-danger  { color: var(--lrmc-danger);  background: rgba(239, 68, 68, .14); }
+.lrmc-badge-info    { color: var(--lrmc-info);    background: rgba(59, 130, 246, .14); }
+.lrmc-badge-neutral { color: var(--lrmc-ink-400); background: rgba(55, 65, 81, .5); }
+.lrmc-badge-gold    { color: var(--lrmc-gold-500); background: rgba(201, 168, 76, .14); }
+
+/* ── Forms ───────────────────────────────────────────────────────────── */
+
+.lrmc-label {
+  display: block;
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--lrmc-ink-300);
+  margin-bottom: .375rem;
+}
+
+.lrmc-input,
+.lrmc-select,
+.lrmc-textarea {
+  width: 100%;
+  background: var(--lrmc-base-800);
+  border: 1px solid var(--lrmc-base-400);
+  border-radius: var(--lrmc-radius-sm);
+  padding: .625rem .75rem;
+  font-size: .875rem;
+  font-family: inherit;
+  color: var(--lrmc-ink-100);
+  min-height: 2.75rem;
+}
+
+.lrmc-input::placeholder, .lrmc-textarea::placeholder { color: var(--lrmc-ink-500); }
+
+.lrmc-input:focus, .lrmc-select:focus, .lrmc-textarea:focus {
+  border-color: var(--lrmc-gold-500);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(201, 168, 76, .18);
+}
+
+/* An invalid field is outlined AND carries `.lrmc-field-error` text beneath.
+ * A red border alone tells a colour-blind user nothing. */
+.lrmc-input[aria-invalid='true'],
+.lrmc-select[aria-invalid='true'],
+.lrmc-textarea[aria-invalid='true'] { border-color: var(--lrmc-danger); }
+
+.lrmc-field-error { font-size: .75rem; color: var(--lrmc-danger); margin-top: .3125rem; }
+.lrmc-field-hint  { font-size: .75rem; color: var(--lrmc-ink-500); margin-top: .3125rem; }
+
+/* ── Navigation ──────────────────────────────────────────────────────── */
+
+.lrmc-nav-item {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .625rem .875rem;
+  border-radius: var(--lrmc-radius-sm);
+  font-size: .875rem;
+  font-weight: 500;
+  color: var(--lrmc-ink-400);
+  text-decoration: none;
+  border-left: 3px solid transparent;
+  transition: background-color .15s ease, color .15s ease;
+}
+
+.lrmc-nav-item:hover { background: var(--lrmc-base-600); color: var(--lrmc-ink-100); }
+
+.lrmc-nav-item.active {
+  background: rgba(201, 168, 76, .13);
+  color: var(--lrmc-gold-400);
+  border-left-color: var(--lrmc-gold-500);
+}
+
+.lrmc-nav-section {
+  font-size: .625rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--lrmc-ink-500);
+  padding: 0 .875rem;
+  margin: 1.25rem 0 .5rem;
+}
+
+/* ── Loading ─────────────────────────────────────────────────────────────
+ * HTMX toggles `.htmx-request` on the element while a request is in flight.
+ * These two rules are what make every load state on the platform consistent
+ * without a line of JavaScript per page.
+ */
+
+.lrmc-skeleton {
+  background: linear-gradient(90deg, var(--lrmc-base-600) 25%, var(--lrmc-base-500) 50%, var(--lrmc-base-600) 75%);
+  background-size: 200% 100%;
+  animation: lrmc-shimmer 1.4s infinite;
+  border-radius: var(--lrmc-radius-sm);
+}
+
+@keyframes lrmc-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.htmx-indicator { opacity: 0; transition: opacity .15s ease; }
+.htmx-request .htmx-indicator, .htmx-request.htmx-indicator { opacity: 1; }
+
+/* ── Toasts ──────────────────────────────────────────────────────────── */
+
+.lrmc-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: .625rem;
+  background: var(--lrmc-base-600);
+  border: 1px solid var(--lrmc-base-400);
+  border-left-width: 3px;
+  border-radius: var(--lrmc-radius);
+  padding: .75rem 1rem;
+  box-shadow: var(--lrmc-shadow-lg);
+  font-size: .8125rem;
+  color: var(--lrmc-ink-200);
+  max-width: 24rem;
+}
+
+.lrmc-toast-success { border-left-color: var(--lrmc-success); }
+.lrmc-toast-warning { border-left-color: var(--lrmc-warning); }
+.lrmc-toast-danger  { border-left-color: var(--lrmc-danger); }
+.lrmc-toast-info    { border-left-color: var(--lrmc-info); }
+
+/* ── Accessibility helpers ───────────────────────────────────────────── */
+
+.lrmc-sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Visible on focus — the first thing a keyboard user tabs to on every page. */
+.lrmc-skip-link {
+  position: absolute;
+  left: -9999px;
+  top: .5rem;
+  z-index: 100;
+  background: var(--lrmc-gold-500);
+  color: var(--lrmc-base-900);
+  padding: .5rem 1rem;
+  border-radius: var(--lrmc-radius-sm);
+  font-weight: 700;
+  font-size: .8125rem;
+}
+.lrmc-skip-link:focus { left: .5rem; }

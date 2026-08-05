@@ -1,0 +1,58 @@
+<!-- LRMC SIDEBAR — portal navigation.
+
+     Copy this into a portal layout and replace the link list. Three things
+     to keep:
+
+     • Real <a href> for every item. Middle-click, bookmark, back button and
+       "open in new tab" all work; with JavaScript navigation none of them do.
+     • aria-current="page" on the current link, so a screen reader announces
+       where the user is rather than leaving them to infer it from colour.
+     • aria-hidden when closed on small screens, so a screen reader does not
+       read out a menu that is off the side of the display.
+
+     Nav visibility is a courtesy, not a control. Hiding a link stops an
+     honest person clicking the wrong thing; it stops nobody who opens the
+     network tab. The LRMC backend enforces every rule again. -->
+
+<aside id="lrmc-sidebar"
+       class="fixed lg:static inset-y-0 left-0 z-40 w-[260px] bg-base-800
+              border-r border-base-500/60 flex flex-col
+              transition-transform duration-200 lg:translate-x-0"
+       :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
+       :aria-hidden="(!sidebarOpen && window.innerWidth < 1024).toString()">
+
+  <div class="h-16 flex items-center gap-3 px-5 border-b border-base-500/60 flex-shrink-0">
+    <img src="/assets/img/lrmc-logo.svg" alt="" class="w-9 h-9 flex-shrink-0" />
+    <div class="min-w-0">
+      <p class="text-sm font-extrabold text-gold-500 leading-tight tracking-wide">LRMC</p>
+      <p class="text-[10px] text-ink-500 leading-tight truncate">Legacy Rental Management Consortium</p>
+    </div>
+  </div>
+
+  <nav class="flex-1 overflow-y-auto px-3 py-4" aria-label="Main">
+    <p class="lrmc-nav-section">Overview</p>
+    <a href="/hq/index.html" class="lrmc-nav-item active" aria-current="page">
+      <i data-lucide="layout-dashboard" class="w-[18px] h-[18px]"></i><span>Command Center</span>
+    </a>
+    <a href="/hq/analytics.html" class="lrmc-nav-item">
+      <i data-lucide="trending-up" class="w-[18px] h-[18px]"></i><span>Analytics</span>
+    </a>
+  </nav>
+
+  <div class="border-t border-base-500/60 p-3 flex-shrink-0">
+    <div class="flex items-center gap-3 px-2 py-2">
+      <div class="w-8 h-8 rounded-full bg-gold-500/20 flex items-center justify-center flex-shrink-0">
+        <i data-lucide="user" class="w-4 h-4 text-gold-500"></i>
+      </div>
+      <div class="min-w-0 flex-1">
+        <p class="lrmc-actor-name text-xs font-semibold text-ink-200 truncate">—</p>
+        <p class="lrmc-actor-role text-[10px] font-bold text-gold-500 tracking-wider uppercase truncate">—</p>
+      </div>
+      <button type="button"
+              onclick="LrmcAuth.signOut().then(function(){ location.href='/public/login.html'; })"
+              class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm !min-h-0 !p-1.5" aria-label="Sign out">
+        <i data-lucide="log-out" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </div>
+</aside>
