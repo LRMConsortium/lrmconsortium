@@ -24,9 +24,9 @@ import { client, withMeta, type ListOptions, type RequestOptions } from './_runt
 /** Zone, roles and permissions for each operation, straight from the spec. */
 export const META = {
   broadcast: { operationId: 'postNotificationsBroadcast', method: 'POST' as const, pathTemplate: '/notifications/broadcast', zone: 'HQ_EXECUTIVE' as const, roles: ["founder","hqExecutive"] as Role[], permissions: ["notification:create"], ownership: 'none' as const, auth: 'required' as const },
-  inbox: { operationId: 'getNotificationsMe', method: 'GET' as const, pathTemplate: '/notifications/me', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser"] as Role[], permissions: ["notification:readOwn","notification:read"], ownership: 'self' as const, auth: 'required' as const },
-  mark: { operationId: 'patchNotificationByNotificationId', method: 'PATCH' as const, pathTemplate: '/notification/{notificationId}', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser"] as Role[], permissions: ["notification:updateOwn","notification:readOwn"], ownership: 'self' as const, auth: 'required' as const },
-  registerToken: { operationId: 'postNotificationsRegisterToken', method: 'POST' as const, pathTemplate: '/notifications/register-token', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser"] as Role[], permissions: [], ownership: 'self' as const, auth: 'required' as const },
+  inbox: { operationId: 'getNotificationsMe', method: 'GET' as const, pathTemplate: '/notifications/me', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer"] as Role[], permissions: ["notification:readOwn","notification:read"], ownership: 'self' as const, auth: 'required' as const },
+  mark: { operationId: 'patchNotificationByNotificationId', method: 'PATCH' as const, pathTemplate: '/notification/{notificationId}', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer"] as Role[], permissions: ["notification:updateOwn","notification:readOwn"], ownership: 'self' as const, auth: 'required' as const },
+  registerToken: { operationId: 'postNotificationsRegisterToken', method: 'POST' as const, pathTemplate: '/notifications/register-token', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer"] as Role[], permissions: [], ownership: 'self' as const, auth: 'required' as const },
   sendTest: { operationId: 'postNotificationsTest', method: 'POST' as const, pathTemplate: '/notifications/test', zone: 'HQ_EXECUTIVE' as const, roles: ["founder","hqExecutive"] as Role[], permissions: ["notification:create"], ownership: 'none' as const, auth: 'required' as const },
 } satisfies Record<string, OperationMeta>;
 
@@ -51,7 +51,7 @@ export const notifications = {
    *
    * `GET /notifications/me`
    * Zone: MEMBER_PORTAL
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer
    * Permission: notification:readOwn | notification:read
    * Ownership: self
    */
@@ -66,7 +66,7 @@ export const notifications = {
    *
    * `PATCH /notification/{notificationId}`
    * Zone: MEMBER_PORTAL
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer
    * Permission: notification:updateOwn | notification:readOwn
    * Ownership: self
    */
@@ -81,7 +81,7 @@ export const notifications = {
    *
    * `POST /notifications/register-token`
    * Zone: MEMBER_PORTAL
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer
    * Ownership: self
    */
   registerToken(body: PushTokenRegistrationInput, options?: RequestOptions): Promise<PushTokenRegistration> {

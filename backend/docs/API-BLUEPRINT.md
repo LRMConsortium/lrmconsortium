@@ -7,7 +7,7 @@
 
 All paths are relative to `API_PREFIX` (default `/api/v1`).
 
-**266 endpoints** — 123 from the generic profile surface across 14 collections, 143 hand-mounted.
+**303 endpoints** — 141 from the generic profile surface across 16 collections, 162 hand-mounted.
 
 ---
 
@@ -59,7 +59,8 @@ The **Own** column says which ownership rule applies:
 |---|---|---|---|---|
 | `FN` founder | `EX` hqExecutive | `BO` backOfficeStaff | `CO` coordinator | `VE` vendor |
 | `LL` landlord | `TE` tenant | `AH` airbnbHost | `HO` hotelManager | `RE` resortManager |
-| `RC` rentalCarCompany | `DR` driver | `RI` rider | `AD` advertiser | `PU` publicUser |
+| `RC` rentalCarCompany | `DR` driver | `RI` rider | `AD` advertiser | `ME` merchant |
+| `SE` seller | `CU` customer | `BU` buyer | `PU` publicUser |  |
 
 ---
 
@@ -83,7 +84,7 @@ by `publicContent:*` / `publicMetrics:read`, which no member role holds.
 
 ## The generic profile surface
 
-`defineProfileModule` mounts the same routes for all 14 profile collections,
+`defineProfileModule` mounts the same routes for all 16 profile collections,
 in the LRMC convention — **plural for collections, singular for items, with a**
 **named id parameter** — and in this registration order (`/me` before the id
 route, or Express parses `me` as an id):
@@ -113,6 +114,8 @@ in — one line in the factory instead of a special case in nine handlers.
 
 | Collection (plural) | Item (singular) | Resource | Admin zone | Member zone | Verifiable |
 |---|---|---|---|---|---|
+| `/merchants` | `/merchant/:merchantId` | `merchantProfile` | C · Back Office | D · Member | yes |
+| `/customers` | `/customer/:customerId` | `customerProfile` | C · Back Office | D · Member | yes |
 | `/founders` | `/founder/:founderId` | `founderProfile` | A · Founder | A · Founder | no |
 | `/hq-executives` | `/hq-executive/:executiveId` | `hqExecutiveProfile` | A · Founder | B · HQ Exec | no |
 | `/staff-members` | `/staff-member/:staffId` | `backOfficeStaffProfile` | C · Back Office | D · Member | yes |
@@ -139,6 +142,8 @@ get the clauses below, OR-ed together.
 
 | Collection | `ownerPath` | `organizationPath` | Effect |
 |---|---|---|---|
+| `/merchants` | `user` | `_id` | organizational callers see only their own merchant record (matched on `user` or on the record's own id) |
+| `/customers` | `user` | `_id` | organizational callers see only their own customer record (matched on `user` or on the record's own id) |
 | `/founders` | `user` | — | own-scoped callers see only the founder profiles whose `user` is their own account id |
 | `/hq-executives` | `user` | — | own-scoped callers see only the executive profiles whose `user` is their own account id |
 | `/staff-members` | `user` | — | own-scoped callers see only the staff records whose `user` is their own account id |
@@ -169,6 +174,89 @@ get the clauses below, OR-ed together.
 ---
 
 ## Endpoints by module
+
+### marketplace
+
+| Method | Path | Zone | Permission (any of) | Own | Request | Roles |
+|---|---|---|---|---|---|---|
+| `GET` | `/api/v1/listings` | D · Member | `listing:read` | — | query: `listingQuery` | FN EX BO ME SE CU BU |
+| `POST` | `/api/v1/listings` | D · Member | `listing:create` | — | body: `createListingSchema` | FN BO ME SE |
+| `GET` | `/api/v1/listings/me` | D · Member | `listing:read` | self | — | FN EX BO ME SE CU BU |
+| `GET` | `/api/v1/listing/:listingId` | D · Member | `listing:read` | — | — | FN EX BO ME SE CU BU |
+| `PATCH` | `/api/v1/listing/:listingId` | D · Member | `listing:update` | scoped | body: `updateListingSchema` | FN BO ME SE |
+| `POST` | `/api/v1/listing/:listingId/publish` | D · Member | `listing:update` | scoped | — | FN BO ME SE |
+| `POST` | `/api/v1/listing/:listingId/unpublish` | D · Member | `listing:update` | scoped | — | FN BO ME SE |
+| `POST` | `/api/v1/listing/:listingId/suspend` | C · Back Office | `listing:review`<br>`listing:update` | — | body: `suspendListingSchema` | FN BO |
+| `GET` | `/api/v1/orders` | D · Member | `order:read` | scoped | query: `orderQuery` | FN EX BO ME SE CU BU |
+| `POST` | `/api/v1/orders` | D · Member | `order:create` | — | body: `placeOrderSchema` | FN BO CU BU |
+| `GET` | `/api/v1/order/:orderId` | D · Member | `order:read` | scoped | — | FN EX BO ME SE CU BU |
+| `POST` | `/api/v1/order/:orderId/pay` | D · Member | `order:updateOwn`<br>`order:update` | scoped | body: `payOrderSchema` | FN BO ME SE CU BU |
+| `POST` | `/api/v1/order/:orderId/accept` | D · Member | `order:update` | scoped | — | FN BO ME SE |
+| `POST` | `/api/v1/order/:orderId/fulfil` | D · Member | `order:update` | scoped | body: `fulfilOrderSchema` | FN BO ME SE |
+| `POST` | `/api/v1/order/:orderId/confirm` | D · Member | `order:updateOwn`<br>`order:update` | scoped | — | FN BO ME SE CU BU |
+| `POST` | `/api/v1/order/:orderId/cancel` | D · Member | `order:updateOwn`<br>`order:update` | scoped | body: `cancelOrderSchema` | FN BO ME SE CU BU |
+| `POST` | `/api/v1/order/:orderId/dispute` | D · Member | `order:updateOwn`<br>`order:update` | scoped | body: `disputeOrderSchema` | FN BO ME SE CU BU |
+| `POST` | `/api/v1/order/:orderId/resolve` | C · Back Office | `order:update` | — | body: `resolveDisputeSchema` | FN BO |
+| `GET` | `/api/v1/marketplace/overview` | D · Member | `marketplace:read` | self | — | FN EX BO ME SE CU BU |
+
+**Notes**
+
+- **`GET /api/v1/listings`** — Defaults to published listings. A draft cannot leak into the catalogue because somebody forgot a filter.
+- **`POST /api/v1/listings`** — Merchants and their sellers only. Always created as a draft — a listing goes live when `canPublish` agrees, which is a separate call.
+- **`POST /api/v1/listing/:listingId/publish`** — Refuses with **every** problem at once rather than the first. An unverified merchant cannot publish at all — a marketplace listing unverified merchants owns its first fraud.
+- **`GET /api/v1/orders`** — Scoped in the data layer. A merchant asking for another merchant's orders gets an empty page, not a 403 that confirms the order exists.
+- **`POST /api/v1/orders`** — The client sends listing ids and quantities only. Prices are read from the listings and copied onto the lines — a client that could name its own prices would name zero.
+- **`GET /api/v1/order/:orderId`** — `availableActions` is derived from the lifecycle table for this caller's side, so the client never reimplements the rules to decide which buttons to draw.
+- **`POST /api/v1/order/:orderId/pay`** — Stock comes down here, not at draft — an unpaid order holding stock empties a catalogue without a single sale.
+- **`POST /api/v1/order/:orderId/fulfil`** — Stamps `autoReleaseAt`. Escrow with no time limit does not protect the buyer — it strips the merchant, since a buyer holding their goods has no reason ever to confirm.
+- **`POST /api/v1/order/:orderId/confirm`** — The buyer confirms; the *platform* releases. No transition anywhere lets a merchant release their own escrow.
+- **`POST /api/v1/order/:orderId/cancel`** — A buyer may cancel freely for 24 hours. After that the merchant may have bought materials or turned down other work, so it needs them or Back Office.
+- **`POST /api/v1/order/:orderId/dispute`** — Clears `autoReleaseAt`, so a disputed order cannot quietly pay out while Back Office is reading it.
+- **`POST /api/v1/order/:orderId/resolve`** — The only human step in the marketplace. Commission is returned pro rata on a partial refund — keeping it in full would mean LRMC profits proportionally more the worse the service was.
+- **`GET /api/v1/marketplace/overview`** — Answers as merchant or as customer depending on which account the caller holds.
+
+
+### merchant
+
+| Method | Path | Zone | Permission (any of) | Own | Request | Roles |
+|---|---|---|---|---|---|---|
+| `GET` | `/api/v1/merchant/me` | D · Member | `merchantProfile:readOwn` | self | — | FN EX BO ME SE |
+| `PATCH` | `/api/v1/merchant/me` | D · Member | `merchantProfile:updateOwn` | self | body: `updateMerchantSchema` | FN BO ME |
+| `GET` | `/api/v1/merchants` | C · Back Office | `merchantProfile:read` | scoped | query: `listQuery` | FN EX BO |
+| `POST` | `/api/v1/merchants` | C · Back Office | `merchantProfile:create` | — | body: `createMerchantSchema` | FN BO |
+| `GET` | `/api/v1/merchant/:merchantId` | C · Back Office | `merchantProfile:read`<br>`merchantProfile:readOwn` | scoped | — | FN EX BO |
+| `PATCH` | `/api/v1/merchant/:merchantId` | C · Back Office | `merchantProfile:update`<br>`merchantProfile:updateOwn` | scoped | body: `updateMerchantSchema` | FN BO |
+| `PATCH` | `/api/v1/merchant/:merchantId/verify` | C · Back Office | `merchantProfile:verify` | — | body: `verificationBody` | FN BO |
+| `DELETE` | `/api/v1/merchant/:merchantId` | C · Back Office | `merchantProfile:delete` | — | — | FN BO |
+| `POST` | `/api/v1/merchant/:merchantId/restore` | C · Back Office | `merchantProfile:update` | — | — | FN BO |
+
+**Notes**
+
+- **`GET /api/v1/merchant/me`** — Record resolved from the token, never from the URL. Declared before the `:id` route — otherwise Express parses `me` as an id.
+- **`PATCH /api/v1/merchant/:merchantId/verify`** — Back Office act. `verified` stamps verifiedAt/verifiedBy; `rejected` requires a note.
+- **`DELETE /api/v1/merchant/:merchantId`** — Sets deletedAt and status=archived. Nothing is removed from the collection.
+
+
+### customer
+
+| Method | Path | Zone | Permission (any of) | Own | Request | Roles |
+|---|---|---|---|---|---|---|
+| `GET` | `/api/v1/customer/me` | D · Member | `customerProfile:readOwn` | self | — | FN EX BO CU BU |
+| `PATCH` | `/api/v1/customer/me` | D · Member | `customerProfile:updateOwn` | self | body: `updateCustomerSchema` | FN BO CU |
+| `GET` | `/api/v1/customers` | C · Back Office | `customerProfile:read` | scoped | query: `listQuery` | FN EX BO |
+| `POST` | `/api/v1/customers` | C · Back Office | `customerProfile:create` | — | body: `createCustomerSchema` | FN BO |
+| `GET` | `/api/v1/customer/:customerId` | C · Back Office | `customerProfile:read`<br>`customerProfile:readOwn` | scoped | — | FN EX BO |
+| `PATCH` | `/api/v1/customer/:customerId` | C · Back Office | `customerProfile:update`<br>`customerProfile:updateOwn` | scoped | body: `updateCustomerSchema` | FN BO |
+| `PATCH` | `/api/v1/customer/:customerId/verify` | C · Back Office | `customerProfile:verify` | — | body: `verificationBody` | FN BO |
+| `DELETE` | `/api/v1/customer/:customerId` | C · Back Office | `customerProfile:delete` | — | — | FN BO |
+| `POST` | `/api/v1/customer/:customerId/restore` | C · Back Office | `customerProfile:update` | — | — | FN BO |
+
+**Notes**
+
+- **`GET /api/v1/customer/me`** — Record resolved from the token, never from the URL. Declared before the `:id` route — otherwise Express parses `me` as an id.
+- **`PATCH /api/v1/customer/:customerId/verify`** — Back Office act. `verified` stamps verifiedAt/verifiedBy; `rejected` requires a note.
+- **`DELETE /api/v1/customer/:customerId`** — Sets deletedAt and status=archived. Nothing is removed from the collection.
+
 
 ### Platform
 
@@ -353,7 +441,7 @@ get the clauses below, OR-ed together.
 
 | Method | Path | Zone | Permission (any of) | Own | Request | Roles |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/v1/vendor/me` | D · Member | `vendorProfile:readOwn` | self | — | _all except_ TE DR RI AD PU |
+| `GET` | `/api/v1/vendor/me` | D · Member | `vendorProfile:readOwn` | self | — | _all except_ TE DR RI AD ME SE CU BU PU |
 | `PATCH` | `/api/v1/vendor/me` | D · Member | `vendorProfile:updateOwn` | self | body: `updateVendorSchema` | FN BO VE |
 | `GET` | `/api/v1/vendors` | C · Back Office | `vendorProfile:read` | scoped | query: `listQuery` | FN EX BO |
 | `POST` | `/api/v1/vendors` | C · Back Office | `vendorProfile:create` | — | body: `createVendorSchema` | FN BO |
@@ -375,9 +463,9 @@ get the clauses below, OR-ed together.
 | Method | Path | Zone | Permission (any of) | Own | Request | Roles |
 |---|---|---|---|---|---|---|
 | `GET` | `/api/v1/properties/public` | E · Public | _auth only_ | — | query: `publicPropertyQuery` | _all roles_ |
-| `GET` | `/api/v1/properties` | D · Member | `property:read`<br>`property:readOwn` | scoped | query: `listQuery` | _all except_ RC DR RI AD PU |
+| `GET` | `/api/v1/properties` | D · Member | `property:read`<br>`property:readOwn` | scoped | query: `listQuery` | _all except_ RC DR RI AD ME SE CU BU PU |
 | `POST` | `/api/v1/properties` | D · Member | `property:create` | — | body: `createPropertySchema` | FN LL AH HO RE |
-| `GET` | `/api/v1/property/:propertyId` | D · Member | `property:read`<br>`property:readOwn` | scoped | — | _all except_ RC DR RI AD PU |
+| `GET` | `/api/v1/property/:propertyId` | D · Member | `property:read`<br>`property:readOwn` | scoped | — | _all except_ RC DR RI AD ME SE CU BU PU |
 | `PATCH` | `/api/v1/property/:propertyId` | D · Member | `property:update`<br>`property:updateOwn` | scoped | body: `updatePropertySchema` | FN BO CO LL AH HO RE |
 | `DELETE` | `/api/v1/property/:propertyId` | D · Member | `property:delete` | scoped | — | FN |
 
@@ -599,15 +687,15 @@ get the clauses below, OR-ed together.
 
 | Method | Path | Zone | Permission (any of) | Own | Request | Roles |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/v1/maintenance-requests` | D · Member | `maintenanceRequest:read`<br>`maintenanceRequest:readOwn` | scoped | query: `listQuery` | _all except_ DR RI AD PU |
+| `GET` | `/api/v1/maintenance-requests` | D · Member | `maintenanceRequest:read`<br>`maintenanceRequest:readOwn` | scoped | query: `listQuery` | _all except_ DR RI AD ME SE CU BU PU |
 | `POST` | `/api/v1/maintenance-requests` | D · Member | `maintenanceRequest:create` | — | body: `createMaintenanceRequestSchema` | FN CO TE AH HO RE RC |
-| `GET` | `/api/v1/maintenance-request/:requestId` | D · Member | `maintenanceRequest:read`<br>`maintenanceRequest:readOwn` | scoped | — | _all except_ DR RI AD PU |
+| `GET` | `/api/v1/maintenance-request/:requestId` | D · Member | `maintenanceRequest:read`<br>`maintenanceRequest:readOwn` | scoped | — | _all except_ DR RI AD ME SE CU BU PU |
 | `PATCH` | `/api/v1/maintenance-request/:requestId` | D · Member | `maintenanceRequest:update` | scoped | body: `updateMaintenanceRequestSchema` | FN BO CO VE |
 | `POST` | `/api/v1/maintenance-request/:requestId/assign-vendor` | C · Back Office | `maintenanceRequest:assign`<br>`maintenanceRequest:update` | — | body: `assignVendorSchema` | FN BO |
-| `GET` | `/api/v1/maintenance-request/:requestId/sla` | D · Member | `maintenanceRequest:read`<br>`maintenanceRequest:readOwn` | scoped | — | _all except_ DR RI AD PU |
+| `GET` | `/api/v1/maintenance-request/:requestId/sla` | D · Member | `maintenanceRequest:read`<br>`maintenanceRequest:readOwn` | scoped | — | _all except_ DR RI AD ME SE CU BU PU |
 | `POST` | `/api/v1/maintenance-requests/run-sla-escalation` | C · Back Office | `maintenanceRequest:update`<br>`maintenanceRequest:read` | — | body: `runSlaEscalationSchema` | FN EX BO |
-| `GET` | `/api/v1/vendor/me/maintenance-queue` | D · Member | `maintenanceRequest:readOwn`<br>`maintenanceRequest:read` | self | query: `listQuery` | _all except_ DR RI AD PU |
-| `GET` | `/api/v1/property/:propertyId/maintenance-history` | D · Member | `maintenanceRequest:read`<br>`maintenanceRequest:readOwn` | scoped | query: `listQuery` | _all except_ DR RI AD PU |
+| `GET` | `/api/v1/vendor/me/maintenance-queue` | D · Member | `maintenanceRequest:readOwn`<br>`maintenanceRequest:read` | self | query: `listQuery` | _all except_ DR RI AD ME SE CU BU PU |
+| `GET` | `/api/v1/property/:propertyId/maintenance-history` | D · Member | `maintenanceRequest:read`<br>`maintenanceRequest:readOwn` | scoped | query: `listQuery` | _all except_ DR RI AD ME SE CU BU PU |
 
 **Notes**
 
@@ -651,10 +739,10 @@ get the clauses below, OR-ed together.
 |---|---|---|---|---|---|---|
 | `GET` | `/api/v1/payments` | C · Back Office | `payment:read` | scoped | query: `listQuery` | FN EX BO |
 | `GET` | `/api/v1/payment/:paymentId` | C · Back Office | `payment:read`<br>`payment:readOwn` | scoped | — | FN EX BO |
-| `GET` | `/api/v1/tenant/me/payments` | D · Member | `payment:readOwn`<br>`payment:read` | self | query: `listQuery` | _all except_ PU |
-| `GET` | `/api/v1/landlord/me/payments` | D · Member | `payment:readOwn`<br>`payment:read` | self | query: `listQuery` | _all except_ PU |
-| `GET` | `/api/v1/driver/me/payments` | D · Member | `payment:readOwn`<br>`payment:read` | self | query: `listQuery` | _all except_ PU |
-| `GET` | `/api/v1/advertiser/me/payments` | D · Member | `payment:readOwn`<br>`payment:read` | self | query: `listQuery` | _all except_ PU |
+| `GET` | `/api/v1/tenant/me/payments` | D · Member | `payment:readOwn`<br>`payment:read` | self | query: `listQuery` | _all except_ SE BU PU |
+| `GET` | `/api/v1/landlord/me/payments` | D · Member | `payment:readOwn`<br>`payment:read` | self | query: `listQuery` | _all except_ SE BU PU |
+| `GET` | `/api/v1/driver/me/payments` | D · Member | `payment:readOwn`<br>`payment:read` | self | query: `listQuery` | _all except_ SE BU PU |
+| `GET` | `/api/v1/advertiser/me/payments` | D · Member | `payment:readOwn`<br>`payment:read` | self | query: `listQuery` | _all except_ SE BU PU |
 
 **Notes**
 
@@ -704,11 +792,11 @@ get the clauses below, OR-ed together.
 | Method | Path | Zone | Permission (any of) | Own | Request | Roles |
 |---|---|---|---|---|---|---|
 | `GET` | `/api/v1/documents` | C · Back Office | `document:read` | scoped | query: `documentQuery` | FN EX BO |
-| `POST` | `/api/v1/documents` | D · Member | `document:create` | — | body: `createDocumentSchema` | _all except_ EX PU |
-| `GET` | `/api/v1/document/:documentId` | D · Member | `document:read`<br>`document:readOwn` | scoped | — | _all except_ PU |
-| `PATCH` | `/api/v1/document/:documentId` | D · Member | `document:update`<br>`document:updateOwn` | scoped | body: `updateDocumentSchema` | _all except_ EX CO PU |
+| `POST` | `/api/v1/documents` | D · Member | `document:create` | — | body: `createDocumentSchema` | _all except_ EX BU PU |
+| `GET` | `/api/v1/document/:documentId` | D · Member | `document:read`<br>`document:readOwn` | scoped | — | _all except_ BU PU |
+| `PATCH` | `/api/v1/document/:documentId` | D · Member | `document:update`<br>`document:updateOwn` | scoped | body: `updateDocumentSchema` | _all except_ EX CO SE CU BU PU |
 | `DELETE` | `/api/v1/document/:documentId` | D · Member | `document:delete` | scoped | — | FN |
-| `POST` | `/api/v1/document/:documentId/submit` | D · Member | `document:create`<br>`document:updateOwn` | scoped | body: `submitDocumentSchema` | _all except_ EX PU |
+| `POST` | `/api/v1/document/:documentId/submit` | D · Member | `document:create`<br>`document:updateOwn` | scoped | body: `submitDocumentSchema` | _all except_ EX BU PU |
 | `POST` | `/api/v1/document/:documentId/review` | C · Back Office | `document:review`<br>`document:update` | — | body: `reviewDocumentSchema` | FN EX BO |
 | `POST` | `/api/v1/document/:documentId/request-info` | C · Back Office | `document:review`<br>`document:update` | — | body: `requestInfoSchema` | FN EX BO |
 | `POST` | `/api/v1/document/:documentId/verify` | C · Back Office | `document:verify`<br>`document:review` | — | body: `verifyDocumentSchema` | FN EX BO |
@@ -716,7 +804,7 @@ get the clauses below, OR-ed together.
 | `POST` | `/api/v1/document/:documentId/expire` | C · Back Office | `document:update`<br>`document:review` | — | body: `expireDocumentSchema` | FN EX BO |
 | `POST` | `/api/v1/document/:documentId/reverify` | C · Back Office | `document:verify`<br>`document:review` | — | body: `reverifyDocumentSchema` | FN EX BO |
 | `GET` | `/api/v1/document/:documentId/verification-summary` | C · Back Office | `document:read`<br>`document:readOwn` | scoped | — | FN EX BO |
-| `GET` | `/api/v1/member/me/documents` | D · Member | `document:readOwn`<br>`document:read` | self | query: `documentQuery` | _all except_ PU |
+| `GET` | `/api/v1/member/me/documents` | D · Member | `document:readOwn`<br>`document:read` | self | query: `documentQuery` | _all except_ BU PU |
 | `GET` | `/api/v1/staff/me/document-queue` | C · Back Office | `document:review`<br>`document:read` | self | query: `documentQuery` | FN EX BO |
 | `GET` | `/api/v1/hq/documents` | B · HQ Exec | `document:read` | — | query: `documentQuery` | FN EX |
 | `GET` | `/api/v1/hq/documents/analytics` | B · HQ Exec | `document:read` | — | query: `documentAnalyticsQuery` | FN EX |

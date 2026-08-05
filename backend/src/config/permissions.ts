@@ -45,6 +45,13 @@ export const RESOURCES = [
   'commercialClient',
   'document',
 
+  // Marketplace — merchants sell, customers buy, coordinators supervise both
+  'merchantProfile',
+  'customerProfile',
+  'listing',
+  'order',
+  'marketplace',
+
   // Governance & access control
   'fac',
   'governance',

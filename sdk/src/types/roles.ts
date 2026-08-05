@@ -20,6 +20,10 @@ export const ROLES = [
   'driver',
   'rider',
   'advertiser',
+  'merchant',
+  'seller',
+  'customer',
+  'buyer',
   'publicUser',
 ] as const;
 

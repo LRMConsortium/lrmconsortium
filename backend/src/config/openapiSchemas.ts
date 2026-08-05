@@ -39,6 +39,17 @@ export const VERIFICATION_STATUS = [
   'unsubmitted', 'pending', 'inReview', 'verified', 'rejected', 'suspended',
 ];
 export const LIFECYCLE_STATUS = ['draft', 'active', 'inactive', 'suspended', 'archived'];
+
+/** Marketplace. Mirrors `orderLifecycle.ORDER_STATUSES` and `MERCHANT_CATEGORIES`. */
+export const ORDER_STATUS = [
+  'pending', 'paid', 'accepted', 'fulfilled', 'confirmed',
+  'released', 'cancelled', 'refunded', 'disputed',
+];
+export const LISTING_STATUS = ['draft', 'pending', 'published', 'suspended', 'archived'];
+export const MERCHANT_CATEGORY = [
+  'homeGoods', 'buildingMaterials', 'furnishing', 'appliances', 'cleaning',
+  'security', 'landscaping', 'professionalServices', 'logistics', 'other',
+];
 export const ID_TYPE = ['ghanaCard', 'passport', 'driversLicense', 'votersId', 'nationalId', 'ssnit', 'other'];
 export const CONTACT_METHOD = ['phone', 'whatsapp', 'email', 'sms', 'inApp'];
 export const PAYMENT_METHOD = ['mobileMoney', 'bankTransfer', 'cash', 'card', 'cheque', 'crypto'];
@@ -1971,6 +1982,321 @@ const RESOURCES: Record<string, JsonSchema> = {
 
   FacAttemptList: arr(ref('FacAttempt')),
 
+
+  // ── Marketplace ────────────────────────────────────────────────────────
+
+  Listing: {
+    type: 'object',
+    description:
+      'A product or a service offered by a merchant. Services carry no stock — a plumber does not run out of plumbing.',
+    properties: {
+      _id: oid(),
+      merchant: oid(),
+      createdBySeller: oid(),
+      kind: str({ enum: ['product', 'service'] }),
+      status: str({ enum: ['draft', 'pending', 'published', 'suspended', 'archived'] }),
+      title: str({ maxLength: 200 }),
+      description: str({ maxLength: 4000 }),
+      unitPrice: num({ minimum: 0 }),
+      currency: str({ enum: CURRENCY }),
+      stock: { type: ['integer', 'null'], minimum: 0,
+        description: 'Null on a service.' },
+      unit: str({ maxLength: 30 }),
+      category: str({ maxLength: 60 }),
+      imageKeys: arr(str({ description: 'Storage key, never a URL. Signed links are minted on demand.' })),
+      publishedAt: date(),
+      suspendedReason: str({ maxLength: 500 }),
+      totalOrdered: int({ minimum: 0 }),
+      createdAt: date(),
+      updatedAt: date(),
+    },
+    required: ['merchant', 'kind', 'status', 'title', 'unitPrice'],
+  },
+
+  ListingList: arr(ref('Listing')),
+
+  MerchantCatalogue: {
+    type: 'object',
+    properties: {
+      merchant: oid(),
+      tradingName: str(),
+      verified: bool({ description: 'An unverified merchant cannot publish anything.' }),
+      counts: {
+        type: 'object',
+        properties: {
+          total: int({ minimum: 0 }), published: int({ minimum: 0 }),
+          draft: int({ minimum: 0 }), suspended: int({ minimum: 0 }),
+        },
+      },
+      listings: arr(ref('Listing')),
+    },
+    required: ['merchant', 'listings'],
+  },
+
+  OrderLine: {
+    type: 'object',
+    description:
+      'Title and price are **copied at order time**, not referenced. A price change next Tuesday must not alter what was agreed last Friday.',
+    properties: {
+      listing: oid(),
+      title: str({ maxLength: 200 }),
+      unitPrice: num({ minimum: 0 }),
+      quantity: int({ minimum: 1 }),
+      lineTotal: num({ minimum: 0 }),
+    },
+    required: ['listing', 'title', 'unitPrice', 'quantity', 'lineTotal'],
+  },
+
+  OrderEvent: {
+    type: 'object',
+    description: 'Append-only. Every status change, who made it, and when.',
+    properties: {
+      at: date(),
+      from: str({ enum: ORDER_STATUS }),
+      to: str({ enum: ORDER_STATUS }),
+      by: oid(),
+      actorKind: str({ enum: ['buyer', 'merchant', 'backOffice', 'system'] }),
+      note: str({ maxLength: 500 }),
+    },
+    required: ['at', 'from', 'to', 'actorKind'],
+  },
+
+  Order: {
+    type: 'object',
+    description:
+      'Escrow order. LRMC holds the money from `paid` until `released`, `refunded` or `cancelled`.',
+    properties: {
+      _id: oid(),
+      reference: str({ description: 'ORD-YYYY-NNNNNNN. Sortable and legible on a receipt.' }),
+      merchant: oid(),
+      customer: oid(),
+      placedByBuyer: oid(),
+      acceptedBySeller: oid(),
+      status: str({ enum: ORDER_STATUS }),
+      lines: arr(ref('OrderLine')),
+      subtotal: num({ minimum: 0 }),
+      deliveryFee: num({ minimum: 0 }),
+      total: num({ minimum: 0, description: 'What the buyer pays.' }),
+      commissionPercent: num({ minimum: 0, maximum: 100 }),
+      platformFee: num({ minimum: 0, description: "LRMC's cut. Charged on goods, never on delivery." }),
+      merchantNet: num({ minimum: 0, description: 'What the merchant is owed on completion.' }),
+      currency: str({ enum: CURRENCY }),
+      deliveryAddress: str({ maxLength: 400 }),
+      note: str({ maxLength: 1000 }),
+      placedAt: date(), paidAt: date(), acceptedAt: date(), fulfilledAt: date(),
+      confirmedAt: date(), releasedAt: date(), cancelledAt: date(),
+      refundedAt: date(), disputedAt: date(),
+      /** When escrow releases on its own if the buyer stays silent. */
+      autoReleaseAt: date(),
+      disputeReason: str({ maxLength: 1000 }),
+      disputeRuling: str({ maxLength: 1000 }),
+      refundAmount: num({ minimum: 0 }),
+      events: arr(ref('OrderEvent')),
+      createdAt: date(),
+      updatedAt: date(),
+    },
+    required: ['reference', 'merchant', 'customer', 'status', 'lines', 'total'],
+  },
+
+  OrderList: arr(ref('Order')),
+
+  OrderDetail: {
+    type: 'object',
+    description: 'An order plus what *this* caller may do with it next.',
+    properties: {
+      statusLabel: str({ description: 'Plain language, for the screen.' }),
+      escrowHeld: bool({ description: 'Is LRMC currently holding the money?' }),
+      // Derived from the lifecycle table for this caller's side, so a client
+      // never reimplements the rules to decide which buttons to draw.
+      availableActions: arr(str({ enum: ORDER_STATUS })),
+      yourSide: str({ enum: ['buyer', 'merchant', 'backOffice', 'system'] }),
+    },
+    allOf: [ref('Order')],
+  },
+
+  OrderSettlement: {
+    type: 'object',
+    description: 'The result of releasing or refunding an order.',
+    properties: {
+      statusLabel: str(),
+      escrowHeld: bool(),
+      settlement: {
+        type: 'object',
+        properties: {
+          gross: num({ minimum: 0 }),
+          platformFee: num({ minimum: 0 }),
+          merchantNet: num({ minimum: 0 }),
+        },
+      },
+      refund: {
+        type: 'object',
+        description: 'Commission is returned pro rata on a partial refund.',
+        properties: {
+          refundToBuyer: num({ minimum: 0 }),
+          commissionReturned: num({ minimum: 0 }),
+          merchantBears: num({ minimum: 0 }),
+          isFull: bool(),
+        },
+      },
+    },
+    allOf: [ref('Order')],
+  },
+
+  MarketplaceOverview: {
+    type: 'object',
+    properties: {
+      side: str({ enum: ['merchant', 'customer', 'observer'] }),
+      account: {
+        type: 'object',
+        properties: { id: oid(), name: str(), verified: bool() },
+      },
+      orders: {
+        type: 'object',
+        properties: {
+          total: int({ minimum: 0 }),
+          byStatus: { type: 'object', additionalProperties: int({ minimum: 0 }) },
+          escrowHeldCount: int({ minimum: 0 }),
+          escrowHeldValue: num({ minimum: 0, description: 'What is currently tied up.' }),
+          settledValue: num({ minimum: 0 }),
+          commissionPaid: num({ minimum: 0, description: 'Merchant view only; null for a customer.' }),
+        },
+      },
+      awaitingAction: arr({
+        type: 'object',
+        properties: {
+          _id: oid(), reference: str(), status: str({ enum: ORDER_STATUS }),
+          statusLabel: str(), total: num({ minimum: 0 }), currency: str({ enum: CURRENCY }),
+          createdAt: date(),
+        },
+      }),
+    },
+    required: ['side', 'orders'],
+  },
+
+  Merchant: {
+    type: 'object',
+    description: 'A trading account on the LRMC marketplace. Sellers act for it.',
+    properties: {
+      _id: oid(),
+      user: oid(),
+      tradingName: str({ maxLength: 160 }),
+      category: str({ enum: MERCHANT_CATEGORY }),
+      registrationNumber: str({ maxLength: 60 }),
+      sellers: arr(oid()),
+      commissionPercent: num({ minimum: 0, maximum: 100,
+        description: 'Negotiated rate. Absent means the platform default at time of order.' }),
+      currency: str({ enum: CURRENCY }),
+      totalOrders: int({ minimum: 0 }),
+      totalSales: num({ minimum: 0 }),
+      email: str(), phone: str(), region: str(), city: str(),
+      verificationStatus: str({ enum: VERIFICATION_STATUS }),
+      status: str({ enum: LIFECYCLE_STATUS }),
+      rating: num({ minimum: 0, maximum: 5 }),
+      createdAt: date(), updatedAt: date(),
+    },
+    required: ['user', 'tradingName', 'category'],
+  },
+
+  MerchantList: arr(ref('Merchant')),
+
+  Customer: {
+    type: 'object',
+    description: 'A buying account on the LRMC marketplace. Buyers act for it.',
+    properties: {
+      _id: oid(),
+      user: oid(),
+      accountName: str({ maxLength: 160 }),
+      buyers: arr(oid()),
+      buyerOrderLimit: num({ minimum: 0,
+        description: 'Ceiling on what a named buyer may spend without the account owner. Absent means no ceiling.' }),
+      currency: str({ enum: CURRENCY }),
+      totalOrders: int({ minimum: 0 }),
+      totalSpend: num({ minimum: 0 }),
+      email: str(), phone: str(), region: str(), city: str(),
+      verificationStatus: str({ enum: VERIFICATION_STATUS }),
+      status: str({ enum: LIFECYCLE_STATUS }),
+      createdAt: date(), updatedAt: date(),
+    },
+    required: ['user', 'accountName'],
+  },
+
+  CustomerList: arr(ref('Customer')),
+
+
+  MerchantSellersRequest: {
+    type: 'object',
+    description: 'Who may sell for this merchant account.',
+    properties: { sellerIds: arr(oid()) },
+    required: ['sellerIds'],
+  },
+
+  CustomerBuyersRequest: {
+    type: 'object',
+    description: 'Who may purchase against this customer account.',
+    properties: { buyerIds: arr(oid()) },
+    required: ['buyerIds'],
+  },
+
+  SuspendListingRequest: {
+    type: 'object',
+    properties: { reason: str({ minLength: 5, maxLength: 500 }) },
+    required: ['reason'],
+  },
+
+  PlaceOrderRequest: {
+    type: 'object',
+    description:
+      'Listing ids and quantities only. Prices are read from the listings server-side — a client that could name its own prices would name zero.',
+    properties: {
+      merchant: oid(),
+      lines: arr({
+        type: 'object',
+        properties: { listing: oid(), quantity: int({ minimum: 1, maximum: 999 }) },
+        required: ['listing', 'quantity'],
+      }),
+      deliveryAddress: str({ maxLength: 400 }),
+      note: str({ maxLength: 1000 }),
+    },
+    required: ['merchant', 'lines'],
+  },
+
+  PayOrderRequest: {
+    type: 'object',
+    description:
+      "The provider's reference, not an amount. The server already knows what the order costs; letting the client restate it would mean deciding which number to believe.",
+    properties: { paymentRef: str({ minLength: 3, maxLength: 120 }) },
+    required: ['paymentRef'],
+  },
+
+  FulfilOrderRequest: {
+    type: 'object',
+    properties: { note: str({ maxLength: 500 }) },
+  },
+
+  CancelOrderRequest: {
+    type: 'object',
+    properties: { reason: str({ minLength: 3, maxLength: 500 }) },
+    required: ['reason'],
+  },
+
+  DisputeOrderRequest: {
+    type: 'object',
+    properties: { reason: str({ minLength: 10, maxLength: 1000 }) },
+    required: ['reason'],
+  },
+
+  ResolveDisputeRequest: {
+    type: 'object',
+    description:
+      'A refund ruling must carry an amount; the other two must not. Commission is returned pro rata.',
+    properties: {
+      outcome: str({ enum: ['release', 'refund', 'cancel'] }),
+      ruling: str({ minLength: 10, maxLength: 1000 }),
+      refundAmount: num({ minimum: 0 }),
+    },
+    required: ['outcome', 'ruling'],
+  },
+
   FacLockout: {
     type: 'object',
     description: 'One founder currently shut out of Zone A, with the time left to run.',
@@ -3092,6 +3418,8 @@ export const RESPONSE_SCHEMA_BY_LABEL: Record<string, string> = {
   'Resort profile': 'Resort',
   'Rental car company profile': 'RentalCarCompany',
   'Driver profile': 'Driver',
+  'Merchant profile': 'Merchant',
+  'Customer profile': 'Customer',
   'Rider profile': 'Rider',
   'Advertiser profile': 'Advertiser',
   Property: 'Property',
@@ -3175,6 +3503,23 @@ export const REQUEST_SCHEMA_BY_NAME: Record<string, string> = {
   verifyFacCodeSchema: 'VerifyFacCodeRequest',
   revokeFacCodeSchema: 'RevokeFacCodeRequest',
   clearLockoutSchema: 'ClearLockoutRequest',
+
+  // Marketplace
+  createMerchantSchema: 'Merchant',
+  updateMerchantSchema: 'Merchant',
+  merchantSellersSchema: 'MerchantSellersRequest',
+  createCustomerSchema: 'Customer',
+  updateCustomerSchema: 'Customer',
+  customerBuyersSchema: 'CustomerBuyersRequest',
+  createListingSchema: 'Listing',
+  updateListingSchema: 'Listing',
+  suspendListingSchema: 'SuspendListingRequest',
+  placeOrderSchema: 'PlaceOrderRequest',
+  payOrderSchema: 'PayOrderRequest',
+  fulfilOrderSchema: 'FulfilOrderRequest',
+  cancelOrderSchema: 'CancelOrderRequest',
+  disputeOrderSchema: 'DisputeOrderRequest',
+  resolveDisputeSchema: 'ResolveDisputeRequest',
   facResetRequestSchema: 'FacResetRequestBody',
   updateCommercialClientSchema: 'CommercialClient',
   refreshSchema: 'RefreshRequest',

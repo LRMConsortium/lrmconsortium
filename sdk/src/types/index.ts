@@ -456,6 +456,10 @@ export interface CampaignKpis {
   spend?: number;
 }
 
+export interface CancelOrderRequest {
+  reason: string;
+}
+
 export interface CancelPayoutBatchRequest {
   reason: string;
 }
@@ -614,6 +618,38 @@ export interface CurrentActor {
     allowedActions?: string[];
   };
   zones?: Record<string, unknown>[];
+}
+
+/** A buying account on the LRMC marketplace. Buyers act for it. */
+export interface Customer {
+  _id?: string;
+  user: string;
+  accountName: string;
+  buyers?: string[];
+  /** Ceiling on what a named buyer may spend without the account owner. Absent means no ceiling. */
+  buyerOrderLimit?: number;
+  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  totalOrders?: number;
+  totalSpend?: number;
+  email?: string;
+  phone?: string;
+  region?: string;
+  city?: string;
+  verificationStatus?: "unsubmitted" | "pending" | "inReview" | "verified" | "rejected" | "suspended";
+  status?: "draft" | "active" | "inactive" | "suspended" | "archived";
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** Who may purchase against this customer account. */
+export interface CustomerBuyersRequest {
+  buyerIds: string[];
+}
+
+export type CustomerList = Customer[];
+
+export interface DisputeOrderRequest {
+  reason: string;
 }
 
 export type Document = (LifecycleFields & {
@@ -1280,6 +1316,10 @@ export type FounderInput = (ContactFields & LocationFields & LifecycleFieldsInpu
   securityNotes?: string;
 });
 
+export interface FulfilOrderRequest {
+  note?: string;
+}
+
 /** A component with no data is excluded, not scored zero. A missing or expired code caps the composite — a green bar over a platform with no code in force is worse than no bar at all. */
 export interface GovernanceHealth {
   score: number;
@@ -1629,6 +1669,31 @@ export interface LinkedProfile {
   label?: string;
 }
 
+/** A product or a service offered by a merchant. Services carry no stock — a plumber does not run out of plumbing. */
+export interface Listing {
+  _id?: string;
+  merchant: string;
+  createdBySeller?: string;
+  kind: "product" | "service";
+  status: "draft" | "pending" | "published" | "suspended" | "archived";
+  title: string;
+  description?: string;
+  unitPrice: number;
+  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  /** Null on a service. */
+  stock?: Record<string, unknown>;
+  unit?: string;
+  category?: string;
+  imageKeys?: string[];
+  publishedAt?: string;
+  suspendedReason?: string;
+  totalOrdered?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type ListingList = Listing[];
+
 export interface LocationFields {
   nationality?: string;
   residenceCountry?: string;
@@ -1737,6 +1802,79 @@ export interface MarkNotificationRequest {
   read: boolean;
 }
 
+export interface MarketplaceOverview {
+  side: "merchant" | "customer" | "observer";
+  account?: {
+    id?: string;
+    name?: string;
+    verified?: boolean;
+  };
+  orders: {
+    total?: number;
+    byStatus?: Record<string, number>;
+    escrowHeldCount?: number;
+    /** What is currently tied up. */
+    escrowHeldValue?: number;
+    settledValue?: number;
+    /** Merchant view only; null for a customer. */
+    commissionPaid?: number;
+  };
+  awaitingAction?: {
+    _id?: string;
+    reference?: string;
+    status?: "pending" | "paid" | "accepted" | "fulfilled" | "confirmed" | "released" | "cancelled" | "refunded" | "disputed";
+    statusLabel?: string;
+    total?: number;
+    currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+    createdAt?: string;
+  }[];
+}
+
+/** A trading account on the LRMC marketplace. Sellers act for it. */
+export interface Merchant {
+  _id?: string;
+  user: string;
+  tradingName: string;
+  category: "homeGoods" | "buildingMaterials" | "furnishing" | "appliances" | "cleaning" | "security" | "landscaping" | "professionalServices" | "logistics" | "other";
+  registrationNumber?: string;
+  sellers?: string[];
+  /** Negotiated rate. Absent means the platform default at time of order. */
+  commissionPercent?: number;
+  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  totalOrders?: number;
+  totalSales?: number;
+  email?: string;
+  phone?: string;
+  region?: string;
+  city?: string;
+  verificationStatus?: "unsubmitted" | "pending" | "inReview" | "verified" | "rejected" | "suspended";
+  status?: "draft" | "active" | "inactive" | "suspended" | "archived";
+  rating?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface MerchantCatalogue {
+  merchant: string;
+  tradingName?: string;
+  /** An unverified merchant cannot publish anything. */
+  verified?: boolean;
+  counts?: {
+    total?: number;
+    published?: number;
+    draft?: number;
+    suspended?: number;
+  };
+  listings: Listing[];
+}
+
+export type MerchantList = Merchant[];
+
+/** Who may sell for this merchant account. */
+export interface MerchantSellersRequest {
+  sellerIds: string[];
+}
+
 export type Notification = (LifecycleFields & {
   recipient: string;
   category: "verification" | "documentExpiry" | "rentDue" | "rentReceipt" | "maintenance" | "rideOffer" | "rideUpdate" | "payout" | "adReview" | "adBudget" | "policy" | "system";
@@ -1805,6 +1943,79 @@ export interface OpenApiDocument {
   servers?: Record<string, unknown>[];
   paths?: Record<string, unknown>;
   components?: Record<string, unknown>;
+}
+
+/** Escrow order. LRMC holds the money from `paid` until `released`, `refunded` or `cancelled`. */
+export interface Order {
+  _id?: string;
+  /** ORD-YYYY-NNNNNNN. Sortable and legible on a receipt. */
+  reference: string;
+  merchant: string;
+  customer: string;
+  placedByBuyer?: string;
+  acceptedBySeller?: string;
+  status: "pending" | "paid" | "accepted" | "fulfilled" | "confirmed" | "released" | "cancelled" | "refunded" | "disputed";
+  lines: OrderLine[];
+  subtotal?: number;
+  deliveryFee?: number;
+  /** What the buyer pays. */
+  total: number;
+  commissionPercent?: number;
+  /** LRMC's cut. Charged on goods, never on delivery. */
+  platformFee?: number;
+  /** What the merchant is owed on completion. */
+  merchantNet?: number;
+  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  deliveryAddress?: string;
+  note?: string;
+  placedAt?: string;
+  paidAt?: string;
+  acceptedAt?: string;
+  fulfilledAt?: string;
+  confirmedAt?: string;
+  releasedAt?: string;
+  cancelledAt?: string;
+  refundedAt?: string;
+  disputedAt?: string;
+  autoReleaseAt?: string;
+  disputeReason?: string;
+  disputeRuling?: string;
+  refundAmount?: number;
+  events?: OrderEvent[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** An order plus what *this* caller may do with it next. */
+export type OrderDetail = Order;
+
+/** Append-only. Every status change, who made it, and when. */
+export interface OrderEvent {
+  at: string;
+  from: "pending" | "paid" | "accepted" | "fulfilled" | "confirmed" | "released" | "cancelled" | "refunded" | "disputed";
+  to: "pending" | "paid" | "accepted" | "fulfilled" | "confirmed" | "released" | "cancelled" | "refunded" | "disputed";
+  by?: string;
+  actorKind: "buyer" | "merchant" | "backOffice" | "system";
+  note?: string;
+}
+
+/** Title and price are **copied at order time**, not referenced. A price change next Tuesday must not alter what was agreed last Friday. */
+export interface OrderLine {
+  listing: string;
+  title: string;
+  unitPrice: number;
+  quantity: number;
+  lineTotal: number;
+}
+
+export type OrderList = Order[];
+
+/** The result of releasing or refunding an order. */
+export type OrderSettlement = Order;
+
+/** The provider's reference, not an amount. The server already knows what the order costs; letting the client restate it would mean deciding which number to believe. */
+export interface PayOrderRequest {
+  paymentRef: string;
 }
 
 export type Payment = (LifecycleFields & {
@@ -1951,6 +2162,17 @@ export interface PayoutSettlement {
 export interface PayoutSettlementInput {
   batch: PayoutBatchInput;
   transfers: TransferSummary;
+}
+
+/** Listing ids and quantities only. Prices are read from the listings server-side — a client that could name its own prices would name zero. */
+export interface PlaceOrderRequest {
+  merchant: string;
+  lines: {
+    listing: string;
+    quantity: number;
+  }[];
+  deliveryAddress?: string;
+  note?: string;
 }
 
 export interface PlatformIndex {
@@ -2263,6 +2485,13 @@ export interface RequestRideRequest {
   notes?: string;
 }
 
+/** A refund ruling must carry an amount; the other two must not. Commission is returned pro rata. */
+export interface ResolveDisputeRequest {
+  outcome: "release" | "refund" | "cancel";
+  ruling: string;
+  refundAmount?: number;
+}
+
 /** Founder debug: what a hypothetical role combination resolves to. */
 export interface ResolvedRoles {
   roles?: string[];
@@ -2569,6 +2798,10 @@ export interface SubmitDocumentRequest {
   fields?: DocumentFields;
   storageKey?: string;
   note?: string;
+}
+
+export interface SuspendListingRequest {
+  reason: string;
 }
 
 export interface SystemHealth {

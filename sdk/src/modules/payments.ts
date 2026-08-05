@@ -18,10 +18,10 @@ import { client, withMeta, type ListOptions, type RequestOptions } from './_runt
 export const META = {
   getById: { operationId: 'getPaymentByPaymentId', method: 'GET' as const, pathTemplate: '/payment/{paymentId}', zone: 'BACK_OFFICE' as const, roles: ["founder","hqExecutive","backOfficeStaff"] as Role[], permissions: ["payment:read","payment:readOwn"], ownership: 'scoped' as const, auth: 'required' as const },
   list: { operationId: 'getPayments', method: 'GET' as const, pathTemplate: '/payments', zone: 'BACK_OFFICE' as const, roles: ["founder","hqExecutive","backOfficeStaff"] as Role[], permissions: ["payment:read"], ownership: 'scoped' as const, auth: 'required' as const },
-  mineAsAdvertiser: { operationId: 'getAdvertiserMePayments', method: 'GET' as const, pathTemplate: '/advertiser/me/payments', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser"] as Role[], permissions: ["payment:readOwn","payment:read"], ownership: 'self' as const, auth: 'required' as const },
-  mineAsDriver: { operationId: 'getDriverMePayments', method: 'GET' as const, pathTemplate: '/driver/me/payments', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser"] as Role[], permissions: ["payment:readOwn","payment:read"], ownership: 'self' as const, auth: 'required' as const },
-  mineAsLandlord: { operationId: 'getLandlordMePayments', method: 'GET' as const, pathTemplate: '/landlord/me/payments', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser"] as Role[], permissions: ["payment:readOwn","payment:read"], ownership: 'self' as const, auth: 'required' as const },
-  mineAsTenant: { operationId: 'getTenantMePayments', method: 'GET' as const, pathTemplate: '/tenant/me/payments', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser"] as Role[], permissions: ["payment:readOwn","payment:read"], ownership: 'self' as const, auth: 'required' as const },
+  mineAsAdvertiser: { operationId: 'getAdvertiserMePayments', method: 'GET' as const, pathTemplate: '/advertiser/me/payments', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","customer"] as Role[], permissions: ["payment:readOwn","payment:read"], ownership: 'self' as const, auth: 'required' as const },
+  mineAsDriver: { operationId: 'getDriverMePayments', method: 'GET' as const, pathTemplate: '/driver/me/payments', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","customer"] as Role[], permissions: ["payment:readOwn","payment:read"], ownership: 'self' as const, auth: 'required' as const },
+  mineAsLandlord: { operationId: 'getLandlordMePayments', method: 'GET' as const, pathTemplate: '/landlord/me/payments', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","customer"] as Role[], permissions: ["payment:readOwn","payment:read"], ownership: 'self' as const, auth: 'required' as const },
+  mineAsTenant: { operationId: 'getTenantMePayments', method: 'GET' as const, pathTemplate: '/tenant/me/payments', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","customer"] as Role[], permissions: ["payment:readOwn","payment:read"], ownership: 'self' as const, auth: 'required' as const },
 } satisfies Record<string, OperationMeta>;
 
 export const payments = {
@@ -60,7 +60,7 @@ export const payments = {
    *
    * `GET /advertiser/me/payments`
    * Zone: MEMBER_PORTAL
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, customer
    * Permission: payment:readOwn | payment:read
    * Ownership: self
    */
@@ -73,7 +73,7 @@ export const payments = {
    *
    * `GET /driver/me/payments`
    * Zone: MEMBER_PORTAL
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, customer
    * Permission: payment:readOwn | payment:read
    * Ownership: self
    */
@@ -86,7 +86,7 @@ export const payments = {
    *
    * `GET /landlord/me/payments`
    * Zone: MEMBER_PORTAL
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, customer
    * Permission: payment:readOwn | payment:read
    * Ownership: self
    */
@@ -99,7 +99,7 @@ export const payments = {
    *
    * `GET /tenant/me/payments`
    * Zone: MEMBER_PORTAL
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, customer
    * Permission: payment:readOwn | payment:read
    * Ownership: self
    */

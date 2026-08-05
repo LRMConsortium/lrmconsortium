@@ -29,8 +29,8 @@ export const META = {
   kpis: { operationId: 'getHqKpis', method: 'GET' as const, pathTemplate: '/hq/kpis', zone: 'HQ_EXECUTIVE' as const, roles: ["founder","hqExecutive"] as Role[], permissions: ["analytics:read"], ownership: 'none' as const, auth: 'required' as const },
   regions: { operationId: 'getHqRegions', method: 'GET' as const, pathTemplate: '/hq/regions', zone: 'HQ_EXECUTIVE' as const, roles: ["founder","hqExecutive"] as Role[], permissions: ["analytics:read"], ownership: 'none' as const, auth: 'required' as const },
   systemHealth: { operationId: 'getHqSystemHealth', method: 'GET' as const, pathTemplate: '/hq/system-health', zone: 'HQ_EXECUTIVE' as const, roles: ["founder","hqExecutive"] as Role[], permissions: ["analytics:read"], ownership: 'none' as const, auth: 'required' as const },
-  zone: { operationId: 'getHqZonesByZone', method: 'GET' as const, pathTemplate: '/hq/zones/{zone}', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'required' as const },
-  zones: { operationId: 'getHqZones', method: 'GET' as const, pathTemplate: '/hq/zones', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'required' as const },
+  zone: { operationId: 'getHqZonesByZone', method: 'GET' as const, pathTemplate: '/hq/zones/{zone}', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'required' as const },
+  zones: { operationId: 'getHqZones', method: 'GET' as const, pathTemplate: '/hq/zones', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'required' as const },
 } satisfies Record<string, OperationMeta>;
 
 export const hq = {
@@ -122,7 +122,7 @@ export const hq = {
    *
    * `GET /hq/zones/{zone}`
    * Zone: —
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, publicUser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer, publicUser
    * Ownership: none
    */
   zone(zone: string, options?: RequestOptions): Promise<HQZoneDetail> {
@@ -134,7 +134,7 @@ export const hq = {
    *
    * `GET /hq/zones`
    * Zone: —
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, publicUser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer, publicUser
    * Ownership: none
    */
   zones(options?: RequestOptions): Promise<ZoneDirectory> {

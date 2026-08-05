@@ -36,6 +36,12 @@ import { payoutModule } from '../modules/payout/index.js';
 import { notificationModule } from '../modules/notification/index.js';
 import { documentModule } from '../modules/document/index.js';
 import { facModule } from '../modules/fac/index.js';
+import {
+  customerModule,
+  listingModule,
+  merchantModule,
+  orderModule,
+} from '../modules/marketplace/index.js';
 import { commercialClientModule } from '../modules/commercialClient/index.js';
 import { publicPortalModule } from '../modules/publicPortal/index.js';
 
@@ -90,6 +96,12 @@ export const MODULES = [
   advertiserModule,
   adModule,
   adPolicyModule,
+
+  // Marketplace
+  merchantModule,
+  customerModule,
+  listingModule,
+  orderModule,
 
   // Public
   publicPortalModule,

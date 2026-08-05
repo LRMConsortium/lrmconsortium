@@ -134,6 +134,35 @@ import {
   validatePepper,
 } from '../modules/fac/facCrypto.js';
 import {
+  AUTO_RELEASE_DAYS,
+  DEFAULT_MARKETPLACE_COMMISSION_PERCENT,
+  autoReleaseAt,
+  autoReleaseDue,
+  priceOrder,
+  refundBreakdown,
+  totalsBalance,
+  withinFreeCancellation,
+} from '../modules/marketplace/orderMath.js';
+import {
+  ORDER_STATUSES,
+  TERMINAL_STATUSES,
+  TRANSITIONS,
+  canTransition as canTransitionOrder,
+  describeStatus,
+  isEscrowHeld,
+  movesMoney,
+  nextStatuses,
+} from '../modules/marketplace/orderLifecycle.js';
+import {
+  MAX_ORDER_QUANTITY,
+  MAX_UNIT_PRICE,
+  autoUnpublish,
+  canOrder,
+  canPublish,
+  stockAfterOrder,
+  stockAfterRelease,
+} from '../modules/marketplace/listingRules.js';
+import {
   MIN_DISTINCT_CHARS,
   PLACEHOLDER_MARKERS,
   hasTooLittleVariety,
@@ -311,7 +340,7 @@ function section(title: string): void {
 // ═══════════════════════════════════════════════════════════════════════════
 section('Role matrix integrity');
 
-eq('15 roles defined', ROLES.length, 15);
+eq('19 roles defined', ROLES.length, 19);
 eq('5 HQ zones defined', HQ_ZONES.length, 5);
 eq('3 ad zones defined', AD_ZONES.length, 3);
 
@@ -3215,6 +3244,301 @@ check('an unset secret is refused', secretProblem('X', undefined) !== null);
 check('digests compare equal to themselves', digestsMatch('abc123', 'abc123'));
 check('and unequal to others', !digestsMatch('abc123', 'abc124'));
 check('a length mismatch is not a match', !digestsMatch('abc', 'abcd'));
+
+// ═══════════════════════════════════════════════════════════════════════════
+section('Marketplace: who is who');
+
+{
+  const grants = (r: Role) => ROLE_DEFINITIONS[r].permissions as readonly string[];
+  const touchesMarketplace = (r: Role) =>
+    grants(r).some((g) => /^(merchantProfile|customerProfile|listing|order|marketplace):/.test(g));
+
+  // The correction that produced this section: coordinators supervise
+  // *vendors* — maintenance workers dispatched against work orders on
+  // properties. The marketplace is not theirs. Merchants and customers are
+  // governed by the platform's own rules instead, so onboarding a merchant
+  // never waits on hiring somebody in their region.
+  check('a coordinator holds no marketplace grant at all', !touchesMarketplace('coordinator'));
+  check('but still supervises vendors', grants('coordinator').some((g) => /^vendorProfile:/.test(g)));
+
+  // The two are different relationships and must not drift back together.
+  check('a vendor holds no marketplace grant', !touchesMarketplace('vendor'));
+  check('a merchant holds no maintenance grant',
+    !grants('merchant').some((g) => /^maintenanceRequest:/.test(g)));
+
+  // Accounts versus people. The account carries the trading relationship; the
+  // person carries the password. Merging them makes the first staff change a
+  // data migration.
+  eq('a merchant is an organisational account', ROLE_DEFINITIONS.merchant.isOrganizational, true);
+  eq('a seller is a person acting for one', ROLE_DEFINITIONS.seller.isOrganizational, false);
+  eq('a customer is an account', ROLE_DEFINITIONS.customer.isOrganizational, true);
+  eq('a buyer is a person acting for one', ROLE_DEFINITIONS.buyer.isOrganizational, false);
+  eq('a seller resolves to the merchant profile', ROLE_DEFINITIONS.seller.profileModel, 'MerchantProfile');
+  eq('a buyer resolves to the customer profile', ROLE_DEFINITIONS.buyer.profileModel, 'CustomerProfile');
+
+  // Nobody trades against themselves.
+  check('a merchant cannot create orders', !grants('merchant').includes('order:create'));
+  check('nor can a seller', !grants('seller').includes('order:create'));
+  check('but a customer can', grants('customer').includes('order:create'));
+  check('and so can a buyer', grants('buyer').includes('order:create'));
+  check('a customer cannot create listings', !grants('customer').includes('listing:create'));
+  check('nor can a buyer', !grants('buyer').includes('listing:create'));
+
+  // A single member of staff must not be able to destroy the catalogue.
+  check('a seller cannot delete listings', !grants('seller').includes('listing:delete'));
+  check('though the merchant account can', grants('merchant').includes('listing:*'));
+
+  // Marketplace roles live in the member portal, never in HQ.
+  for (const r of ['merchant', 'seller', 'customer', 'buyer'] as const) {
+    check(`${r} may enter the member portal`, ROLE_DEFINITIONS[r].allowedZones.includes('MEMBER_PORTAL'));
+    check(`${r} is kept out of the Founder Command Center`,
+      ROLE_DEFINITIONS[r].restrictedZones.includes('FOUNDER_COMMAND_CENTER'));
+    check(`${r} is kept out of Back Office`,
+      ROLE_DEFINITIONS[r].restrictedZones.includes('BACK_OFFICE'));
+    check(`${r} holds no wildcard`, !grants(r).includes('*:*'));
+  }
+
+  // Back Office adjudicates; HQ watches. Neither trades.
+  check('Back Office administers the marketplace', touchesMarketplace('backOfficeStaff'));
+  check('HQ Executive can read it', touchesMarketplace('hqExecutive'));
+  check('but HQ Executive cannot place an order', !grants('hqExecutive').includes('order:create'));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+section('Marketplace: order arithmetic');
+
+{
+  const LINES = [
+    { listingId: 'L1', title: 'Ceiling fan', unitPrice: 450, quantity: 2 },
+    { listingId: 'L2', title: 'Installation', unitPrice: 120, quantity: 1 },
+  ];
+
+  const t = priceOrder(LINES, { deliveryFee: 60, commissionPercent: 8 });
+  eq('lines multiply out', t.lines[0]!.lineTotal, 900);
+  eq('subtotal is the sum of the lines', t.subtotal, 1020);
+  eq('the buyer pays subtotal plus delivery', t.total, 1080);
+
+  // Commission is on the goods, not on the courier bill — otherwise the
+  // merchant funds LRMC's cut out of their own delivery cost.
+  eq('commission is charged on the goods only', t.platformFee, 81.6);
+  eq('and the merchant keeps the delivery fee in full', t.merchantNet, 1080 - 81.6);
+  check('the money balances', totalsBalance(t));
+
+  // The property that matters most: fee + net === total, at every percentage,
+  // with no pesewa created or destroyed by double rounding.
+  let balancedEverywhere = true;
+  for (const pct of [0, 1, 2.5, 7.5, 8, 12.5, 15, 33.33, 50, 99, 100]) {
+    for (const price of [0.01, 0.05, 3.33, 10, 33.33, 99.99, 1000.01]) {
+      const o = priceOrder([{ listingId: 'x', title: 'x', unitPrice: price, quantity: 3 }],
+        { deliveryFee: 7.77, commissionPercent: pct });
+      if (!totalsBalance(o)) balancedEverywhere = false;
+    }
+  }
+  check('fee plus net equals total at every rate and price tested', balancedEverywhere);
+
+  eq('zero commission leaves the merchant everything',
+    priceOrder(LINES, { commissionPercent: 0 }).merchantNet, 1020);
+  eq('and a hundred percent leaves them nothing',
+    priceOrder(LINES, { commissionPercent: 100 }).merchantNet, 0);
+  eq('a nonsense rate falls back to the default',
+    priceOrder(LINES, { commissionPercent: Number.NaN }).commissionPercent,
+    DEFAULT_MARKETPLACE_COMMISSION_PERCENT);
+  eq('a negative rate is floored', priceOrder(LINES, { commissionPercent: -20 }).commissionPercent, 0);
+  eq('and an absurd one is capped', priceOrder(LINES, { commissionPercent: 500 }).commissionPercent, 100);
+
+  // Quantities are whole things. 2.9 widgets is two, never three.
+  eq('a fractional quantity floors',
+    priceOrder([{ listingId: 'x', title: 'x', unitPrice: 10, quantity: 2.9 }]).lines[0]!.quantity, 2);
+  eq('a negative quantity is zero, not a credit',
+    priceOrder([{ listingId: 'x', title: 'x', unitPrice: 10, quantity: -4 }]).subtotal, 0);
+  eq('a negative price is floored at zero',
+    priceOrder([{ listingId: 'x', title: 'x', unitPrice: -10, quantity: 2 }]).subtotal, 0);
+  eq('an empty order totals zero', priceOrder([]).total, 0);
+  eq('a negative delivery fee is refused',
+    priceOrder(LINES, { deliveryFee: -50 }).deliveryFee, 0);
+
+  // Refunds return commission pro rata. Keeping the full fee on a half-refunded
+  // order would mean LRMC profits proportionally more the worse the service was.
+  const half = refundBreakdown(t, 540);
+  eq('a half refund returns half the commission', half.commissionReturned, 40.8);
+  eq('and the merchant bears the rest', half.merchantBears, 540 - 40.8);
+  check('a half refund is not marked full', !half.isFull);
+
+  const full = refundBreakdown(t, 1080);
+  eq('a full refund returns all the commission', full.commissionReturned, t.platformFee);
+  check('and is marked full', full.isFull);
+  eq('over-refunding is capped at the order total', refundBreakdown(t, 99999).refundToBuyer, t.total);
+  eq('a negative refund is zero', refundBreakdown(t, -100).refundToBuyer, 0);
+  check('every refund keeps buyer and merchant shares adding up',
+    [0, 0.01, 1, 539.99, 540, 1079.99, 1080].every((amt) => {
+      const r = refundBreakdown(t, amt);
+      return money(r.commissionReturned + r.merchantBears) === r.refundToBuyer;
+    }));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+section('Marketplace: escrow clocks');
+
+{
+  const fulfilled = new Date(Date.UTC(2026, 7, 1, 12, 0, 0));
+
+  eq('auto-release is seven days after fulfilment',
+    autoReleaseAt(fulfilled)!.toISOString(), new Date(Date.UTC(2026, 7, 8, 12, 0, 0)).toISOString());
+  eq('an unfulfilled order has no release clock', autoReleaseAt(null), null);
+
+  check('not due the day before', !autoReleaseDue(fulfilled, new Date(Date.UTC(2026, 7, 7, 12, 0, 0))));
+  check('due exactly on the boundary', autoReleaseDue(fulfilled, new Date(Date.UTC(2026, 7, 8, 12, 0, 0))));
+  check('and after it', autoReleaseDue(fulfilled, new Date(Date.UTC(2026, 7, 30, 0, 0, 0))));
+  check('never due when nothing was fulfilled', !autoReleaseDue(null, new Date(Date.UTC(2030, 0, 1))));
+
+  // Escrow with no time limit does not protect the buyer — it strips the
+  // merchant, since a buyer who has their goods has no reason ever to confirm.
+  check('the auto-release window is finite and short', AUTO_RELEASE_DAYS > 0 && AUTO_RELEASE_DAYS <= 30);
+
+  const placed = new Date(Date.UTC(2026, 7, 1, 12, 0, 0));
+  check('a buyer may cancel freely within the window',
+    withinFreeCancellation(placed, new Date(Date.UTC(2026, 7, 2, 11, 59, 0))));
+  check('exactly on the boundary still counts',
+    withinFreeCancellation(placed, new Date(Date.UTC(2026, 7, 2, 12, 0, 0))));
+  check('but not a minute after',
+    !withinFreeCancellation(placed, new Date(Date.UTC(2026, 7, 2, 12, 1, 0))));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+section('Marketplace: order lifecycle');
+
+{
+  // The four properties that make escrow mean anything. Each is asserted
+  // against the whole table rather than one example, so a transition added
+  // later cannot quietly break it.
+
+  check('a merchant can never release the money to themselves',
+    !TRANSITIONS.some((t) => t.to === 'released' && t.by.includes('merchant')));
+  check('nor can a merchant refund on their own',
+    !TRANSITIONS.some((t) => t.to === 'refunded' && t.by.includes('merchant')));
+
+  check('nothing reaches paid except from pending',
+    TRANSITIONS.filter((t) => t.to === 'paid').every((t) => t.from === 'pending'));
+  check('a merchant cannot accept an unpaid order',
+    !TRANSITIONS.some((t) => t.from === 'pending' && t.to === 'accepted'));
+
+  check('nothing leaves a terminal state',
+    !TRANSITIONS.some((t) => TERMINAL_STATUSES.includes(t.from)));
+
+  check('only Back Office resolves a dispute',
+    TRANSITIONS.filter((t) => t.from === 'disputed').every((t) => t.by.length === 1 && t.by[0] === 'backOffice'));
+  check('and a dispute can be raised from every live state where money is held',
+    (['paid', 'accepted', 'fulfilled'] as const).every((from) =>
+      TRANSITIONS.some((t) => t.from === from && t.to === 'disputed')));
+
+  // Named cases, so a failure says which rule broke rather than "a transition".
+  check('buyer confirms a fulfilled order', canTransitionOrder('fulfilled', 'confirmed', 'buyer').allowed);
+  check('merchant cannot confirm on the buyer\'s behalf',
+    !canTransitionOrder('fulfilled', 'confirmed', 'merchant').allowed);
+  eq('and is told who could', canTransitionOrder('fulfilled', 'confirmed', 'merchant').reason, 'wrongActor');
+  check('the refusal names the permitted actor',
+    (canTransitionOrder('fulfilled', 'confirmed', 'merchant').permittedActors ?? []).includes('buyer'));
+
+  check('the clock may release a fulfilled order', canTransitionOrder('fulfilled', 'released', 'system').allowed);
+  check('but a buyer cannot skip straight to released',
+    !canTransitionOrder('fulfilled', 'released', 'buyer').allowed);
+  eq('a released order is finished', canTransitionOrder('released', 'refunded', 'backOffice').reason, 'terminal');
+  eq('so is a refunded one', canTransitionOrder('refunded', 'released', 'backOffice').reason, 'terminal');
+  eq('an impossible move is named as such',
+    canTransitionOrder('pending', 'released', 'backOffice').reason, 'noSuchTransition');
+
+  check('a buyer may walk away from an unpaid order', canTransitionOrder('pending', 'cancelled', 'buyer').allowed);
+  check('but not from an accepted one', !canTransitionOrder('accepted', 'cancelled', 'buyer').allowed);
+
+  // Escrow accounting: which states hold money.
+  for (const s of ['paid', 'accepted', 'fulfilled', 'confirmed', 'disputed'] as const) {
+    check(`LRMC holds the money while ${s}`, isEscrowHeld(s));
+  }
+  for (const s of ['pending', 'released', 'cancelled', 'refunded'] as const) {
+    check(`LRMC holds nothing while ${s}`, !isEscrowHeld(s));
+  }
+
+  eq('reaching paid captures', movesMoney('paid'), 'capture');
+  eq('reaching released pays out', movesMoney('released'), 'release');
+  eq('reaching refunded returns', movesMoney('refunded'), 'refund');
+  eq('cancelling moves nothing by itself', movesMoney('cancelled'), null);
+
+  check('every status has a plain-language line',
+    ORDER_STATUSES.every((s) => describeStatus(s).length > 5));
+  check('and none of them repeat',
+    new Set(ORDER_STATUSES.map(describeStatus)).size === ORDER_STATUSES.length);
+
+  // Every transition in the table is actually reachable — a row nobody can
+  // trigger is a rule that looks enforced and is not.
+  check('every declared transition is reachable by its declared actor',
+    TRANSITIONS.every((t) => t.by.every((a) => canTransitionOrder(t.from, t.to, a).allowed)));
+  check('and every one carries a note explaining itself',
+    TRANSITIONS.every((t) => t.note.length > 10));
+
+  check('nextStatuses offers nothing from a terminal state', nextStatuses('released', 'backOffice').length === 0);
+  check('and offers the buyer exactly what the table allows',
+    nextStatuses('fulfilled', 'buyer').sort().join(',') === 'confirmed,disputed');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+section('Marketplace: listings');
+
+{
+  const good = { kind: 'product' as const, status: 'draft' as const, title: 'Ceiling fan',
+                 unitPrice: 450, stock: 12, merchantVerified: true };
+
+  check('a complete product publishes', canPublish(good).publishable);
+  check('a service needs no stock',
+    canPublish({ ...good, kind: 'service', stock: null }).publishable);
+
+  // Collect every problem, not the first: a merchant fixing one fault per
+  // submission gives up on the third, and each round trip costs a coordinator.
+  const bad = canPublish({ kind: 'product', status: 'draft', title: 'x',
+                           unitPrice: 0, stock: null, merchantVerified: false });
+  check('a broken listing reports every problem at once', bad.problems.length >= 4);
+  check('including the short title', bad.problems.some((p) => /title/i.test(p)));
+  check('including the zero price', bad.problems.some((p) => /price above zero/i.test(p)));
+  check('including the missing stock', bad.problems.some((p) => /stock/i.test(p)));
+  check('including the unverified merchant', bad.problems.some((p) => /not yet verified/i.test(p)));
+
+  // The verification gate specifically — a marketplace listing unverified
+  // merchants owns its first fraud.
+  check('an unverified merchant cannot publish',
+    !canPublish({ ...good, merchantVerified: false }).publishable);
+  check('an archived listing cannot be republished',
+    !canPublish({ ...good, status: 'archived' }).publishable);
+  check('a price over the ceiling needs approval',
+    !canPublish({ ...good, unitPrice: MAX_UNIT_PRICE + 1 }).publishable);
+  check('negative stock is refused', !canPublish({ ...good, stock: -1 }).publishable);
+
+  const live = { ...good, status: 'published' as const };
+  check('a published product with stock is orderable', canOrder(live, 3).orderable);
+  eq('a draft is not', canOrder(good, 1).reason, 'notPublished');
+  eq('ordering more than exists is refused', canOrder(live, 13).reason, 'insufficientStock');
+  eq('and the refusal says how many are left', canOrder(live, 13).available, 12);
+  eq('zero stock is out of stock', canOrder({ ...live, stock: 0 }, 1).reason, 'outOfStock');
+  eq('a fractional quantity is refused', canOrder(live, 1.5).reason, 'badQuantity');
+  eq('zero is refused', canOrder(live, 0).reason, 'badQuantity');
+  eq('and a silly quantity is capped', canOrder(live, MAX_ORDER_QUANTITY + 1).reason, 'overLimit');
+
+  // A plumber does not run out of plumbing.
+  check('a service is orderable regardless of stock',
+    canOrder({ ...live, kind: 'service', stock: null }, 50).orderable);
+
+  eq('stock falls when an order is placed', stockAfterOrder(live, 5), 7);
+  eq('it floors at zero rather than going negative', stockAfterOrder(live, 99), 0);
+  eq('a service has no stock to move', stockAfterOrder({ ...live, kind: 'service' }, 5), null);
+  eq('stock returns on a refund', stockAfterRelease(live, 5), 17);
+  // Returning stock is not merely the inverse: a refunded service must not
+  // invent stock on something that never had any.
+  eq('but a refunded service invents none', stockAfterRelease({ ...live, kind: 'service' }, 5), null);
+
+  check('a product that hits zero drops out of the catalogue',
+    autoUnpublish({ ...live, stock: 0 }));
+  check('one with stock stays', !autoUnpublish(live));
+  check('and a service never auto-unpublishes',
+    !autoUnpublish({ ...live, kind: 'service', stock: null }));
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 section('FAC: the Zone A gate');

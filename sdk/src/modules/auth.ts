@@ -21,11 +21,11 @@ import { client, withMeta, type ListOptions, type RequestOptions } from './_runt
 
 /** Zone, roles and permissions for each operation, straight from the spec. */
 export const META = {
-  changePassword: { operationId: 'postAuthChangePassword', method: 'POST' as const, pathTemplate: '/auth/change-password', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","publicUser"] as Role[], permissions: [], ownership: 'self' as const, auth: 'required' as const },
-  login: { operationId: 'postAuthLogin', method: 'POST' as const, pathTemplate: '/auth/login', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'none' as const },
-  me: { operationId: 'getAuthMe', method: 'GET' as const, pathTemplate: '/auth/me', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","publicUser"] as Role[], permissions: [], ownership: 'self' as const, auth: 'required' as const },
-  refresh: { operationId: 'postAuthRefresh', method: 'POST' as const, pathTemplate: '/auth/refresh', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'none' as const },
-  register: { operationId: 'postAuthRegister', method: 'POST' as const, pathTemplate: '/auth/register', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'none' as const },
+  changePassword: { operationId: 'postAuthChangePassword', method: 'POST' as const, pathTemplate: '/auth/change-password', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer","publicUser"] as Role[], permissions: [], ownership: 'self' as const, auth: 'required' as const },
+  login: { operationId: 'postAuthLogin', method: 'POST' as const, pathTemplate: '/auth/login', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'none' as const },
+  me: { operationId: 'getAuthMe', method: 'GET' as const, pathTemplate: '/auth/me', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer","publicUser"] as Role[], permissions: [], ownership: 'self' as const, auth: 'required' as const },
+  refresh: { operationId: 'postAuthRefresh', method: 'POST' as const, pathTemplate: '/auth/refresh', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'none' as const },
+  register: { operationId: 'postAuthRegister', method: 'POST' as const, pathTemplate: '/auth/register', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'none' as const },
 } satisfies Record<string, OperationMeta>;
 
 export const auth = {
@@ -34,7 +34,7 @@ export const auth = {
    *
    * `POST /auth/change-password`
    * Zone: —
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, publicUser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer, publicUser
    * Ownership: self
    */
   changePassword(body: ChangePasswordRequest, options?: RequestOptions): Promise<void> {
@@ -48,7 +48,7 @@ export const auth = {
    *
    * `POST /auth/login`
    * Zone: —
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, publicUser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer, publicUser
    * Ownership: none
    */
   login(body: LoginRequest, options?: RequestOptions): Promise<AuthTokens> {
@@ -62,7 +62,7 @@ export const auth = {
    *
    * `GET /auth/me`
    * Zone: —
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, publicUser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer, publicUser
    * Ownership: self
    */
   me(options?: RequestOptions): Promise<CurrentActor> {
@@ -74,7 +74,7 @@ export const auth = {
    *
    * `POST /auth/refresh`
    * Zone: —
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, publicUser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer, publicUser
    * Ownership: none
    */
   refresh(body: RefreshRequest, options?: RequestOptions): Promise<AuthTokens> {
@@ -88,7 +88,7 @@ export const auth = {
    *
    * `POST /auth/register`
    * Zone: —
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, publicUser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer, publicUser
    * Ownership: none
    */
   register(body: RegisterRequest, options?: RequestOptions): Promise<AuthTokens> {

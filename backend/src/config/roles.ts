@@ -12,7 +12,7 @@ import {
 } from './permissions.js';
 
 /**
- * The fifteen roles of the consortium.
+ * The nineteen roles of the consortium.
  *
  * Every role declares four things and nothing else:
  *   accessScope     — how wide the role sees (global → own record)
@@ -36,6 +36,14 @@ export const ROLES = [
   'driver',
   'rider',
   'advertiser',
+
+  // Marketplace. Merchant and Customer are the accounts a coordinator
+  // supervises; Seller and Buyer are the people who act for them.
+  'merchant',
+  'seller',
+  'customer',
+  'buyer',
+
   'publicUser',
 ] as const;
 
@@ -173,6 +181,11 @@ const hqExecutive = define({
     'fac:verify',
     'fac:read',
     'governance:read',
+    'merchantProfile:read',
+    'customerProfile:read',
+    'listing:read',
+    'order:read',
+    'marketplace:read',
   ],
   allowedZones: ['HQ_EXECUTIVE', 'BACK_OFFICE', 'MEMBER_PORTAL', 'PUBLIC_PORTAL'],
   allowedActions: [
@@ -199,6 +212,12 @@ const backOfficeStaff = define({
   permissions: [
     all('coordinatorProfile'),
     all('vendorProfile'),
+    // Back Office administers the marketplace parties and adjudicates orders.
+    all('merchantProfile'),
+    all('customerProfile'),
+    all('listing'),
+    all('order'),
+    all('marketplace'),
     all('backOfficeStaffProfile'),
     'driverProfile:read',
     'driverProfile:update',
@@ -736,6 +755,184 @@ const publicUser = define({
   ],
 });
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Marketplace
+//
+// Four roles in two pairs, and the pairing is the whole design.
+//
+// A **Merchant** is an account — a trading business trading on the LRMC
+// marketplace. A **Seller** is a person who acts for one. Likewise a
+// **Customer** is an account and a **Buyer** is a person who purchases against
+// it.
+//
+// **Nobody supervises them in the field.** Coordinators supervise vendors —
+// maintenance workers on properties, dispatched against work orders. The
+// marketplace parties are governed by the platform's own rules instead, which
+// is a deliberate scaling choice: onboarding a merchant must not require a
+// human in their region, or the marketplace grows only as fast as LRMC can
+// hire.
+//
+// What "the system supervises them" means concretely, and where each rule
+// lives:
+//
+//   verification    `listingRules.canPublish` refuses to publish anything for
+//                   an unverified merchant, so an unverified account can exist
+//                   but cannot trade.
+//   catalogue       publish eligibility is checked on every submission, and a
+//                   product that hits zero stock leaves the catalogue on its
+//                   own (`autoUnpublish`).
+//   money           escrow is held and released by rule, not by permission —
+//                   `orderLifecycle` gives no actor a path to release funds to
+//                   themselves, and `AUTO_RELEASE_DAYS` stops a silent buyer
+//                   stranding a merchant's settlement.
+//   disputes        the one place a human is required. Only Back Office can
+//                   resolve one, because a dispute either party could quietly
+//                   clear is not a dispute.
+//
+// Why not collapse each pair into one role: a merchant with three staff needs
+// all three able to sell without sharing one login, and needs one of them
+// removed on a Friday without the other two losing access. The account is what
+// holds the trading relationship, the bank details and the coordinator's
+// supervision; the person is what holds the password. Merging them makes the
+// first staff change a data-migration problem.
+//
+// These are **not vendors**. A vendor does maintenance work on a property under
+// a work order. A merchant trades goods and services in the marketplace under
+// an order with money held in escrow. Different relationship, different money
+// flow, deliberately different role.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const merchant = define({
+  role: 'merchant',
+  label: 'Merchant',
+  serviceLine: 'LRMC',
+  accessScope: 'organizational',
+  isOrganizational: true,
+  requiresVerification: true,
+  profileModel: 'MerchantProfile',
+  permissions: [
+    ...selfService('merchantProfile'),
+    // The account owns its catalogue outright.
+    all('listing'),
+    'order:read',
+    'order:update',
+    // Not `order:create`. A merchant creating orders against itself is how a
+    // marketplace's numbers stop meaning anything.
+    'payout:read',
+    'payment:readOwn',
+    'notification:readOwn',
+    'document:create',
+    'document:readOwn',
+    'document:updateOwn',
+    'marketplace:read',
+  ],
+  allowedZones: ['MEMBER_PORTAL'],
+  allowedActions: [
+    'manageCatalogue',
+    'publishListing',
+    'unpublishListing',
+    'manageSellers',
+    'acceptOrder',
+    'declineOrder',
+    'fulfilOrder',
+    'viewSettlements',
+    'updateOwnRates',
+  ],
+});
+
+const seller = define({
+  role: 'seller',
+  label: 'Seller',
+  serviceLine: 'LRMC',
+  accessScope: 'organizational',
+  isOrganizational: false,
+  requiresVerification: true,
+  profileModel: 'MerchantProfile',
+  permissions: [
+    'merchantProfile:readOwn',
+    'listing:create',
+    'listing:read',
+    'listing:update',
+    // No `listing:delete`. A seller withdrawing a listing unpublishes it,
+    // which is reversible; destroying the merchant's catalogue is not a thing
+    // one member of staff should be able to do alone.
+    'order:read',
+    'order:update',
+    'notification:readOwn',
+    'document:create',
+    'document:readOwn',
+    'marketplace:read',
+  ],
+  allowedZones: ['MEMBER_PORTAL'],
+  allowedActions: [
+    'manageCatalogue',
+    'publishListing',
+    'unpublishListing',
+    'acceptOrder',
+    'declineOrder',
+    'fulfilOrder',
+  ],
+});
+
+const customer = define({
+  role: 'customer',
+  label: 'Customer',
+  serviceLine: 'LRMC',
+  accessScope: 'organizational',
+  isOrganizational: true,
+  requiresVerification: false,
+  profileModel: 'CustomerProfile',
+  permissions: [
+    ...selfService('customerProfile'),
+    'listing:read',
+    'order:create',
+    'order:read',
+    'order:updateOwn',
+    'payment:readOwn',
+    'notification:readOwn',
+    'document:create',
+    'document:readOwn',
+    'marketplace:read',
+  ],
+  allowedZones: ['MEMBER_PORTAL'],
+  allowedActions: [
+    'browseMarketplace',
+    'placeOrder',
+    'cancelOrder',
+    'confirmReceipt',
+    'raiseDispute',
+    'manageBuyers',
+  ],
+});
+
+const buyer = define({
+  role: 'buyer',
+  label: 'Buyer',
+  serviceLine: 'LRMC',
+  accessScope: 'organizational',
+  isOrganizational: false,
+  requiresVerification: false,
+  profileModel: 'CustomerProfile',
+  permissions: [
+    'customerProfile:readOwn',
+    'listing:read',
+    'order:create',
+    'order:read',
+    'order:updateOwn',
+    'notification:readOwn',
+    'marketplace:read',
+  ],
+  allowedZones: ['MEMBER_PORTAL'],
+  allowedActions: [
+    'browseMarketplace',
+    'placeOrder',
+    'cancelOrder',
+    'confirmReceipt',
+    'raiseDispute',
+  ],
+});
+
 export const ROLE_DEFINITIONS: Record<Role, RoleDefinition> = {
   founder,
   hqExecutive,
@@ -751,6 +948,10 @@ export const ROLE_DEFINITIONS: Record<Role, RoleDefinition> = {
   driver,
   rider,
   advertiser,
+  merchant,
+  seller,
+  customer,
+  buyer,
   publicUser,
 };
 

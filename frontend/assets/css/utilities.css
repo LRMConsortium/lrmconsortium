@@ -282,6 +282,15 @@
 .lrmc-toast-danger  { border-left-color: var(--lrmc-danger); }
 .lrmc-toast-info    { border-left-color: var(--lrmc-info); }
 
+/* ── Visibility ──────────────────────────────────────────────────────────
+ * The `hidden` attribute wins over every component class that sets `display`.
+ * Without `!important`, `.lrmc-nav-item { display: flex }` beats it whenever
+ * this file happens to load last — a bug that appears and disappears with
+ * stylesheet order, which is the worst kind.
+ */
+
+[hidden] { display: none !important; }
+
 /* ── Accessibility helpers ───────────────────────────────────────────── */
 
 .lrmc-sr-only {

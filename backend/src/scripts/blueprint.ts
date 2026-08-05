@@ -42,6 +42,10 @@ const SHORT: Record<Role, string> = {
   driver: 'DR',
   rider: 'RI',
   advertiser: 'AD',
+  merchant: 'ME',
+  seller: 'SE',
+  customer: 'CU',
+  buyer: 'BU',
   publicUser: 'PU',
 };
 

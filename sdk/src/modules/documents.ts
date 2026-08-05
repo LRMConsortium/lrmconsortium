@@ -30,20 +30,20 @@ import { client, withMeta, type ListOptions, type RequestOptions } from './_runt
 /** Zone, roles and permissions for each operation, straight from the spec. */
 export const META = {
   analytics: { operationId: 'getHqDocumentsAnalytics', method: 'GET' as const, pathTemplate: '/hq/documents/analytics', zone: 'HQ_EXECUTIVE' as const, roles: ["founder","hqExecutive"] as Role[], permissions: ["document:read"], ownership: 'none' as const, auth: 'required' as const },
-  create: { operationId: 'postDocuments', method: 'POST' as const, pathTemplate: '/documents', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser"] as Role[], permissions: ["document:create"], ownership: 'none' as const, auth: 'required' as const },
+  create: { operationId: 'postDocuments', method: 'POST' as const, pathTemplate: '/documents', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer"] as Role[], permissions: ["document:create"], ownership: 'none' as const, auth: 'required' as const },
   delete: { operationId: 'deleteDocumentByDocumentId', method: 'DELETE' as const, pathTemplate: '/document/{documentId}', zone: 'MEMBER_PORTAL' as const, roles: ["founder"] as Role[], permissions: ["document:delete"], ownership: 'scoped' as const, auth: 'required' as const },
   expire: { operationId: 'postDocumentByDocumentIdExpire', method: 'POST' as const, pathTemplate: '/document/{documentId}/expire', zone: 'BACK_OFFICE' as const, roles: ["founder","hqExecutive","backOfficeStaff"] as Role[], permissions: ["document:update","document:review"], ownership: 'none' as const, auth: 'required' as const },
-  getById: { operationId: 'getDocumentByDocumentId', method: 'GET' as const, pathTemplate: '/document/{documentId}', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser"] as Role[], permissions: ["document:read","document:readOwn"], ownership: 'scoped' as const, auth: 'required' as const },
+  getById: { operationId: 'getDocumentByDocumentId', method: 'GET' as const, pathTemplate: '/document/{documentId}', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer"] as Role[], permissions: ["document:read","document:readOwn"], ownership: 'scoped' as const, auth: 'required' as const },
   list: { operationId: 'getDocuments', method: 'GET' as const, pathTemplate: '/documents', zone: 'BACK_OFFICE' as const, roles: ["founder","hqExecutive","backOfficeStaff"] as Role[], permissions: ["document:read"], ownership: 'scoped' as const, auth: 'required' as const },
   listAll: { operationId: 'getHqDocuments', method: 'GET' as const, pathTemplate: '/hq/documents', zone: 'HQ_EXECUTIVE' as const, roles: ["founder","hqExecutive"] as Role[], permissions: ["document:read"], ownership: 'none' as const, auth: 'required' as const },
-  mine: { operationId: 'getMemberMeDocuments', method: 'GET' as const, pathTemplate: '/member/me/documents', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser"] as Role[], permissions: ["document:readOwn","document:read"], ownership: 'self' as const, auth: 'required' as const },
+  mine: { operationId: 'getMemberMeDocuments', method: 'GET' as const, pathTemplate: '/member/me/documents', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer"] as Role[], permissions: ["document:readOwn","document:read"], ownership: 'self' as const, auth: 'required' as const },
   queue: { operationId: 'getStaffMeDocumentQueue', method: 'GET' as const, pathTemplate: '/staff/me/document-queue', zone: 'BACK_OFFICE' as const, roles: ["founder","hqExecutive","backOfficeStaff"] as Role[], permissions: ["document:review","document:read"], ownership: 'self' as const, auth: 'required' as const },
   reject: { operationId: 'postDocumentByDocumentIdReject', method: 'POST' as const, pathTemplate: '/document/{documentId}/reject', zone: 'BACK_OFFICE' as const, roles: ["founder","hqExecutive","backOfficeStaff"] as Role[], permissions: ["document:review","document:update"], ownership: 'none' as const, auth: 'required' as const },
   requestInfo: { operationId: 'postDocumentByDocumentIdRequestInfo', method: 'POST' as const, pathTemplate: '/document/{documentId}/request-info', zone: 'BACK_OFFICE' as const, roles: ["founder","hqExecutive","backOfficeStaff"] as Role[], permissions: ["document:review","document:update"], ownership: 'none' as const, auth: 'required' as const },
   reverify: { operationId: 'postDocumentByDocumentIdReverify', method: 'POST' as const, pathTemplate: '/document/{documentId}/reverify', zone: 'BACK_OFFICE' as const, roles: ["founder","hqExecutive","backOfficeStaff"] as Role[], permissions: ["document:verify","document:review"], ownership: 'none' as const, auth: 'required' as const },
   review: { operationId: 'postDocumentByDocumentIdReview', method: 'POST' as const, pathTemplate: '/document/{documentId}/review', zone: 'BACK_OFFICE' as const, roles: ["founder","hqExecutive","backOfficeStaff"] as Role[], permissions: ["document:review","document:update"], ownership: 'none' as const, auth: 'required' as const },
-  submit: { operationId: 'postDocumentByDocumentIdSubmit', method: 'POST' as const, pathTemplate: '/document/{documentId}/submit', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser"] as Role[], permissions: ["document:create","document:updateOwn"], ownership: 'scoped' as const, auth: 'required' as const },
-  update: { operationId: 'patchDocumentByDocumentId', method: 'PATCH' as const, pathTemplate: '/document/{documentId}', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser"] as Role[], permissions: ["document:update","document:updateOwn"], ownership: 'scoped' as const, auth: 'required' as const },
+  submit: { operationId: 'postDocumentByDocumentIdSubmit', method: 'POST' as const, pathTemplate: '/document/{documentId}/submit', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer"] as Role[], permissions: ["document:create","document:updateOwn"], ownership: 'scoped' as const, auth: 'required' as const },
+  update: { operationId: 'patchDocumentByDocumentId', method: 'PATCH' as const, pathTemplate: '/document/{documentId}', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant"] as Role[], permissions: ["document:update","document:updateOwn"], ownership: 'scoped' as const, auth: 'required' as const },
   verificationSummary: { operationId: 'getDocumentByDocumentIdVerificationSummary', method: 'GET' as const, pathTemplate: '/document/{documentId}/verification-summary', zone: 'BACK_OFFICE' as const, roles: ["founder","hqExecutive","backOfficeStaff"] as Role[], permissions: ["document:read","document:readOwn"], ownership: 'scoped' as const, auth: 'required' as const },
   verify: { operationId: 'postDocumentByDocumentIdVerify', method: 'POST' as const, pathTemplate: '/document/{documentId}/verify', zone: 'BACK_OFFICE' as const, roles: ["founder","hqExecutive","backOfficeStaff"] as Role[], permissions: ["document:verify","document:review"], ownership: 'none' as const, auth: 'required' as const },
 } satisfies Record<string, OperationMeta>;
@@ -71,7 +71,7 @@ export const documents = {
    *
    * `POST /documents`
    * Zone: MEMBER_PORTAL
-   * Roles: founder, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser
+   * Roles: founder, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer
    * Permission: document:create
    * Ownership: none
    */
@@ -116,7 +116,7 @@ export const documents = {
    *
    * `GET /document/{documentId}`
    * Zone: MEMBER_PORTAL
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer
    * Permission: document:read | document:readOwn
    * Ownership: scoped
    */
@@ -155,7 +155,7 @@ export const documents = {
    *
    * `GET /member/me/documents`
    * Zone: MEMBER_PORTAL
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer
    * Permission: document:readOwn | document:read
    * Ownership: self
    */
@@ -245,7 +245,7 @@ export const documents = {
    *
    * `POST /document/{documentId}/submit`
    * Zone: MEMBER_PORTAL
-   * Roles: founder, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser
+   * Roles: founder, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer
    * Permission: document:create | document:updateOwn
    * Ownership: scoped
    */
@@ -260,7 +260,7 @@ export const documents = {
    *
    * `PATCH /document/{documentId}`
    * Zone: MEMBER_PORTAL
-   * Roles: founder, backOfficeStaff, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser
+   * Roles: founder, backOfficeStaff, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant
    * Permission: document:update | document:updateOwn
    * Ownership: scoped
    */

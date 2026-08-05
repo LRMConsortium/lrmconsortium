@@ -56,10 +56,13 @@ tags:
     description: 'Outbound transfer batches: built by Back Office from the ledger, released by the Founder.'
   - name: fac
     description: The Founder Authorisation Code — issuance, verification, lockout and the attempt ledger. Sits in front of Zone A.
+  - name: marketplace
   - name: governance
     description: Governance tiers, the seal visibility matrix, and institutional health.
   - name: document
     description: 'The Document Engine: submission, review, compliance, scoring, expiry and the append-only audit trail.'
+  - name: merchant
+  - name: customer
   - name: founder
     description: Founder profile — Zone A.
   - name: hqExecutive
@@ -4583,6 +4586,778 @@ components:
       type: array
       items:
         '$ref': '#/components/schemas/FacAttempt'
+    Listing:
+      type: object
+      description: A product or a service offered by a merchant. Services carry no stock — a plumber does not run out of plumbing.
+      properties:
+        _id:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        merchant:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        createdBySeller:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        kind:
+          type: string
+          enum:
+            - product
+            - service
+        status:
+          type: string
+          enum:
+            - draft
+            - pending
+            - published
+            - suspended
+            - archived
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 4000
+        unitPrice:
+          type: number
+          minimum: 0
+        currency:
+          type: string
+          enum:
+            - GHS
+            - USD
+            - EUR
+            - GBP
+            - NGN
+            - XOF
+        stock:
+          type:
+            - integer
+            - 'null'
+          minimum: 0
+          description: Null on a service.
+        unit:
+          type: string
+          maxLength: 30
+        category:
+          type: string
+          maxLength: 60
+        imageKeys:
+          type: array
+          items:
+            type: string
+            description: Storage key, never a URL. Signed links are minted on demand.
+        publishedAt:
+          type: string
+          format: date-time
+        suspendedReason:
+          type: string
+          maxLength: 500
+        totalOrdered:
+          type: integer
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - merchant
+        - kind
+        - status
+        - title
+        - unitPrice
+    ListingList:
+      type: array
+      items:
+        '$ref': '#/components/schemas/Listing'
+    MerchantCatalogue:
+      type: object
+      properties:
+        merchant:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        tradingName:
+          type: string
+        verified:
+          type: boolean
+          description: An unverified merchant cannot publish anything.
+        counts:
+          type: object
+          properties:
+            total:
+              type: integer
+              minimum: 0
+            published:
+              type: integer
+              minimum: 0
+            draft:
+              type: integer
+              minimum: 0
+            suspended:
+              type: integer
+              minimum: 0
+        listings:
+          type: array
+          items:
+            '$ref': '#/components/schemas/Listing'
+      required:
+        - merchant
+        - listings
+    OrderLine:
+      type: object
+      description: Title and price are **copied at order time**, not referenced. A price change next Tuesday must not alter what was agreed last Friday.
+      properties:
+        listing:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        title:
+          type: string
+          maxLength: 200
+        unitPrice:
+          type: number
+          minimum: 0
+        quantity:
+          type: integer
+          minimum: 1
+        lineTotal:
+          type: number
+          minimum: 0
+      required:
+        - listing
+        - title
+        - unitPrice
+        - quantity
+        - lineTotal
+    OrderEvent:
+      type: object
+      description: Append-only. Every status change, who made it, and when.
+      properties:
+        at:
+          type: string
+          format: date-time
+        from:
+          type: string
+          enum:
+            - pending
+            - paid
+            - accepted
+            - fulfilled
+            - confirmed
+            - released
+            - cancelled
+            - refunded
+            - disputed
+        to:
+          type: string
+          enum:
+            - pending
+            - paid
+            - accepted
+            - fulfilled
+            - confirmed
+            - released
+            - cancelled
+            - refunded
+            - disputed
+        by:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        actorKind:
+          type: string
+          enum:
+            - buyer
+            - merchant
+            - backOffice
+            - system
+        note:
+          type: string
+          maxLength: 500
+      required:
+        - at
+        - from
+        - to
+        - actorKind
+    Order:
+      type: object
+      description: Escrow order. LRMC holds the money from `paid` until `released`, `refunded` or `cancelled`.
+      properties:
+        _id:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        reference:
+          type: string
+          description: ORD-YYYY-NNNNNNN. Sortable and legible on a receipt.
+        merchant:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        customer:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        placedByBuyer:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        acceptedBySeller:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        status:
+          type: string
+          enum:
+            - pending
+            - paid
+            - accepted
+            - fulfilled
+            - confirmed
+            - released
+            - cancelled
+            - refunded
+            - disputed
+        lines:
+          type: array
+          items:
+            '$ref': '#/components/schemas/OrderLine'
+        subtotal:
+          type: number
+          minimum: 0
+        deliveryFee:
+          type: number
+          minimum: 0
+        total:
+          type: number
+          minimum: 0
+          description: What the buyer pays.
+        commissionPercent:
+          type: number
+          minimum: 0
+          maximum: 100
+        platformFee:
+          type: number
+          minimum: 0
+          description: LRMC's cut. Charged on goods, never on delivery.
+        merchantNet:
+          type: number
+          minimum: 0
+          description: What the merchant is owed on completion.
+        currency:
+          type: string
+          enum:
+            - GHS
+            - USD
+            - EUR
+            - GBP
+            - NGN
+            - XOF
+        deliveryAddress:
+          type: string
+          maxLength: 400
+        note:
+          type: string
+          maxLength: 1000
+        placedAt:
+          type: string
+          format: date-time
+        paidAt:
+          type: string
+          format: date-time
+        acceptedAt:
+          type: string
+          format: date-time
+        fulfilledAt:
+          type: string
+          format: date-time
+        confirmedAt:
+          type: string
+          format: date-time
+        releasedAt:
+          type: string
+          format: date-time
+        cancelledAt:
+          type: string
+          format: date-time
+        refundedAt:
+          type: string
+          format: date-time
+        disputedAt:
+          type: string
+          format: date-time
+        autoReleaseAt:
+          type: string
+          format: date-time
+        disputeReason:
+          type: string
+          maxLength: 1000
+        disputeRuling:
+          type: string
+          maxLength: 1000
+        refundAmount:
+          type: number
+          minimum: 0
+        events:
+          type: array
+          items:
+            '$ref': '#/components/schemas/OrderEvent'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - reference
+        - merchant
+        - customer
+        - status
+        - lines
+        - total
+    OrderList:
+      type: array
+      items:
+        '$ref': '#/components/schemas/Order'
+    OrderDetail:
+      type: object
+      description: An order plus what *this* caller may do with it next.
+      properties:
+        statusLabel:
+          type: string
+          description: Plain language, for the screen.
+        escrowHeld:
+          type: boolean
+          description: Is LRMC currently holding the money?
+        availableActions:
+          type: array
+          items:
+            type: string
+            enum:
+              - pending
+              - paid
+              - accepted
+              - fulfilled
+              - confirmed
+              - released
+              - cancelled
+              - refunded
+              - disputed
+        yourSide:
+          type: string
+          enum:
+            - buyer
+            - merchant
+            - backOffice
+            - system
+      allOf:
+        - '$ref': '#/components/schemas/Order'
+    OrderSettlement:
+      type: object
+      description: The result of releasing or refunding an order.
+      properties:
+        statusLabel:
+          type: string
+        escrowHeld:
+          type: boolean
+        settlement:
+          type: object
+          properties:
+            gross:
+              type: number
+              minimum: 0
+            platformFee:
+              type: number
+              minimum: 0
+            merchantNet:
+              type: number
+              minimum: 0
+        refund:
+          type: object
+          description: Commission is returned pro rata on a partial refund.
+          properties:
+            refundToBuyer:
+              type: number
+              minimum: 0
+            commissionReturned:
+              type: number
+              minimum: 0
+            merchantBears:
+              type: number
+              minimum: 0
+            isFull:
+              type: boolean
+      allOf:
+        - '$ref': '#/components/schemas/Order'
+    MarketplaceOverview:
+      type: object
+      properties:
+        side:
+          type: string
+          enum:
+            - merchant
+            - customer
+            - observer
+        account:
+          type: object
+          properties:
+            id:
+              type: string
+              pattern: ^[a-f\d]{24}$
+            name:
+              type: string
+            verified:
+              type: boolean
+        orders:
+          type: object
+          properties:
+            total:
+              type: integer
+              minimum: 0
+            byStatus:
+              type: object
+              additionalProperties:
+                type: integer
+                minimum: 0
+            escrowHeldCount:
+              type: integer
+              minimum: 0
+            escrowHeldValue:
+              type: number
+              minimum: 0
+              description: What is currently tied up.
+            settledValue:
+              type: number
+              minimum: 0
+            commissionPaid:
+              type: number
+              minimum: 0
+              description: Merchant view only; null for a customer.
+        awaitingAction:
+          type: array
+          items:
+            type: object
+            properties:
+              _id:
+                type: string
+                pattern: ^[a-f\d]{24}$
+              reference:
+                type: string
+              status:
+                type: string
+                enum:
+                  - pending
+                  - paid
+                  - accepted
+                  - fulfilled
+                  - confirmed
+                  - released
+                  - cancelled
+                  - refunded
+                  - disputed
+              statusLabel:
+                type: string
+              total:
+                type: number
+                minimum: 0
+              currency:
+                type: string
+                enum:
+                  - GHS
+                  - USD
+                  - EUR
+                  - GBP
+                  - NGN
+                  - XOF
+              createdAt:
+                type: string
+                format: date-time
+      required:
+        - side
+        - orders
+    Merchant:
+      type: object
+      description: A trading account on the LRMC marketplace. Sellers act for it.
+      properties:
+        _id:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        user:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        tradingName:
+          type: string
+          maxLength: 160
+        category:
+          type: string
+          enum:
+            - homeGoods
+            - buildingMaterials
+            - furnishing
+            - appliances
+            - cleaning
+            - security
+            - landscaping
+            - professionalServices
+            - logistics
+            - other
+        registrationNumber:
+          type: string
+          maxLength: 60
+        sellers:
+          type: array
+          items:
+            type: string
+            pattern: ^[a-f\d]{24}$
+        commissionPercent:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Negotiated rate. Absent means the platform default at time of order.
+        currency:
+          type: string
+          enum:
+            - GHS
+            - USD
+            - EUR
+            - GBP
+            - NGN
+            - XOF
+        totalOrders:
+          type: integer
+          minimum: 0
+        totalSales:
+          type: number
+          minimum: 0
+        email:
+          type: string
+        phone:
+          type: string
+        region:
+          type: string
+        city:
+          type: string
+        verificationStatus:
+          type: string
+          enum:
+            - unsubmitted
+            - pending
+            - inReview
+            - verified
+            - rejected
+            - suspended
+        status:
+          type: string
+          enum:
+            - draft
+            - active
+            - inactive
+            - suspended
+            - archived
+        rating:
+          type: number
+          minimum: 0
+          maximum: 5
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - user
+        - tradingName
+        - category
+    MerchantList:
+      type: array
+      items:
+        '$ref': '#/components/schemas/Merchant'
+    Customer:
+      type: object
+      description: A buying account on the LRMC marketplace. Buyers act for it.
+      properties:
+        _id:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        user:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        accountName:
+          type: string
+          maxLength: 160
+        buyers:
+          type: array
+          items:
+            type: string
+            pattern: ^[a-f\d]{24}$
+        buyerOrderLimit:
+          type: number
+          minimum: 0
+          description: Ceiling on what a named buyer may spend without the account owner. Absent means no ceiling.
+        currency:
+          type: string
+          enum:
+            - GHS
+            - USD
+            - EUR
+            - GBP
+            - NGN
+            - XOF
+        totalOrders:
+          type: integer
+          minimum: 0
+        totalSpend:
+          type: number
+          minimum: 0
+        email:
+          type: string
+        phone:
+          type: string
+        region:
+          type: string
+        city:
+          type: string
+        verificationStatus:
+          type: string
+          enum:
+            - unsubmitted
+            - pending
+            - inReview
+            - verified
+            - rejected
+            - suspended
+        status:
+          type: string
+          enum:
+            - draft
+            - active
+            - inactive
+            - suspended
+            - archived
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - user
+        - accountName
+    CustomerList:
+      type: array
+      items:
+        '$ref': '#/components/schemas/Customer'
+    MerchantSellersRequest:
+      type: object
+      description: Who may sell for this merchant account.
+      properties:
+        sellerIds:
+          type: array
+          items:
+            type: string
+            pattern: ^[a-f\d]{24}$
+      required:
+        - sellerIds
+    CustomerBuyersRequest:
+      type: object
+      description: Who may purchase against this customer account.
+      properties:
+        buyerIds:
+          type: array
+          items:
+            type: string
+            pattern: ^[a-f\d]{24}$
+      required:
+        - buyerIds
+    SuspendListingRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 5
+          maxLength: 500
+      required:
+        - reason
+    PlaceOrderRequest:
+      type: object
+      description: Listing ids and quantities only. Prices are read from the listings server-side — a client that could name its own prices would name zero.
+      properties:
+        merchant:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              listing:
+                type: string
+                pattern: ^[a-f\d]{24}$
+              quantity:
+                type: integer
+                minimum: 1
+                maximum: 999
+            required:
+              - listing
+              - quantity
+        deliveryAddress:
+          type: string
+          maxLength: 400
+        note:
+          type: string
+          maxLength: 1000
+      required:
+        - merchant
+        - lines
+    PayOrderRequest:
+      type: object
+      description: The provider's reference, not an amount. The server already knows what the order costs; letting the client restate it would mean deciding which number to believe.
+      properties:
+        paymentRef:
+          type: string
+          minLength: 3
+          maxLength: 120
+      required:
+        - paymentRef
+    FulfilOrderRequest:
+      type: object
+      properties:
+        note:
+          type: string
+          maxLength: 500
+    CancelOrderRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 3
+          maxLength: 500
+      required:
+        - reason
+    DisputeOrderRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 10
+          maxLength: 1000
+      required:
+        - reason
+    ResolveDisputeRequest:
+      type: object
+      description: A refund ruling must carry an amount; the other two must not. Commission is returned pro rata.
+      properties:
+        outcome:
+          type: string
+          enum:
+            - release
+            - refund
+            - cancel
+        ruling:
+          type: string
+          minLength: 10
+          maxLength: 1000
+        refundAmount:
+          type: number
+          minimum: 0
+      required:
+        - outcome
+        - ruling
     FacLockout:
       type: object
       description: One founder currently shut out of Zone A, with the time left to run.
@@ -7205,6 +7980,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
         - publicUser
       x-permissions: []
       x-ownership: none
@@ -7260,6 +8039,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
         - publicUser
       x-permissions: []
       x-ownership: none
@@ -7300,6 +8083,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
         - publicUser
       x-permissions: []
       x-ownership: none
@@ -7369,6 +8156,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
         - publicUser
       x-permissions: []
       x-ownership: none
@@ -7443,6 +8234,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
         - publicUser
       x-permissions: []
       x-ownership: none
@@ -7516,6 +8311,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
         - publicUser
       x-permissions: []
       x-ownership: none
@@ -7590,6 +8389,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
         - publicUser
       x-permissions: []
       x-ownership: self
@@ -7657,6 +8460,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
         - publicUser
       x-permissions: []
       x-ownership: self
@@ -7800,6 +8607,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
         - publicUser
       x-permissions: []
       x-ownership: none
@@ -7914,6 +8725,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
         - publicUser
       x-permissions: []
       x-ownership: none
@@ -7982,6 +8797,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
         - publicUser
       x-permissions: []
       x-ownership: none
@@ -8391,6 +9210,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
         - publicUser
       x-permissions: []
       x-ownership: none
@@ -9200,6 +10023,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
         - publicUser
       x-permissions: []
       x-ownership: none
@@ -9276,6 +10103,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
         - publicUser
       x-permissions: []
       x-ownership: none
@@ -9357,6 +10188,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
         - publicUser
       x-permissions: []
       x-ownership: none
@@ -10402,6 +11237,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
         - publicUser
       x-permissions: []
       x-ownership: none
@@ -10472,6 +11311,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
         - publicUser
       x-permissions: []
       x-ownership: none
@@ -10540,6 +11383,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
         - publicUser
       x-permissions: []
       x-ownership: none
@@ -13834,6 +14681,8 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - customer
       x-permissions:
         - payment:readOwn
         - payment:read
@@ -13951,6 +14800,8 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - customer
       x-permissions:
         - payment:readOwn
         - payment:read
@@ -14068,6 +14919,8 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - customer
       x-permissions:
         - payment:readOwn
         - payment:read
@@ -14185,6 +15038,8 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - customer
       x-permissions:
         - payment:readOwn
         - payment:read
@@ -14303,6 +15158,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
       x-permissions: []
       x-ownership: self
       x-audited: true
@@ -14382,6 +15241,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
       x-permissions:
         - notification:readOwn
         - notification:read
@@ -14638,6 +15501,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
       x-permissions:
         - notification:updateOwn
         - notification:readOwn
@@ -16146,6 +17013,1367 @@ paths:
             'application/json':
               schema:
                 '$ref': '#/components/schemas/ErrorResponse'
+  '/listings':
+    get:
+      operationId: getListings
+      summary: Browse the marketplace catalogue
+      tags:
+        - marketplace
+      description: Defaults to published listings. A draft cannot leak into the catalogue because somebody forgot a filter.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - merchant
+        - seller
+        - customer
+        - buyer
+      x-permissions:
+        - listing:read
+      x-ownership: none
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Browse the marketplace catalogue
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/ListingList'
+                  meta:
+                    '$ref': '#/components/schemas/PageMeta'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+    post:
+      operationId: postListings
+      summary: Create a listing
+      tags:
+        - marketplace
+      description: Merchants and their sellers only. Always created as a draft — a listing goes live when `canPublish` agrees, which is a separate call.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - merchant
+        - seller
+      x-permissions:
+        - listing:create
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Listing'
+      responses:
+        '201':
+          description: Create a listing
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Listing'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/listings/me':
+    get:
+      operationId: getListingsMe
+      summary: The merchant account's own catalogue, in every state
+      tags:
+        - marketplace
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - merchant
+        - seller
+        - customer
+        - buyer
+      x-permissions:
+        - listing:read
+      x-ownership: self
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The merchant account's own catalogue, in every state
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/MerchantCatalogue'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/listing/{listingId}':
+    get:
+      operationId: getListingByListingId
+      summary: One listing
+      tags:
+        - marketplace
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - merchant
+        - seller
+        - customer
+        - buyer
+      x-permissions:
+        - listing:read
+      x-ownership: none
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '200':
+          description: One listing
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Listing'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+    patch:
+      operationId: patchListingByListingId
+      summary: Amend a listing
+      tags:
+        - marketplace
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - merchant
+        - seller
+      x-permissions:
+        - listing:update
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: false
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Listing'
+      responses:
+        '200':
+          description: Amend a listing
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Listing'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/listing/{listingId}/publish':
+    post:
+      operationId: postListingByListingIdPublish
+      summary: Put a listing live
+      tags:
+        - marketplace
+      description: Refuses with **every** problem at once rather than the first. An unverified merchant cannot publish at all — a marketplace listing unverified merchants owns its first fraud.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - merchant
+        - seller
+      x-permissions:
+        - listing:update
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '201':
+          description: Put a listing live
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Listing'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/listing/{listingId}/unpublish':
+    post:
+      operationId: postListingByListingIdUnpublish
+      summary: Withdraw a listing to draft
+      tags:
+        - marketplace
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - merchant
+        - seller
+      x-permissions:
+        - listing:update
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '201':
+          description: Withdraw a listing to draft
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Listing'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/listing/{listingId}/suspend':
+    post:
+      operationId: postListingByListingIdSuspend
+      summary: Back Office pulls a listing down
+      tags:
+        - marketplace
+      x-zone: BACK_OFFICE
+      x-roles:
+        - founder
+        - backOfficeStaff
+      x-permissions:
+        - listing:review
+        - listing:update
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/SuspendListingRequest'
+      responses:
+        '201':
+          description: Back Office pulls a listing down
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Listing'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone BACK_OFFICE is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/orders':
+    get:
+      operationId: getOrders
+      summary: Orders visible to the caller
+      tags:
+        - marketplace
+      description: Scoped in the data layer. A merchant asking for another merchant's orders gets an empty page, not a 403 that confirms the order exists.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - merchant
+        - seller
+        - customer
+        - buyer
+      x-permissions:
+        - order:read
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Orders visible to the caller
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/OrderList'
+                  meta:
+                    '$ref': '#/components/schemas/PageMeta'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+    post:
+      operationId: postOrders
+      summary: Place an order
+      tags:
+        - marketplace
+      description: The client sends listing ids and quantities only. Prices are read from the listings and copied onto the lines — a client that could name its own prices would name zero.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - customer
+        - buyer
+      x-permissions:
+        - order:create
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/PlaceOrderRequest'
+      responses:
+        '201':
+          description: Place an order
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Order'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/order/{orderId}':
+    get:
+      operationId: getOrderByOrderId
+      summary: One order, with what this caller may do next
+      tags:
+        - marketplace
+      description: '`availableActions` is derived from the lifecycle table for this caller''s side, so the client never reimplements the rules to decide which buttons to draw.'
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - merchant
+        - seller
+        - customer
+        - buyer
+      x-permissions:
+        - order:read
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '200':
+          description: One order, with what this caller may do next
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/OrderDetail'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/order/{orderId}/pay':
+    post:
+      operationId: postOrderByOrderIdPay
+      summary: Pay — funds move to LRMC, not to the merchant
+      tags:
+        - marketplace
+      description: Stock comes down here, not at draft — an unpaid order holding stock empties a catalogue without a single sale.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - merchant
+        - seller
+        - customer
+        - buyer
+      x-permissions:
+        - order:updateOwn
+        - order:update
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/PayOrderRequest'
+      responses:
+        '201':
+          description: Pay — funds move to LRMC, not to the merchant
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/OrderDetail'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/order/{orderId}/accept':
+    post:
+      operationId: postOrderByOrderIdAccept
+      summary: Merchant takes the order on
+      tags:
+        - marketplace
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - merchant
+        - seller
+      x-permissions:
+        - order:update
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '201':
+          description: Merchant takes the order on
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/OrderDetail'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/order/{orderId}/fulfil':
+    post:
+      operationId: postOrderByOrderIdFulfil
+      summary: Merchant reports delivery; the release clock starts
+      tags:
+        - marketplace
+      description: Stamps `autoReleaseAt`. Escrow with no time limit does not protect the buyer — it strips the merchant, since a buyer holding their goods has no reason ever to confirm.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - merchant
+        - seller
+      x-permissions:
+        - order:update
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/FulfilOrderRequest'
+      responses:
+        '201':
+          description: Merchant reports delivery; the release clock starts
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/OrderDetail'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/order/{orderId}/confirm':
+    post:
+      operationId: postOrderByOrderIdConfirm
+      summary: Buyer confirms receipt; escrow releases
+      tags:
+        - marketplace
+      description: The buyer confirms; the *platform* releases. No transition anywhere lets a merchant release their own escrow.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - merchant
+        - seller
+        - customer
+        - buyer
+      x-permissions:
+        - order:updateOwn
+        - order:update
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '201':
+          description: Buyer confirms receipt; escrow releases
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/OrderSettlement'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/order/{orderId}/cancel':
+    post:
+      operationId: postOrderByOrderIdCancel
+      summary: Cancel an order
+      tags:
+        - marketplace
+      description: A buyer may cancel freely for 24 hours. After that the merchant may have bought materials or turned down other work, so it needs them or Back Office.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - merchant
+        - seller
+        - customer
+        - buyer
+      x-permissions:
+        - order:updateOwn
+        - order:update
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/CancelOrderRequest'
+      responses:
+        '201':
+          description: Cancel an order
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/OrderDetail'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/order/{orderId}/dispute':
+    post:
+      operationId: postOrderByOrderIdDispute
+      summary: Raise a dispute; funds freeze
+      tags:
+        - marketplace
+      description: Clears `autoReleaseAt`, so a disputed order cannot quietly pay out while Back Office is reading it.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - merchant
+        - seller
+        - customer
+        - buyer
+      x-permissions:
+        - order:updateOwn
+        - order:update
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/DisputeOrderRequest'
+      responses:
+        '201':
+          description: Raise a dispute; funds freeze
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/OrderDetail'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/order/{orderId}/resolve':
+    post:
+      operationId: postOrderByOrderIdResolve
+      summary: Back Office rules on a dispute
+      tags:
+        - marketplace
+      description: The only human step in the marketplace. Commission is returned pro rata on a partial refund — keeping it in full would mean LRMC profits proportionally more the worse the service was.
+      x-zone: BACK_OFFICE
+      x-roles:
+        - founder
+        - backOfficeStaff
+      x-permissions:
+        - order:update
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/ResolveDisputeRequest'
+      responses:
+        '201':
+          description: Back Office rules on a dispute
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/OrderSettlement'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone BACK_OFFICE is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/marketplace/overview':
+    get:
+      operationId: getMarketplaceOverview
+      summary: Marketplace dashboard figures for the caller
+      tags:
+        - marketplace
+      description: Answers as merchant or as customer depending on which account the caller holds.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - merchant
+        - seller
+        - customer
+        - buyer
+      x-permissions:
+        - marketplace:read
+      x-ownership: self
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Marketplace dashboard figures for the caller
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/MarketplaceOverview'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
   '/fac/lockouts':
     get:
       operationId: getFacLockouts
@@ -16683,6 +18911,10 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
       x-permissions: []
       x-ownership: self
       security:
@@ -16870,6 +19102,9 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
       x-permissions:
         - document:create
       x-ownership: none
@@ -16951,6 +19186,9 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
       x-permissions:
         - document:read
         - document:readOwn
@@ -17026,6 +19264,7 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
       x-permissions:
         - document:update
         - document:updateOwn
@@ -17165,6 +19404,9 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
       x-permissions:
         - document:create
         - document:updateOwn
@@ -17794,6 +20036,9 @@ paths:
         - driver
         - rider
         - advertiser
+        - merchant
+        - seller
+        - customer
       x-permissions:
         - document:readOwn
         - document:read
@@ -18106,6 +20351,1278 @@ paths:
                 '$ref': '#/components/schemas/ErrorResponse'
         '422':
           description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/merchant/me':
+    get:
+      operationId: getMerchantMe
+      summary: Read the caller's own merchant profile
+      tags:
+        - merchant
+      description: Record resolved from the token, never from the URL. Declared before the `:id` route — otherwise Express parses `me` as an id.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - merchant
+        - seller
+      x-permissions:
+        - merchantProfile:readOwn
+      x-ownership: self
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Read the caller's own merchant profile
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Merchant'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+    patch:
+      operationId: patchMerchantMe
+      summary: Update the caller's own merchant profile
+      tags:
+        - merchant
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - merchant
+      x-permissions:
+        - merchantProfile:updateOwn
+      x-ownership: self
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Merchant'
+      responses:
+        '200':
+          description: Update the caller's own merchant profile
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Merchant'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/merchants':
+    get:
+      operationId: getMerchants
+      summary: List merchant profiles
+      tags:
+        - merchant
+      x-zone: BACK_OFFICE
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+      x-permissions:
+        - merchantProfile:read
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sort
+          in: query
+          schema:
+            type: string
+          description: Mongoose sort, e.g. `-createdAt`.
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 120
+        - name: includeDeleted
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: verificationStatus
+          in: query
+          schema:
+            type: string
+        - name: region
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List merchant profiles
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    type: array
+                    items:
+                      '$ref': '#/components/schemas/Merchant'
+                  meta:
+                    '$ref': '#/components/schemas/PageMeta'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone BACK_OFFICE is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+    post:
+      operationId: postMerchants
+      summary: Create a merchant profile
+      tags:
+        - merchant
+      x-zone: BACK_OFFICE
+      x-roles:
+        - founder
+        - backOfficeStaff
+      x-permissions:
+        - merchantProfile:create
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Merchant'
+      responses:
+        '201':
+          description: Create a merchant profile
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Merchant'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone BACK_OFFICE is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/merchant/{merchantId}':
+    get:
+      operationId: getMerchantByMerchantId
+      summary: Read one merchant profile
+      tags:
+        - merchant
+      x-zone: BACK_OFFICE
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+      x-permissions:
+        - merchantProfile:read
+        - merchantProfile:readOwn
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '200':
+          description: Read one merchant profile
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Merchant'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone BACK_OFFICE is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+    patch:
+      operationId: patchMerchantByMerchantId
+      summary: Update one merchant profile
+      tags:
+        - merchant
+      x-zone: BACK_OFFICE
+      x-roles:
+        - founder
+        - backOfficeStaff
+      x-permissions:
+        - merchantProfile:update
+        - merchantProfile:updateOwn
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: false
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Merchant'
+      responses:
+        '200':
+          description: Update one merchant profile
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Merchant'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone BACK_OFFICE is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+    delete:
+      operationId: deleteMerchantByMerchantId
+      summary: Archive a merchant profile (soft delete)
+      tags:
+        - merchant
+      description: Sets deletedAt and status=archived. Nothing is removed from the collection.
+      x-zone: BACK_OFFICE
+      x-roles:
+        - founder
+        - backOfficeStaff
+      x-permissions:
+        - merchantProfile:delete
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '204':
+          description: No content. The record is archived, not removed.
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone BACK_OFFICE is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/merchant/{merchantId}/verify':
+    patch:
+      operationId: patchMerchantByMerchantIdVerify
+      summary: Advance verification on a merchant profile
+      tags:
+        - merchant
+      description: Back Office act. `verified` stamps verifiedAt/verifiedBy; `rejected` requires a note.
+      x-zone: BACK_OFFICE
+      x-roles:
+        - founder
+        - backOfficeStaff
+      x-permissions:
+        - merchantProfile:verify
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: false
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/VerificationRequest'
+      responses:
+        '200':
+          description: Advance verification on a merchant profile
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Merchant'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone BACK_OFFICE is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/merchant/{merchantId}/restore':
+    post:
+      operationId: postMerchantByMerchantIdRestore
+      summary: Restore an archived merchant profile
+      tags:
+        - merchant
+      x-zone: BACK_OFFICE
+      x-roles:
+        - founder
+        - backOfficeStaff
+      x-permissions:
+        - merchantProfile:update
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '201':
+          description: Restore an archived merchant profile
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Merchant'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone BACK_OFFICE is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/customer/me':
+    get:
+      operationId: getCustomerMe
+      summary: Read the caller's own customer profile
+      tags:
+        - customer
+      description: Record resolved from the token, never from the URL. Declared before the `:id` route — otherwise Express parses `me` as an id.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - customer
+        - buyer
+      x-permissions:
+        - customerProfile:readOwn
+      x-ownership: self
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Read the caller's own customer profile
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Customer'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+    patch:
+      operationId: patchCustomerMe
+      summary: Update the caller's own customer profile
+      tags:
+        - customer
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - customer
+      x-permissions:
+        - customerProfile:updateOwn
+      x-ownership: self
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Customer'
+      responses:
+        '200':
+          description: Update the caller's own customer profile
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Customer'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/customers':
+    get:
+      operationId: getCustomers
+      summary: List customer profiles
+      tags:
+        - customer
+      x-zone: BACK_OFFICE
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+      x-permissions:
+        - customerProfile:read
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sort
+          in: query
+          schema:
+            type: string
+          description: Mongoose sort, e.g. `-createdAt`.
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 120
+        - name: includeDeleted
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: verificationStatus
+          in: query
+          schema:
+            type: string
+        - name: region
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List customer profiles
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    type: array
+                    items:
+                      '$ref': '#/components/schemas/Customer'
+                  meta:
+                    '$ref': '#/components/schemas/PageMeta'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone BACK_OFFICE is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+    post:
+      operationId: postCustomers
+      summary: Create a customer profile
+      tags:
+        - customer
+      x-zone: BACK_OFFICE
+      x-roles:
+        - founder
+        - backOfficeStaff
+      x-permissions:
+        - customerProfile:create
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Customer'
+      responses:
+        '201':
+          description: Create a customer profile
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Customer'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone BACK_OFFICE is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/customer/{customerId}':
+    get:
+      operationId: getCustomerByCustomerId
+      summary: Read one customer profile
+      tags:
+        - customer
+      x-zone: BACK_OFFICE
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+      x-permissions:
+        - customerProfile:read
+        - customerProfile:readOwn
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '200':
+          description: Read one customer profile
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Customer'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone BACK_OFFICE is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+    patch:
+      operationId: patchCustomerByCustomerId
+      summary: Update one customer profile
+      tags:
+        - customer
+      x-zone: BACK_OFFICE
+      x-roles:
+        - founder
+        - backOfficeStaff
+      x-permissions:
+        - customerProfile:update
+        - customerProfile:updateOwn
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: false
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/Customer'
+      responses:
+        '200':
+          description: Update one customer profile
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Customer'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone BACK_OFFICE is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+    delete:
+      operationId: deleteCustomerByCustomerId
+      summary: Archive a customer profile (soft delete)
+      tags:
+        - customer
+      description: Sets deletedAt and status=archived. Nothing is removed from the collection.
+      x-zone: BACK_OFFICE
+      x-roles:
+        - founder
+        - backOfficeStaff
+      x-permissions:
+        - customerProfile:delete
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '204':
+          description: No content. The record is archived, not removed.
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone BACK_OFFICE is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/customer/{customerId}/verify':
+    patch:
+      operationId: patchCustomerByCustomerIdVerify
+      summary: Advance verification on a customer profile
+      tags:
+        - customer
+      description: Back Office act. `verified` stamps verifiedAt/verifiedBy; `rejected` requires a note.
+      x-zone: BACK_OFFICE
+      x-roles:
+        - founder
+        - backOfficeStaff
+      x-permissions:
+        - customerProfile:verify
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: false
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/VerificationRequest'
+      responses:
+        '200':
+          description: Advance verification on a customer profile
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Customer'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone BACK_OFFICE is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/customer/{customerId}/restore':
+    post:
+      operationId: postCustomerByCustomerIdRestore
+      summary: Restore an archived customer profile
+      tags:
+        - customer
+      x-zone: BACK_OFFICE
+      x-roles:
+        - founder
+        - backOfficeStaff
+      x-permissions:
+        - customerProfile:update
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '201':
+          description: Restore an archived customer profile
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Customer'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone BACK_OFFICE is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
           content:
             'application/json':
               schema:
@@ -26790,4 +30307,8 @@ x-roles-catalogue:
   - driver
   - rider
   - advertiser
+  - merchant
+  - seller
+  - customer
+  - buyer
   - publicUser

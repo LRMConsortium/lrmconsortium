@@ -13,6 +13,7 @@ import { auth } from './auth.js';
 import { blueprint } from './blueprint.js';
 import { commercialClients } from './commercialClients.js';
 import { coordinators } from './coordinators.js';
+import { customer } from './customer.js';
 import { documents } from './documents.js';
 import { drivers } from './drivers.js';
 import { fac } from './fac.js';
@@ -24,6 +25,8 @@ import { hqExecutives } from './hqExecutives.js';
 import { landlords } from './landlords.js';
 import { leases } from './leases.js';
 import { maintenanceRequests } from './maintenanceRequests.js';
+import { marketplace } from './marketplace.js';
+import { merchant } from './merchant.js';
 import { notifications } from './notifications.js';
 import { payments } from './payments.js';
 import { payoutBatches } from './payoutBatches.js';
@@ -46,6 +49,7 @@ export { auth, META as authMeta, type AuthApi } from './auth.js';
 export { blueprint, META as blueprintMeta, type BlueprintApi } from './blueprint.js';
 export { commercialClients, META as commercialClientsMeta, type CommercialClientsApi } from './commercialClients.js';
 export { coordinators, META as coordinatorsMeta, type CoordinatorsApi } from './coordinators.js';
+export { customer, META as customerMeta, type CustomerApi } from './customer.js';
 export { documents, META as documentsMeta, type DocumentsApi } from './documents.js';
 export { drivers, META as driversMeta, type DriversApi } from './drivers.js';
 export { fac, META as facMeta, type FacApi } from './fac.js';
@@ -57,6 +61,8 @@ export { hqExecutives, META as hqExecutivesMeta, type HqExecutivesApi } from './
 export { landlords, META as landlordsMeta, type LandlordsApi } from './landlords.js';
 export { leases, META as leasesMeta, type LeasesApi } from './leases.js';
 export { maintenanceRequests, META as maintenanceRequestsMeta, type MaintenanceRequestsApi } from './maintenanceRequests.js';
+export { marketplace, META as marketplaceMeta, type MarketplaceApi } from './marketplace.js';
+export { merchant, META as merchantMeta, type MerchantApi } from './merchant.js';
 export { notifications, META as notificationsMeta, type NotificationsApi } from './notifications.js';
 export { payments, META as paymentsMeta, type PaymentsApi } from './payments.js';
 export { payoutBatches, META as payoutBatchesMeta, type PayoutBatchesApi } from './payoutBatches.js';
@@ -86,6 +92,7 @@ export const api = {
   blueprint,
   commercialClients,
   coordinators,
+  customer,
   documents,
   drivers,
   fac,
@@ -97,6 +104,8 @@ export const api = {
   landlords,
   leases,
   maintenanceRequests,
+  marketplace,
+  merchant,
   notifications,
   payments,
   payoutBatches,

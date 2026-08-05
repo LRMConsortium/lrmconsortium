@@ -516,6 +516,8 @@ async function main(): Promise<void> {
     // Operational surfaces
     'leases', 'maintenanceRequests', 'rides', 'payments', 'notifications',
     'commercialClients', 'payoutBatches', 'documents', 'fac', 'governance',
+    // Marketplace: two party collections plus listings, orders and the overview
+    'merchant', 'customer', 'marketplace',
   ];
   for (const name of EXPECTED_MODULES) {
     check(`module ${name} exists`, name in api, `missing from the api surface`);
@@ -925,7 +927,7 @@ async function main(): Promise<void> {
   // ═══════════════════════════════════════════════════════════════════════
   section('Generated constants');
 
-  eq('15 roles', ROLES.length, 15);
+  eq('19 roles', ROLES.length, 19);
   eq('5 HQ zones', HQ_ZONES.length, 5);
   check('roles include founder', (ROLES as readonly string[]).includes('founder'));
   check('zones include the Founder Command Center', (HQ_ZONES as readonly string[]).includes('FOUNDER_COMMAND_CENTER'));
