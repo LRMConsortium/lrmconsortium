@@ -10,14 +10,14 @@ no network. Run from the frontend/ folder:
 
     python3 verify-hq.py
 """
-import json, sys, http.server, socketserver, threading, pathlib
+import json, re, sys, http.server, socketserver, threading, pathlib
 from playwright.sync_api import sync_playwright
 
-ROOT='/home/claude/lrmconsortium/frontend'
+ROOT = pathlib.Path(__file__).parent
 FIX=json.loads(pathlib.Path('/tmp/fixtures.json').read_text())
 
 class H(http.server.SimpleHTTPRequestHandler):
-    def __init__(s,*a,**k): super().__init__(*a,directory=ROOT,**k)
+    def __init__(s,*a,**k): super().__init__(*a,directory=str(ROOT),**k)
     def log_message(s,*a): pass
     def do_GET(s):
         b=s.path.split('?')[0]
@@ -32,6 +32,20 @@ class H(http.server.SimpleHTTPRequestHandler):
     def _raw(s,body,ct):
         s.send_response(200); s.send_header('Content-Type',ct)
         s.send_header('Content-Length',str(len(body))); s.end_headers(); s.wfile.write(body)
+
+
+# Swap the CDN scripts for local stand-ins. The page itself is not modified.
+_src = (ROOT / 'hq/index.html').read_text()
+_t = _src
+_t = _t.replace('<script src="https://cdn.tailwindcss.com"></script>',
+                '<link rel="stylesheet" href="/__t/tw-subset.css" /><script src="/__t/tailwind-double.js"></script>')
+_t = _t.replace('<script src="https://unpkg.com/htmx.org@1.9.12"></script>', '<script src="/__t/htmx-double.js"></script>')
+_t = _t.replace('<script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>', '<script src="/__t/alpine-double.js" defer></script>')
+_t = _t.replace('<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>', '<script src="/__t/lucide-double.js" defer></script>')
+_t = re.sub(r'<link href="https://fonts\.googleapis[^>]*>', '', _t)
+_t = re.sub(r'<link rel="preconnect"[^>]*>', '', _t)
+assert 'unpkg' not in _t and 'cdn.tailwindcss' not in _t, 'a CDN reference survived'
+pathlib.Path('/tmp/hq-under-test.html').write_text(_t)
 
 socketserver.TCPServer.allow_reuse_address = True
 srv = socketserver.TCPServer(('127.0.0.1', 0), H)
@@ -52,8 +66,13 @@ with sync_playwright() as p:
     print('— headline tiles —')
     check('four tiles',pg.locator('#hq-headline .lrmc-stat').count()==4)
     head=pg.inner_text('#hq-headline')
-    check('Ghana Cedi formatting','GH₵' in head or '₵' in head)
-    check('compact form for headline figures',any(x in head for x in ['1.3M','1.28M','1.2M']))
+    # LRMC launches in The Gambia: `D 1,000`, symbol then space then amount.
+    check('Gambian Dalasi formatting', head.startswith('D '))
+    check('and no Cedi survives anywhere on the page', '₵' not in pg.content())
+    # The locked stat card puts the value above its label.
+    check('the value leads the tile, the label follows',
+          head.index('D 1') < head.index('Rent collected'))
+    check('compact form for headline figures', any(x in head for x in ['1.3M','1.28M','1.2M']))
     check('no skeleton left',pg.locator('#hq-headline .lrmc-skeleton').count()==0)
     check('trend shows arrow + word','▲' in head and 'vs last month' in head)
     check('counts rendered','342' in head)
@@ -64,7 +83,7 @@ with sync_playwright() as p:
     check('every bar has a hover title',pg.locator('#hq-collections svg title').count()==12)
     check('aria-label present',bool(pg.get_attribute('#hq-collections svg','aria-label')))
     texts=[t or '' for t in pg.locator('#hq-collections svg text').all_text_contents()]
-    money=[t for t in texts if 'GH' in t or '₵' in t]
+    money=[t for t in texts if t.strip().startswith('D ')]
     check('axis ticks + exactly one bar figure (4 money labels)',len(money)==4)
     check('month labels present',sum(1 for t in texts if t.strip() in
         ['Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May','Jun','Jul'])==12)
@@ -126,8 +145,10 @@ with sync_playwright() as p:
     # screen reader reads the brand three times — strictly, alt="" would be
     # the accessible choice here. The brand requirement is explicit, so it
     # wins, and this records that the trade-off was seen rather than missed.
-    check('logo carries the branded alt text',
-          pg.get_attribute('aside img', 'alt') == 'LRMC Logo')
+    # Decorative by decision: the mark sits beside the words "LRMC" and the
+    # full institution name, so a non-empty alt makes a screen reader announce
+    # the brand three times over.
+    check('the logo is marked decorative', pg.get_attribute('aside img', 'alt') == '')
 
     print('— responsive —')
     pg.set_viewport_size({'width':390,'height':844}); pg.wait_for_timeout(600)

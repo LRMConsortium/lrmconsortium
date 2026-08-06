@@ -110,7 +110,7 @@ with sync_playwright() as p:
     head = pg.inner_text('#mk-headline')
     check('four tiles', pg.locator('#mk-headline .lrmc-stat').count() == 4)
     check('escrow is the first figure', 'ESCROW' in head.upper().split('\n')[0])
-    check('and shows the held value', 'GH₵' in head)
+    check('and shows the held value in Dalasi', 'D ' in head and '₵' not in head)
     check('merchant sees commission paid', 'commission' in head.lower())
     check('no skeletons left', pg.locator('#mk-headline .lrmc-skeleton').count() == 0)
     check('account named in the header', 'Gold Coast' in pg.inner_text('#hdr-account'))
@@ -133,7 +133,7 @@ with sync_playwright() as p:
     body = pg.inner_text('#mk-orders')
     check('escrow orders say the money is held by LRMC', 'held by LRMC' in body)
     check('a released order does not', body.count('held by LRMC') == 2)
-    check('merchant net shown in the table', '4,140' in body or '4140' in body)
+    check('merchant net shown in the table', '4,140' in body)
     check('statuses carry words', 'PAID' in body.upper() and 'DISPUTED' in body.upper())
 
     print('— customer view —')

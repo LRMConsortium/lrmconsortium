@@ -82,7 +82,7 @@ const paymentSchema = new Schema<IPayment>(
     payeeKind: { type: String },
 
     amount: { type: Number, required: true, min: 0 },
-    currency: { type: String, enum: CURRENCIES, default: 'GHS' },
+    currency: { type: String, enum: CURRENCIES, default: 'GMD' },
     method: { type: String, enum: PAYMENT_METHODS, default: 'mobileMoney' },
     platformFee: { type: Number, min: 0, default: 0 },
     netAmount: { type: Number, min: 0, default: 0 },

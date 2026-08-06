@@ -53,7 +53,7 @@ export const MERCHANT_CATEGORY = [
 export const ID_TYPE = ['ghanaCard', 'passport', 'driversLicense', 'votersId', 'nationalId', 'ssnit', 'other'];
 export const CONTACT_METHOD = ['phone', 'whatsapp', 'email', 'sms', 'inApp'];
 export const PAYMENT_METHOD = ['mobileMoney', 'bankTransfer', 'cash', 'card', 'cheque', 'crypto'];
-export const CURRENCY = ['GHS', 'USD', 'EUR', 'GBP', 'NGN', 'XOF'];
+export const CURRENCY = ['GMD', 'GHS', 'USD', 'EUR', 'GBP', 'NGN', 'XOF'];
 export const DIASPORA_STATUS = ['resident', 'diaspora', 'returnee', 'dualBased'];
 export const SERVICE_TIER = ['basic', 'standard', 'premium'];
 export const REPORTING_FREQUENCY = ['daily', 'weekly', 'monthly', 'quarterly'];
@@ -367,7 +367,7 @@ const RESOURCES: Record<string, JsonSchema> = {
       diasporaStatus: str({ enum: DIASPORA_STATUS, default: 'resident' }),
       payoutMethod: str({ enum: PAYMENT_METHOD, default: 'bankTransfer' }),
       payoutAccountRef: str({ writeOnly: true }),
-      payoutCurrency: str({ enum: CURRENCY, default: 'GHS' }),
+      payoutCurrency: str({ enum: CURRENCY, default: 'GMD' }),
       managementFeePercent: num({ minimum: 0, maximum: 100, default: 10 }),
       statementFrequency: str({ enum: ['monthly', 'quarterly', 'annually'] }),
     },
@@ -388,7 +388,7 @@ const RESOURCES: Record<string, JsonSchema> = {
       leaseStart: date(),
       leaseEnd: date(),
       monthlyRent: num({ minimum: 0 }),
-      rentCurrency: str({ enum: CURRENCY, default: 'GHS' }),
+      rentCurrency: str({ enum: CURRENCY, default: 'GMD' }),
       securityDeposit: num({ minimum: 0 }),
       paymentMethod: str({ enum: PAYMENT_METHOD, default: 'mobileMoney' }),
       rentDueDay: int({ minimum: 1, maximum: 31, default: 1 }),
@@ -1046,7 +1046,7 @@ const RESOURCES: Record<string, JsonSchema> = {
       leaseStart: date(),
       leaseEnd: date(),
       monthlyRent: num({ minimum: 0 }),
-      currency: str({ enum: CURRENCY, default: 'GHS' }),
+      currency: str({ enum: CURRENCY, default: 'GMD' }),
       paymentDayOfMonth: int({ minimum: 1, maximum: 31, default: 1 }),
       securityDeposit: num({ minimum: 0 }),
       depositHeldBy: str({ enum: ['LRMC', 'landlord', 'escrow'] }),

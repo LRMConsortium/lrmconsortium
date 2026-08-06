@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<!--
+ ═══════════════════════════════════════════════════════════════════════════
+ LEGACY RENTAL MANAGEMENT CONSORTIUM (LRMC)
+ SIGN IN
+
+ Extends layouts/auth.html. One centred card, no navigation — a person on this
+ page has exactly one job, and every link away from it is a way to fail at it.
+
+ Posts to POST /api/v1/auth/login through the LRMC SDK rather than raw HTMX.
+ Authentication is the one flow that cannot be a fragment swap: the response
+ carries a token that has to be stored, an actor that decides where the person
+ lands, and refusals that need different words. HTMX handles the rest of the
+ platform; this page handles the door.
+
+ Five decisions worth not undoing:
+
+ 1. **Wrong email and wrong password give the same message.** "No account with
+    that email" tells an attacker which addresses are worth attacking. LRMC
+    holds identity documents and bank references; the account list is not
+    something to give away one probe at a time.
+
+ 2. **The person lands where their role belongs.** A tenant sent to the HQ
+    dashboard sees a permission error on their first ever screen and concludes
+    the platform is broken. `destinationFor()` reads the actor the server
+    returned.
+
+ 3. **`?next=` is honoured but never trusted.** Only same-origin paths — an
+    open redirect on a login page is how a phishing link borrows your domain.
+
+ 4. **The form works without JavaScript running yet.** Real `<form>`, real
+    `type="submit"`, real `action`. If the script has not loaded, the browser
+    still posts rather than silently doing nothing.
+
+ 5. **Failures are announced.** `aria-live` on the error region, and focus
+    returns to the email field — a screen-reader user must not be left in
+    silence wondering whether the button worked.
+ ═══════════════════════════════════════════════════════════════════════════
+-->
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign in · Legacy Rental Management Consortium</title>
+  <meta name="description" content="Sign in to the Legacy Rental Management Consortium platform." />
+
+  <link rel="icon" href="/assets/img/lrmc-favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: {
+      colors: {
+        /* LRMC branding-locked palette */
+        lrmc: { blue:'#1E3A8A', gold:'#D4AF37', slate:'#334155' },
+        blue: { 100:'#DBEAFE', 300:'#93C5FD', 500:'#3B82F6', 600:'#2563EB', 700:'#1D4ED8', 800:'#1E3A8A', 900:'#172554' },
+        slate:{ 50:'#F8FAFC', 100:'#F1F5F9', 200:'#E2E8F0', 300:'#CBD5E1', 400:'#94A3B8', 500:'#64748B', 700:'#334155', 800:'#1E293B', 900:'#0F172A' },
+        emerald:{ 50:'#ECFDF5', 100:'#D1FAE5', 500:'#10B981', 600:'#059669', 700:'#047857' },
+        amber:{ 50:'#FFFBEB', 100:'#FEF3C7', 500:'#F59E0B', 600:'#D97706', 700:'#B45309' },
+        rose:{ 50:'#FFF1F2', 100:'#FFE4E6', 600:'#E11D48', 700:'#BE123C' },
+        gold: { 100:'#FBF6E5', 500:'#D4AF37', 700:'#8A6D1C' },
+      },
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+    } } };
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/theme.css" />
+  <link rel="stylesheet" href="/assets/css/utilities.css" />
+
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="/assets/js/sdk.js" defer></script>
+  <script src="/assets/js/auth.js" defer></script>
+  <script src="/assets/js/ui.js" defer></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+
+  <style>[x-cloak] { display: none !important; }</style>
+</head>
+
+<body class="h-full antialiased flex flex-col items-center justify-center p-4">
+
+  <main id="lrmc-main" class="w-full max-w-md">
+
+    <!-- LRMC mark. Decorative: the institution's name is written beneath it in
+         text, so a screen reader should not announce the brand twice. -->
+    <div class="flex flex-col items-center mb-8">
+      <img src="/assets/img/lrmc-logo.svg" alt="" class="w-14 h-14 mb-3" />
+      <p class="text-xl font-bold text-blue-800 tracking-wide">LRMC</p>
+      <p class="text-sm text-slate-500 text-center mt-1">Legacy Rental Management Consortium</p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-md p-6">
+
+      <h1 class="text-xl font-semibold text-slate-900 mb-1">Sign in</h1>
+      <p class="text-sm text-slate-600 mb-6">Access your LRMC portal.</p>
+
+      <!-- Announced to assistive technology the moment it fills. Empty and
+           `hidden` until then, so it is not read out as a blank region. -->
+      <div id="login-error" role="alert" aria-live="assertive"
+           class="mb-4 px-4 py-3 rounded-lg bg-rose-50 text-rose-700 text-sm" hidden></div>
+
+      <!--
+        A real form with a real action. If the LRMC scripts have not finished
+        loading, pressing Enter still posts rather than doing nothing silently.
+        `novalidate` is deliberately absent: browser validation is free, works
+        without script, and is announced properly.
+      -->
+      <form id="login-form" method="post" action="/api/v1/auth/login" class="space-y-4">
+
+        <div>
+          <label class="lrmc-label" for="email">Email</label>
+          <input class="lrmc-input" id="email" name="email" type="email"
+                 autocomplete="username" required autofocus
+                 placeholder="you@africalrmc.com" />
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <label class="lrmc-label !mb-0" for="password">Password</label>
+            <a href="/public/reset.html" class="text-sm font-medium text-blue-600 hover:text-blue-700">
+              Forgot?
+            </a>
+          </div>
+
+          <!-- The reveal toggle is a real button with a live label, not an
+               icon that changes silently. Somebody typing a long password on a
+               phone keyboard needs to be able to check it. -->
+          <div class="relative" x-data="{ shown: false }">
+            <input class="lrmc-input pr-12" id="password" name="password"
+                   :type="shown ? 'text' : 'password'" type="password"
+                   autocomplete="current-password" required minlength="8" />
+            <button type="button" @click="shown = !shown"
+                    class="absolute inset-y-0 right-0 px-3 flex items-center text-slate-400
+                           hover:text-slate-600 transition rounded-r-lg"
+                    :aria-label="shown ? 'Hide password' : 'Show password'"
+                    aria-label="Show password">
+              <i data-lucide="eye" class="w-4 h-4" x-show="!shown"></i>
+              <i data-lucide="eye-off" class="w-4 h-4" x-show="shown" x-cloak></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <input type="checkbox" id="remember" name="remember"
+                 class="w-4 h-4 rounded border-slate-300 text-blue-600" />
+          <label for="remember" class="text-sm text-slate-600">Keep me signed in on this device</label>
+        </div>
+
+        <button type="submit" id="login-submit"
+                class="lrmc-btn lrmc-btn-primary w-full">
+          <span id="login-submit-label">Sign in</span>
+          <span id="login-spinner" hidden>
+            <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+          </span>
+        </button>
+      </form>
+
+      <p class="text-sm text-slate-600 text-center mt-6">
+        No account?
+        <a href="/public/register.html" class="font-medium text-blue-600 hover:text-blue-700">Register</a>
+      </p>
+    </div>
+
+    <p class="text-sm text-slate-500 text-center mt-6">
+      © <span class="lrmc-year"></span> Legacy Rental Management Consortium
+    </p>
+  </main>
+
+  <div id="lrmc-toasts" aria-live="polite" class="fixed top-4 right-4 z-50 flex flex-col gap-2 items-end"></div>
+
+<script>
+document.querySelectorAll('.lrmc-year').forEach(function (el) {
+  el.textContent = new Date().getFullYear();
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Where does this person go after signing in?
+ *
+ * Read from the actor the server returned, not from anything the client
+ * decided. A tenant dropped on the HQ dashboard meets a permission error on
+ * their first ever screen and concludes the platform is broken — which is a
+ * support call, and a bad first impression that is hard to undo.
+ *
+ * Ordered most-privileged first: somebody who is both a founder and a landlord
+ * lands on the surface that subsumes the other.
+ * ──────────────────────────────────────────────────────────────────────── */
+var ROLE_HOME = [
+  ['founder',         '/hq/index.html'],
+  ['hqExecutive',     '/hq/index.html'],
+  ['backOfficeStaff', '/staff/index.html'],
+  ['coordinator',     '/staff/index.html'],
+  ['merchant',        '/marketplace/index.html'],
+  ['seller',          '/marketplace/index.html'],
+  ['customer',        '/marketplace/index.html'],
+  ['buyer',           '/marketplace/index.html'],
+];
+
+function destinationFor(actor) {
+  var roles = (actor && actor.roles) || [];
+  for (var i = 0; i < ROLE_HOME.length; i++) {
+    if (roles.indexOf(ROLE_HOME[i][0]) !== -1) return ROLE_HOME[i][1];
+  }
+  /* Everyone else — landlords, tenants, drivers, riders, vendors — is a
+   * member. It is the largest group, so it is the fallback rather than a
+   * long list that has to be kept in step with `config/roles.ts`. */
+  return '/members/index.html';
+}
+
+/**
+ * A `?next=` path, if it is safe to use.
+ *
+ * Only same-origin *paths*. `//evil.example` and `https://evil.example` are
+ * both rejected — an open redirect on a login page is how a phishing link
+ * borrows an institution's domain and its trust along with it.
+ */
+function safeNext() {
+  var raw = new URLSearchParams(location.search).get('next');
+  if (!raw) return null;
+  var decoded;
+  try { decoded = decodeURIComponent(raw); } catch (e) { return null; }
+
+  if (decoded.charAt(0) !== '/') return null;      // must be a path
+  if (decoded.charAt(1) === '/') return null;      // protocol-relative
+  if (decoded.charAt(1) === '\\') return null;     // backslash trick
+  if (/^\/+[a-z][a-z0-9+.-]*:/i.test(decoded)) return null; // scheme smuggled in
+  return decoded;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Submit
+ * ──────────────────────────────────────────────────────────────────────── */
+
+var form = document.getElementById('login-form');
+var errorBox = document.getElementById('login-error');
+var submit = document.getElementById('login-submit');
+var label = document.getElementById('login-submit-label');
+var spinner = document.getElementById('login-spinner');
+
+function showError(message) {
+  errorBox.textContent = message;
+  errorBox.hidden = false;
+  /* Focus back to the top of the form. A screen-reader user who pressed the
+   * button must not be left in silence at the bottom of the page. */
+  document.getElementById('email').focus();
+}
+
+function busy(on) {
+  submit.disabled = on;
+  label.hidden = on;
+  spinner.hidden = !on;
+}
+
+form.addEventListener('submit', function (evt) {
+  evt.preventDefault();
+  errorBox.hidden = true;
+
+  var email = document.getElementById('email').value.trim();
+  var password = document.getElementById('password').value;
+  if (!email || !password) return;
+
+  busy(true);
+
+  LrmcAuth.signIn({ email: email, password: password })
+    .then(function (actor) {
+      /* `replace`, not `assign`: the back button must not return somebody to
+       * a login form they have already passed through. */
+      location.replace(safeNext() || destinationFor(actor));
+    })
+    .catch(function (err) {
+      busy(false);
+
+      /* One message for a wrong email and a wrong password alike. Telling an
+       * attacker which addresses exist turns the login form into a directory
+       * of the institution's members, one probe at a time. */
+      if (err.status === 401 || err.status === 400 || err.code === 'VALIDATION_FAILED') {
+        showError('That email and password do not match. Please try again.');
+        return;
+      }
+      if (err.status === 423 || err.code === 'LOCKED') {
+        showError('This account is locked. Contact LRMC support to unlock it.');
+        return;
+      }
+      if (err.status === 429) {
+        showError('Too many attempts. Wait a few minutes and try again.');
+        return;
+      }
+      if (err.status === 403) {
+        showError('This account is not permitted to sign in. Contact LRMC support.');
+        return;
+      }
+      /* Anything else is ours, not theirs — say so rather than implying they
+       * typed something wrong. */
+      showError('We could not sign you in just now. Please try again shortly.');
+    });
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+  if (window.lucide) window.lucide.createIcons();
+
+  /* Already signed in? Do not make somebody re-enter a password they have
+   * already given. */
+  if (window.LrmcAuth && LrmcAuth.isSignedIn()) {
+    location.replace(safeNext() || destinationFor(LrmcAuth.actor()));
+  }
+});
+</script>
+</body>
+</html>

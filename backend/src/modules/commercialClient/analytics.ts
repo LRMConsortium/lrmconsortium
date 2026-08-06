@@ -125,7 +125,7 @@ export interface RevenueKpis {
 const REVENUE_KINDS = ['rent', 'deposit', 'ride'];
 
 export function revenueKpis(input: PortfolioInput): RevenueKpis {
-  const currency = input.currency ?? 'GHS';
+  const currency = input.currency ?? 'GMD';
   const inWindow = (row: PortfolioLedgerRow): boolean => {
     if (!row.paidAt) return false;
     if (input.from && row.paidAt.getTime() < input.from.getTime()) return false;

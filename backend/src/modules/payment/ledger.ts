@@ -163,7 +163,7 @@ export function buildPayoutBatch(
 
   return {
     kind,
-    currency: currency ?? lines[0]?.currency ?? 'GHS',
+    currency: currency ?? lines[0]?.currency ?? 'GMD',
     lines,
     lineCount: lines.length,
     gross: money(lines.reduce((sum, l) => sum + l.gross, 0)),
@@ -208,7 +208,7 @@ export interface EarningsSummary {
   byKind: Record<string, { count: number; gross: number; net: number }>;
 }
 
-export function summariseEarnings(rows: LedgerRow[], currency = 'GHS'): EarningsSummary {
+export function summariseEarnings(rows: LedgerRow[], currency = 'GMD'): EarningsSummary {
   const scoped = rows.filter((r) => r.currency === currency && r.status === 'succeeded');
   const byKind: EarningsSummary['byKind'] = {};
 

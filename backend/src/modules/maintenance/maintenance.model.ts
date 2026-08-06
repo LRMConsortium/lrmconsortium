@@ -99,7 +99,7 @@ const maintenanceRequestSchema = new Schema<IMaintenanceRequest>(
     quotedAmount: { type: Number, min: 0 },
     approvedAmount: { type: Number, min: 0 },
     finalAmount: { type: Number, min: 0 },
-    currency: { type: String, enum: CURRENCIES, default: 'GHS' },
+    currency: { type: String, enum: CURRENCIES, default: 'GMD' },
     approvedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     approvedAt: { type: Date },
 

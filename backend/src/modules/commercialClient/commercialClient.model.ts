@@ -118,7 +118,7 @@ const commercialClientSchema = new Schema<ICommercialClient>(
     contractEnd: { type: Date, index: true },
     contractStatus: { type: String, enum: CONTRACT_STATUSES, default: 'prospect', index: true },
     contractValue: { type: Number, min: 0 },
-    currency: { type: String, enum: CURRENCIES, default: 'GHS' },
+    currency: { type: String, enum: CURRENCIES, default: 'GMD' },
     billingFrequency: {
       type: String,
       enum: ['monthly', 'quarterly', 'annually'],

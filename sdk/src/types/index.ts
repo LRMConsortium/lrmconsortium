@@ -49,7 +49,7 @@ export type Ad = (LifecycleFields & {
   clickCap?: number;
   dailyImpressionCap?: number;
   budgetAmount?: number;
-  budgetCurrency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  budgetCurrency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   spend?: number;
   impressions?: number;
   clicks?: number;
@@ -87,7 +87,7 @@ export type AdInput = (LifecycleFieldsInput & {
   clickCap?: number;
   dailyImpressionCap?: number;
   budgetAmount?: number;
-  budgetCurrency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  budgetCurrency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
 });
 
 /** Founder-owned, versioned and never edited in place. */
@@ -96,7 +96,7 @@ export interface AdPolicy {
   version?: number;
   isActive?: boolean;
   effectiveFrom?: string;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   pricing?: {
     placement: string;
     cpm?: number;
@@ -131,7 +131,7 @@ export interface AdPolicy {
 /** Request variant of `AdPolicy` — server-controlled fields removed. */
 export interface AdPolicyInput {
   effectiveFrom?: string;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   pricing?: {
     placement: string;
     cpm?: number;
@@ -225,7 +225,7 @@ export type Advertiser = (ContactFields & LocationFields & LifecycleFields & Ver
   businessType: "realEstate" | "construction" | "financialServices" | "telecom" | "retail" | "hospitality" | "transport" | "automotive" | "healthcare" | "education" | "agriculture" | "government" | "ngo" | "other";
   website?: string;
   logo?: string;
-  billingCurrency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  billingCurrency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   /** Founder-set. */
   creditLimit?: number;
   outstandingBalance?: number;
@@ -248,7 +248,7 @@ export type AdvertiserInput = (ContactFields & LocationFields & LifecycleFieldsI
   businessType: "realEstate" | "construction" | "financialServices" | "telecom" | "retail" | "hospitality" | "transport" | "automotive" | "healthcare" | "education" | "agriculture" | "government" | "ngo" | "other";
   website?: string;
   logo?: string;
-  billingCurrency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  billingCurrency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
 });
 
 /** Founder-set commercial terms. Outside the advertiser’s own reach. */
@@ -440,7 +440,7 @@ export interface BroadcastResult {
 /** A query, not a list of lines. The server reads the ledger and computes the amounts — a client that could post its own line amounts could pay itself. */
 export interface BuildPayoutBatchRequest {
   kind: "driverPayout" | "landlordPayout" | "refund";
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   periodStart?: string;
   periodEnd?: string;
   maxRows?: number;
@@ -519,7 +519,7 @@ export type CommercialClient = (ContactFields & LocationFields & VerificationFie
   contractEnd?: string;
   contractStatus?: "prospect" | "negotiating" | "active" | "renewing" | "suspended" | "ended";
   contractValue?: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   billingFrequency?: "monthly" | "quarterly" | "annually";
   negotiatedFeePercent?: number;
   slaHours?: number;
@@ -542,7 +542,7 @@ export type CommercialClientInput = (ContactFields & LocationFields & Verificati
   contractEnd?: string;
   contractStatus?: "prospect" | "negotiating" | "active" | "renewing" | "suspended" | "ended";
   contractValue?: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   billingFrequency?: "monthly" | "quarterly" | "annually";
   negotiatedFeePercent?: number;
   slaHours?: number;
@@ -557,7 +557,7 @@ export type CommercialClientListInput = CommercialClientInput[];
 /** Stamps the fare, splits the commission and writes the ledger row. */
 export interface CompleteRideRequest {
   finalFare: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   distanceKm?: number;
   durationMin?: number;
   notes?: string;
@@ -628,7 +628,7 @@ export interface Customer {
   buyers?: string[];
   /** Ceiling on what a named buyer may spend without the account owner. Absent means no ceiling. */
   buyerOrderLimit?: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   totalOrders?: number;
   totalSpend?: number;
   email?: string;
@@ -1274,7 +1274,7 @@ export interface FleetVehicle {
   year?: number;
   color?: string;
   dailyRate?: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   insuranceProvider?: string;
   insuranceExpiry?: string;
   roadworthyExpiry?: string;
@@ -1535,7 +1535,7 @@ export type Landlord = (ContactFields & LocationFields & LifecycleFields & Verif
   propertiesOwned?: string[];
   diasporaStatus?: "resident" | "diaspora" | "returnee" | "dualBased";
   payoutMethod?: "mobileMoney" | "bankTransfer" | "cash" | "card" | "cheque" | "crypto";
-  payoutCurrency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  payoutCurrency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   managementFeePercent?: number;
   statementFrequency?: "monthly" | "quarterly" | "annually";
 });
@@ -1547,7 +1547,7 @@ export type LandlordInput = (ContactFields & LocationFields & LifecycleFieldsInp
   diasporaStatus?: "resident" | "diaspora" | "returnee" | "dualBased";
   payoutMethod?: "mobileMoney" | "bankTransfer" | "cash" | "card" | "cheque" | "crypto";
   payoutAccountRef?: string;
-  payoutCurrency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  payoutCurrency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   managementFeePercent?: number;
   statementFrequency?: "monthly" | "quarterly" | "annually";
 });
@@ -1562,7 +1562,7 @@ export type Lease = (LifecycleFields & {
   leaseStart: string;
   leaseEnd: string;
   monthlyRent: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   paymentDayOfMonth?: number;
   securityDeposit?: number;
   depositHeldBy?: "LRMC" | "landlord" | "escrow";
@@ -1591,7 +1591,7 @@ export type LeaseInput = (LifecycleFieldsInput & {
   leaseStart: string;
   leaseEnd: string;
   monthlyRent: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   paymentDayOfMonth?: number;
   securityDeposit?: number;
   depositHeldBy?: "LRMC" | "landlord" | "escrow";
@@ -1627,7 +1627,7 @@ export type LeaseListInput = LeaseInput[];
 export interface LeaseSchedule {
   leaseId: string;
   reference?: string;
-  currency: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   monthlyRent: number;
   paymentDayOfMonth?: number;
   instalmentsDue?: number;
@@ -1679,7 +1679,7 @@ export interface Listing {
   title: string;
   description?: string;
   unitPrice: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   /** Null on a service. */
   stock?: Record<string, unknown>;
   unit?: string;
@@ -1723,7 +1723,7 @@ export type MaintenanceRequest = (LifecycleFields & {
   quotedAmount?: number;
   approvedAmount?: number;
   finalAmount?: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   approvedBy?: string;
   approvedAt?: string;
   photosBefore?: string[];
@@ -1754,7 +1754,7 @@ export type MaintenanceRequestInput = (LifecycleFieldsInput & {
   quotedAmount?: number;
   approvedAmount?: number;
   finalAmount?: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   photosBefore?: string[];
   photosAfter?: string[];
   scheduledFor?: string;
@@ -1825,7 +1825,7 @@ export interface MarketplaceOverview {
     status?: "pending" | "paid" | "accepted" | "fulfilled" | "confirmed" | "released" | "cancelled" | "refunded" | "disputed";
     statusLabel?: string;
     total?: number;
-    currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+    currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
     createdAt?: string;
   }[];
 }
@@ -1840,7 +1840,7 @@ export interface Merchant {
   sellers?: string[];
   /** Negotiated rate. Absent means the platform default at time of order. */
   commissionPercent?: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   totalOrders?: number;
   totalSales?: number;
   email?: string;
@@ -1965,7 +1965,7 @@ export interface Order {
   platformFee?: number;
   /** What the merchant is owed on completion. */
   merchantNet?: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   deliveryAddress?: string;
   note?: string;
   placedAt?: string;
@@ -2029,7 +2029,7 @@ export type Payment = (LifecycleFields & {
   payee?: string;
   payeeKind?: string;
   amount: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   method?: "mobileMoney" | "bankTransfer" | "cash" | "card" | "cheque" | "crypto";
   platformFee?: number;
   netAmount?: number;
@@ -2051,7 +2051,7 @@ export type PaymentInput = (LifecycleFieldsInput & {
   payee?: string;
   payeeKind?: string;
   amount: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   method?: "mobileMoney" | "bankTransfer" | "cash" | "card" | "cheque" | "crypto";
   platformFee?: number;
   /** Identifies the payment instrument. Never returned. */
@@ -2074,7 +2074,7 @@ export type PayoutBatch = (LifecycleFields & {
   /** PYT-xxxxxx, server-assigned. */
   reference?: string;
   kind: "driverPayout" | "landlordPayout" | "refund";
-  currency: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   periodStart?: string;
   periodEnd?: string;
   lines?: PayoutLine[];
@@ -2098,7 +2098,7 @@ export type PayoutBatch = (LifecycleFields & {
 export type PayoutBatchInput = (LifecycleFieldsInput & {
   _id?: string;
   kind: "driverPayout" | "landlordPayout" | "refund";
-  currency: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   periodStart?: string;
   periodEnd?: string;
   lines?: PayoutLineInput[];
@@ -2122,7 +2122,7 @@ export interface PayoutLine {
   _id?: string;
   payee: string;
   payeeKind?: string;
-  currency: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   sourcePayments?: string[];
   gross: number;
   platformFee?: number;
@@ -2138,7 +2138,7 @@ export interface PayoutLineInput {
   _id?: string;
   payee: string;
   payeeKind?: string;
-  currency: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   sourcePayments?: string[];
   gross: number;
   platformFee?: number;
@@ -2191,7 +2191,7 @@ export interface PortfolioAnalytics {
   clientId: string;
   clientName?: string;
   clientKind?: "hospitalityGroup" | "propertyCompany" | "mobilityOperator" | "agency" | "corporate" | "government" | "ngo";
-  currency: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   window?: {
     from?: string | Record<string, unknown>;
     to?: string | Record<string, unknown>;
@@ -2221,7 +2221,7 @@ export type Property = (LocationFields & LifecycleFields & {
   amenities?: string[];
   photos?: string[];
   rentAmount?: number;
-  rentCurrency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  rentCurrency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   rentPeriod?: "monthly" | "nightly" | "yearly";
   occupancyStatus?: "vacant" | "occupied" | "maintenance" | "offMarket";
   listedPublicly?: boolean;
@@ -2245,7 +2245,7 @@ export type PropertyInput = (LocationFields & LifecycleFieldsInput & {
   amenities?: string[];
   photos?: string[];
   rentAmount?: number;
-  rentCurrency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  rentCurrency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   rentPeriod?: "monthly" | "nightly" | "yearly";
   occupancyStatus?: "vacant" | "occupied" | "maintenance" | "offMarket";
   listedPublicly?: boolean;
@@ -2345,7 +2345,7 @@ export type RatingFieldsInput = Record<string, never>;
 /** Records a rent payment and rolls the lease totals forward in the same request. */
 export interface RecordRentPaymentRequest {
   amount: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   method?: "mobileMoney" | "bankTransfer" | "cash" | "card" | "cheque" | "crypto";
   paidAt?: string;
   notes?: string;
@@ -2537,7 +2537,7 @@ export type ResortInput = (ContactFields & LocationFields & LifecycleFieldsInput
 });
 
 export interface RevenueKpis {
-  currency: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   /** Contracted monthly rent across live leases — the run rate. */
   monthlyRentRoll: number;
   collected: number;
@@ -2579,7 +2579,7 @@ export type Ride = (LifecycleFields & {
   estimatedDurationMin?: number;
   estimatedFare?: number;
   finalFare?: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   /** Percentage withheld. */
   platformCommission?: number;
   driverEarnings?: number;
@@ -2615,7 +2615,7 @@ export type RideInput = (LifecycleFieldsInput & {
   estimatedDistanceKm?: number;
   estimatedDurationMin?: number;
   estimatedFare?: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   /** Percentage withheld. */
   platformCommission?: number;
   paymentMethod?: "mobileMoney" | "bankTransfer" | "cash" | "card" | "cheque" | "crypto";
@@ -2832,7 +2832,7 @@ export type Tenant = (ContactFields & LocationFields & LifecycleFields & Verific
   leaseStart?: string;
   leaseEnd?: string;
   monthlyRent?: number;
-  rentCurrency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  rentCurrency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   securityDeposit?: number;
   paymentMethod?: "mobileMoney" | "bankTransfer" | "cash" | "card" | "cheque" | "crypto";
   rentDueDay?: number;
@@ -2854,7 +2854,7 @@ export type TenantInput = (ContactFields & LocationFields & LifecycleFieldsInput
   leaseStart?: string;
   leaseEnd?: string;
   monthlyRent?: number;
-  rentCurrency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  rentCurrency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   securityDeposit?: number;
   paymentMethod?: "mobileMoney" | "bankTransfer" | "cash" | "card" | "cheque" | "crypto";
   rentDueDay?: number;
@@ -2993,7 +2993,7 @@ export type Vendor = (ContactFields & LocationFields & LifecycleFields & Verific
     item: string;
     unit?: string;
     amount: number;
-    currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+    currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   }[];
   completedJobs?: number;
   openJobs?: number;
@@ -3016,7 +3016,7 @@ export type VendorInput = (ContactFields & LocationFields & LifecycleFieldsInput
     item: string;
     unit?: string;
     amount: number;
-    currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+    currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   }[];
   averageResponseHours?: number;
   businessRegistrationNumber?: string;

@@ -112,7 +112,7 @@ export function priceOrder(
     platformFee: split.platformFee,
     // The merchant keeps the delivery fee in full, on top of the net goods.
     merchantNet: money(split.net + deliveryFee),
-    currency: options.currency ?? 'GHS',
+    currency: options.currency ?? 'GMD',
   };
 }
 

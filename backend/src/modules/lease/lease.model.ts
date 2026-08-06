@@ -71,7 +71,7 @@ const leaseSchema = new Schema<ILease>(
     leaseStart: { type: Date, required: true },
     leaseEnd: { type: Date, required: true, index: true },
     monthlyRent: { type: Number, required: true, min: 0 },
-    currency: { type: String, enum: CURRENCIES, default: 'GHS' },
+    currency: { type: String, enum: CURRENCIES, default: 'GMD' },
     paymentDayOfMonth: { type: Number, min: 1, max: 31, default: 1 },
     securityDeposit: { type: Number, min: 0 },
     depositHeldBy: { type: String, enum: ['LRMC', 'landlord', 'escrow'], default: 'LRMC' },

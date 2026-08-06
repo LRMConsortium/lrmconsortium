@@ -40,7 +40,9 @@ export const PAYMENT_METHODS = [
   'crypto',
 ] as const;
 
-export const CURRENCIES = ['GHS', 'USD', 'EUR', 'GBP', 'NGN', 'XOF'] as const;
+// The list itself lives in `config/currencies.ts`, which is pure — the verify
+// suite must be able to import it without pulling in Mongoose.
+export { CURRENCIES, type Currency } from '../config/currencies.js';
 
 export const DIASPORA_STATUSES = ['resident', 'diaspora', 'returnee', 'dualBased'] as const;
 

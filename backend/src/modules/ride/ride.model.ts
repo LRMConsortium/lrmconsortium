@@ -86,7 +86,7 @@ const rideSchema = new Schema<IRide>(
     estimatedDurationMin: { type: Number, min: 0 },
     estimatedFare: { type: Number, min: 0 },
     finalFare: { type: Number, min: 0 },
-    currency: { type: String, enum: CURRENCIES, default: 'GHS' },
+    currency: { type: String, enum: CURRENCIES, default: 'GMD' },
     platformCommission: { type: Number, min: 0, max: 100, default: 15 },
     driverEarnings: { type: Number, min: 0 },
     paymentMethod: { type: String, enum: PAYMENT_METHODS, default: 'mobileMoney' },

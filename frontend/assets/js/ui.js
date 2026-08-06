@@ -18,28 +18,76 @@
    * Formatting
    * ──────────────────────────────────────────────────────────────────────── */
 
-  /* Ghana Cedi, Ghanaian conventions. Set once so no page invents its own. */
-  var MONEY = new Intl.NumberFormat('en-GH', {
-    style: 'currency', currency: 'GHS', minimumFractionDigits: 2, maximumFractionDigits: 2,
+  /* ─────────────────────────────────────────────────────────────────────────
+   * Currency
+   *
+   * **LRMC launches in The Gambia: Gambian Dalasi, written `D 1,000`.**
+   *
+   * Formatted by hand rather than through `Intl.NumberFormat(..., {style:
+   * 'currency'})`, and deliberately. Intl renders GMD as "GMD 1,000.00" or
+   * "D1,000.00" depending on the browser and the locale data installed — so a
+   * clerk in Banjul and an executive in Accra would see the same figure
+   * written two different ways, on the same platform, on the same day. The
+   * grouping still comes from Intl, which knows where the commas go; only the
+   * symbol and the spacing are ours.
+   *
+   * This table mirrors `backend/src/config/currencies.ts`. The verify suite
+   * asserts the two agree — a correct number beside the wrong symbol is worse
+   * than an obvious error, because it looks fine.
+   * ──────────────────────────────────────────────────────────────────────── */
+
+  var LRMC_CURRENCY = 'GMD';
+
+  var CURRENCY_SYMBOLS = {
+    GMD: 'D', GHS: 'GH\u20b5', USD: '$', EUR: '\u20ac',
+    GBP: '\u00a3', NGN: '\u20a6', XOF: 'CFA',
+  };
+
+  /* Comma thousands, dot decimal — en-GB gives exactly that, and knows the
+   * grouping rules better than any hand-rolled regex. */
+  var GROUPED = new Intl.NumberFormat('en-GB', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
   });
-  var MONEY_COMPACT = new Intl.NumberFormat('en-GH', {
-    style: 'currency', currency: 'GHS', notation: 'compact', maximumFractionDigits: 1,
-  });
-  var NUM = new Intl.NumberFormat('en-GH');
+  var GROUPED_WHOLE = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 0 });
+  var COMPACT = new Intl.NumberFormat('en-GB', { notation: 'compact', maximumFractionDigits: 1 });
+  var NUM = new Intl.NumberFormat('en-GB');
+
+  function symbolFor(currency) {
+    return CURRENCY_SYMBOLS[currency || LRMC_CURRENCY] || (currency || LRMC_CURRENCY);
+  }
 
   var LrmcUI = {
 
-    /** Money, in full. Use in tables and anywhere a figure is acted on. */
-    money: function (value) {
-      if (value === null || value === undefined || isNaN(value)) return '—';
-      return MONEY.format(Number(value));
+    /**
+     * Money, in full: `D 1,234.56`.
+     *
+     * Use in tables, receipts and anywhere a figure is acted on. The symbol
+     * and the amount are separated by a space, per the LRMC currency format.
+     */
+    money: function (value, currency) {
+      if (value === null || value === undefined || isNaN(value)) return '\u2014';
+      return symbolFor(currency) + ' ' + GROUPED.format(Number(value));
     },
 
-    /** Money, abbreviated — GH₵1.2M. Headline tiles only, never a ledger. */
-    moneyCompact: function (value) {
-      if (value === null || value === undefined || isNaN(value)) return '—';
-      return MONEY_COMPACT.format(Number(value));
+    /** Money with no minor units: `D 120,000`. For stat cards and headings. */
+    moneyWhole: function (value, currency) {
+      if (value === null || value === undefined || isNaN(value)) return '\u2014';
+      return symbolFor(currency) + ' ' + GROUPED_WHOLE.format(Number(value));
     },
+
+    /**
+     * Money, abbreviated: `D 1.2M`.
+     *
+     * Headline tiles only, never a ledger. An executive tile can say D 1.2M;
+     * a payment row cannot, because somebody has to reconcile it.
+     */
+    moneyCompact: function (value, currency) {
+      if (value === null || value === undefined || isNaN(value)) return '\u2014';
+      return symbolFor(currency) + ' ' + COMPACT.format(Number(value));
+    },
+
+    /** The symbol alone, for input adornments and table headers. */
+    currencySymbol: function (currency) { return symbolFor(currency); },
 
     number: function (value) {
       if (value === null || value === undefined || isNaN(value)) return '—';
@@ -55,14 +103,14 @@
       if (!value) return '—';
       var d = new Date(value);
       if (isNaN(d.getTime())) return '—';
-      return d.toLocaleDateString('en-GH', { day: '2-digit', month: 'short', year: 'numeric' });
+      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     },
 
     dateTime: function (value) {
       if (!value) return '—';
       var d = new Date(value);
       if (isNaN(d.getTime())) return '—';
-      return d.toLocaleString('en-GH', {
+      return d.toLocaleString('en-GB', {
         day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
       });
     },
@@ -123,7 +171,7 @@
         host = doc.createElement('div');
         host.id = 'lrmc-toasts';
         host.setAttribute('aria-live', 'polite');
-        host.className = 'fixed bottom-5 right-5 z-50 flex flex-col gap-2 items-end';
+        host.className = 'fixed top-4 right-4 z-50 flex flex-col gap-2 items-end';
         doc.body.appendChild(host);
       }
 

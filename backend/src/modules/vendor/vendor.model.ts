@@ -67,7 +67,7 @@ const rateCardItemSchema = new Schema(
     item: { type: String, required: true, trim: true },
     unit: { type: String, required: true, trim: true, default: 'job' },
     amount: { type: Number, required: true, min: 0 },
-    currency: { type: String, enum: CURRENCIES, default: 'GHS' },
+    currency: { type: String, enum: CURRENCIES, default: 'GMD' },
   },
   { _id: false },
 );

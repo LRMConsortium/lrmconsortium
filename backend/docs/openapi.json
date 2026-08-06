@@ -798,6 +798,7 @@
               "payoutCurrency": {
                 "type": "string",
                 "enum": [
+                  "GMD",
                   "GHS",
                   "USD",
                   "EUR",
@@ -805,7 +806,7 @@
                   "NGN",
                   "XOF"
                 ],
-                "default": "GHS"
+                "default": "GMD"
               },
               "managementFeePercent": {
                 "type": "number",
@@ -894,6 +895,7 @@
               "rentCurrency": {
                 "type": "string",
                 "enum": [
+                  "GMD",
                   "GHS",
                   "USD",
                   "EUR",
@@ -901,7 +903,7 @@
                   "NGN",
                   "XOF"
                 ],
-                "default": "GHS"
+                "default": "GMD"
               },
               "securityDeposit": {
                 "type": "number",
@@ -1181,6 +1183,7 @@
                     "currency": {
                       "type": "string",
                       "enum": [
+                        "GMD",
                         "GHS",
                         "USD",
                         "EUR",
@@ -1903,6 +1906,7 @@
           "currency": {
             "type": "string",
             "enum": [
+              "GMD",
               "GHS",
               "USD",
               "EUR",
@@ -2145,6 +2149,7 @@
               "rentCurrency": {
                 "type": "string",
                 "enum": [
+                  "GMD",
                   "GHS",
                   "USD",
                   "EUR",
@@ -2300,6 +2305,7 @@
               "billingCurrency": {
                 "type": "string",
                 "enum": [
+                  "GMD",
                   "GHS",
                   "USD",
                   "EUR",
@@ -2509,6 +2515,7 @@
               "budgetCurrency": {
                 "type": "string",
                 "enum": [
+                  "GMD",
                   "GHS",
                   "USD",
                   "EUR",
@@ -2667,6 +2674,7 @@
           "currency": {
             "type": "string",
             "enum": [
+              "GMD",
               "GHS",
               "USD",
               "EUR",
@@ -3335,6 +3343,7 @@
               "currency": {
                 "type": "string",
                 "enum": [
+                  "GMD",
                   "GHS",
                   "USD",
                   "EUR",
@@ -3342,7 +3351,7 @@
                   "NGN",
                   "XOF"
                 ],
-                "default": "GHS"
+                "default": "GMD"
               },
               "paymentDayOfMonth": {
                 "type": "integer",
@@ -3463,6 +3472,7 @@
           "currency": {
             "type": "string",
             "enum": [
+              "GMD",
               "GHS",
               "USD",
               "EUR",
@@ -3613,6 +3623,7 @@
               "currency": {
                 "type": "string",
                 "enum": [
+                  "GMD",
                   "GHS",
                   "USD",
                   "EUR",
@@ -3823,6 +3834,7 @@
               "currency": {
                 "type": "string",
                 "enum": [
+                  "GMD",
                   "GHS",
                   "USD",
                   "EUR",
@@ -4038,6 +4050,7 @@
           "currency": {
             "type": "string",
             "enum": [
+              "GMD",
               "GHS",
               "USD",
               "EUR",
@@ -4156,6 +4169,7 @@
               "currency": {
                 "type": "string",
                 "enum": [
+                  "GMD",
                   "GHS",
                   "USD",
                   "EUR",
@@ -4571,6 +4585,7 @@
               "currency": {
                 "type": "string",
                 "enum": [
+                  "GMD",
                   "GHS",
                   "USD",
                   "EUR",
@@ -4705,6 +4720,7 @@
           "currency": {
             "type": "string",
             "enum": [
+              "GMD",
               "GHS",
               "USD",
               "EUR",
@@ -5505,6 +5521,7 @@
           "currency": {
             "type": "string",
             "enum": [
+              "GMD",
               "GHS",
               "USD",
               "EUR",
@@ -5648,6 +5665,7 @@
           "currency": {
             "type": "string",
             "enum": [
+              "GMD",
               "GHS",
               "USD",
               "EUR",
@@ -6477,6 +6495,7 @@
           "currency": {
             "type": "string",
             "enum": [
+              "GMD",
               "GHS",
               "USD",
               "EUR",
@@ -6763,6 +6782,7 @@
           "currency": {
             "type": "string",
             "enum": [
+              "GMD",
               "GHS",
               "USD",
               "EUR",
@@ -7057,6 +7077,7 @@
                 "currency": {
                   "type": "string",
                   "enum": [
+                    "GMD",
                     "GHS",
                     "USD",
                     "EUR",
@@ -7129,6 +7150,7 @@
           "currency": {
             "type": "string",
             "enum": [
+              "GMD",
               "GHS",
               "USD",
               "EUR",
@@ -7235,6 +7257,7 @@
           "currency": {
             "type": "string",
             "enum": [
+              "GMD",
               "GHS",
               "USD",
               "EUR",
@@ -9483,6 +9506,7 @@
           "currency": {
             "type": "string",
             "enum": [
+              "GMD",
               "GHS",
               "USD",
               "EUR",
@@ -9576,6 +9600,7 @@
               "currency": {
                 "type": "string",
                 "enum": [
+                  "GMD",
                   "GHS",
                   "USD",
                   "EUR",
@@ -9700,6 +9725,7 @@
           "currency": {
             "type": "string",
             "enum": [
+              "GMD",
               "GHS",
               "USD",
               "EUR",

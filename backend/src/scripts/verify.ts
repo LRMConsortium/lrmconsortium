@@ -162,6 +162,8 @@ import {
   stockAfterOrder,
   stockAfterRelease,
 } from '../modules/marketplace/listingRules.js';
+import { CURRENCIES, CURRENCY_SYMBOLS, LAUNCH_CURRENCY } from '../config/currencies.js';
+import { CURRENCY } from '../config/openapiSchemas.js';
 import {
   MIN_DISTINCT_CHARS,
   PLACEHOLDER_MARKERS,
@@ -3244,6 +3246,59 @@ check('an unset secret is refused', secretProblem('X', undefined) !== null);
 check('digests compare equal to themselves', digestsMatch('abc123', 'abc123'));
 check('and unequal to others', !digestsMatch('abc123', 'abc124'));
 check('a length mismatch is not a match', !digestsMatch('abc', 'abcd'));
+
+// ═══════════════════════════════════════════════════════════════════════════
+section('Currency');
+
+// LRMC launches in The Gambia. A stored default of anything else, with a UI
+// that prints `D`, is money in the wrong denomination — the kind of defect
+// that is invisible until somebody reconciles a bank statement.
+{
+  check('GMD is a recognised currency', (CURRENCIES as readonly string[]).includes('GMD'));
+  check('and leads the list as the launch currency', CURRENCIES[0] === 'GMD');
+  // GHS stays: the consortium is Ghana-registered and will trade there.
+  check('GHS is still available', (CURRENCIES as readonly string[]).includes('GHS'));
+
+  // Every schema default, read from the source rather than asserted one model
+  // at a time — a new collection added next month is covered by this too.
+  const modelSources = [
+    'src/modules/lease/lease.model.ts',
+    'src/modules/payment/payment.model.ts',
+    'src/modules/payout/payout.model.ts',
+    'src/modules/ride/ride.model.ts',
+    'src/modules/property/property.model.ts',
+    'src/modules/marketplace/marketplace.model.ts',
+    'src/modules/advertising/ad.model.ts',
+  ];
+  for (const rel of modelSources) {
+    const src = readFileSync(resolve(process.cwd(), rel), 'utf8');
+    const wrongDefaults = (src.match(/default: 'GHS'/g) ?? []).length;
+    eq(`${rel.split('/').pop()}: no collection still defaults to GHS`, wrongDefaults, 0);
+  }
+
+  // The earnings summary carries a currency through to a driver's payout
+  // screen; defaulting it wrong there means a correct number with the wrong
+  // symbol beside it.
+  const ledgerSrc = readFileSync(resolve(process.cwd(), 'src/modules/payment/ledger.ts'), 'utf8');
+  check('the earnings summary defaults to the launch currency',
+    /summariseEarnings\([^)]*currency = 'GMD'/.test(ledgerSrc));
+
+  // And the spec agrees with the models, or a client generates the wrong enum.
+  check('the OpenAPI currency enum includes GMD', CURRENCY.includes('GMD'));
+  eq('and leads with it', CURRENCY[0], 'GMD');
+
+  eq('the launch currency is named once, not guessed', LAUNCH_CURRENCY, 'GMD');
+  eq('and the Dalasi is written with a D', CURRENCY_SYMBOLS.GMD, 'D');
+  check('every recognised currency has a symbol',
+    CURRENCIES.every((c) => typeof CURRENCY_SYMBOLS[c] === 'string' && CURRENCY_SYMBOLS[c].length > 0));
+
+  // The frontend prints the money. If its table and this one disagree, the
+  // number is right and the symbol beside it is wrong — which is worse than
+  // an obvious error, because it looks fine.
+  const uiSrc = readFileSync(resolve(process.cwd(), '../frontend/assets/js/ui.js'), 'utf8');
+  check('the frontend agrees the Dalasi is D', /GMD:\s*'D'/.test(uiSrc));
+  check('and formats in the launch currency by default', /LRMC_CURRENCY\s*=\s*'GMD'/.test(uiSrc));
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 section('Marketplace: who is who');

@@ -531,13 +531,14 @@ components:
             payoutCurrency:
               type: string
               enum:
+                - GMD
                 - GHS
                 - USD
                 - EUR
                 - GBP
                 - NGN
                 - XOF
-              default: GHS
+              default: GMD
             managementFeePercent:
               type: number
               minimum: 0
@@ -594,13 +595,14 @@ components:
             rentCurrency:
               type: string
               enum:
+                - GMD
                 - GHS
                 - USD
                 - EUR
                 - GBP
                 - NGN
                 - XOF
-              default: GHS
+              default: GMD
             securityDeposit:
               type: number
               minimum: 0
@@ -795,6 +797,7 @@ components:
                   currency:
                     type: string
                     enum:
+                      - GMD
                       - GHS
                       - USD
                       - EUR
@@ -1288,6 +1291,7 @@ components:
         currency:
           type: string
           enum:
+            - GMD
             - GHS
             - USD
             - EUR
@@ -1458,6 +1462,7 @@ components:
             rentCurrency:
               type: string
               enum:
+                - GMD
                 - GHS
                 - USD
                 - EUR
@@ -1566,6 +1571,7 @@ components:
             billingCurrency:
               type: string
               enum:
+                - GMD
                 - GHS
                 - USD
                 - EUR
@@ -1725,6 +1731,7 @@ components:
             budgetCurrency:
               type: string
               enum:
+                - GMD
                 - GHS
                 - USD
                 - EUR
@@ -1846,6 +1853,7 @@ components:
         currency:
           type: string
           enum:
+            - GMD
             - GHS
             - USD
             - EUR
@@ -2318,13 +2326,14 @@ components:
             currency:
               type: string
               enum:
+                - GMD
                 - GHS
                 - USD
                 - EUR
                 - GBP
                 - NGN
                 - XOF
-              default: GHS
+              default: GMD
             paymentDayOfMonth:
               type: integer
               minimum: 1
@@ -2416,6 +2425,7 @@ components:
         currency:
           type: string
           enum:
+            - GMD
             - GHS
             - USD
             - EUR
@@ -2530,6 +2540,7 @@ components:
             currency:
               type: string
               enum:
+                - GMD
                 - GHS
                 - USD
                 - EUR
@@ -2688,6 +2699,7 @@ components:
             currency:
               type: string
               enum:
+                - GMD
                 - GHS
                 - USD
                 - EUR
@@ -2853,6 +2865,7 @@ components:
         currency:
           type: string
           enum:
+            - GMD
             - GHS
             - USD
             - EUR
@@ -2939,6 +2952,7 @@ components:
             currency:
               type: string
               enum:
+                - GMD
                 - GHS
                 - USD
                 - EUR
@@ -3244,6 +3258,7 @@ components:
             currency:
               type: string
               enum:
+                - GMD
                 - GHS
                 - USD
                 - EUR
@@ -3338,6 +3353,7 @@ components:
         currency:
           type: string
           enum:
+            - GMD
             - GHS
             - USD
             - EUR
@@ -3935,6 +3951,7 @@ components:
         currency:
           type: string
           enum:
+            - GMD
             - GHS
             - USD
             - EUR
@@ -4044,6 +4061,7 @@ components:
         currency:
           type: string
           enum:
+            - GMD
             - GHS
             - USD
             - EUR
@@ -4624,6 +4642,7 @@ components:
         currency:
           type: string
           enum:
+            - GMD
             - GHS
             - USD
             - EUR
@@ -4842,6 +4861,7 @@ components:
         currency:
           type: string
           enum:
+            - GMD
             - GHS
             - USD
             - EUR
@@ -5058,6 +5078,7 @@ components:
               currency:
                 type: string
                 enum:
+                  - GMD
                   - GHS
                   - USD
                   - EUR
@@ -5112,6 +5133,7 @@ components:
         currency:
           type: string
           enum:
+            - GMD
             - GHS
             - USD
             - EUR
@@ -5192,6 +5214,7 @@ components:
         currency:
           type: string
           enum:
+            - GMD
             - GHS
             - USD
             - EUR
@@ -6835,6 +6858,7 @@ components:
         currency:
           type: string
           enum:
+            - GMD
             - GHS
             - USD
             - EUR
@@ -6904,6 +6928,7 @@ components:
             currency:
               type: string
               enum:
+                - GMD
                 - GHS
                 - USD
                 - EUR
@@ -6997,6 +7022,7 @@ components:
         currency:
           type: string
           enum:
+            - GMD
             - GHS
             - USD
             - EUR

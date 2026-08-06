@@ -83,7 +83,7 @@ const propertySchema = new Schema<IProperty>(
     photos: { type: [String], default: [] },
 
     rentAmount: { type: Number, min: 0 },
-    rentCurrency: { type: String, enum: CURRENCIES, default: 'GHS' },
+    rentCurrency: { type: String, enum: CURRENCIES, default: 'GMD' },
     rentPeriod: { type: String, enum: ['monthly', 'nightly', 'yearly'], default: 'monthly' },
 
     occupancyStatus: {

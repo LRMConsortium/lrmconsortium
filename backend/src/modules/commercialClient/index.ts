@@ -213,7 +213,7 @@ itemRouter.get(
 
     const from = req.query.from ? new Date(String(req.query.from)) : undefined;
     const to = req.query.to ? new Date(String(req.query.to)) : undefined;
-    const currency = String(req.query.currency ?? 'GHS');
+    const currency = String(req.query.currency ?? 'GMD');
 
     const propertyFilter = {
       deletedAt: null,

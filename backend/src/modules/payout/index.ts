@@ -88,7 +88,7 @@ collectionRouter.post(
       notes?: string;
     };
 
-    const currency = body.currency ?? 'GHS';
+    const currency = body.currency ?? 'GMD';
     const filter: Record<string, unknown> = {
       kind: { $in: PAYOUT_SOURCES[body.kind] },
       status: 'succeeded',
