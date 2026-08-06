@@ -95,6 +95,6 @@ necessarily if the Accra office ever works offline — download them into
 
 ## Not yet backed by an API
 
-`pos/` and `marketplace/` have no backend endpoints. The other four portals map
-onto real routes in `backend/docs/openapi.json`; those two would need modules
-building first.
+`pos/` has no backend endpoints. Everything else maps onto real routes in
+`backend/docs/openapi.json` — the marketplace gained its own module (merchants,
+customers, listings, orders, escrow) and is fully wired.
