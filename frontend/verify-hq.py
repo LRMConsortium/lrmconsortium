@@ -149,6 +149,13 @@ with sync_playwright() as p:
     # full institution name, so a non-empty alt makes a screen reader announce
     # the brand three times over.
     check('the logo is marked decorative', pg.get_attribute('aside img', 'alt') == '')
+    # The supplied lockup carries the institution's name inside the artwork.
+    # At 36px those words are an illegible smudge, and the name is already
+    # printed in text beside it — so the sidebar gets the house alone.
+    check('the sidebar uses the house mark, not the full lockup',
+          'lrmc-mark.png' in (pg.get_attribute('aside img', 'src') or ''))
+    check('and the artwork actually loads',
+          pg.evaluate("() => { const i = document.querySelector('aside img'); return i.naturalWidth > 0; }"))
 
     print('— responsive —')
     pg.set_viewport_size({'width':390,'height':844}); pg.wait_for_timeout(600)

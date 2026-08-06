@@ -107,6 +107,11 @@ with sync_playwright() as p:
     check('one h1', pg.locator('h1').count() == 1)
     check('LRMC full name present', 'Legacy Rental Management Consortium' in pg.content())
     check('logo is decorative', pg.get_attribute('main img', 'alt') == '')
+    # The sign-in page has room, so it shows the full institutional lockup.
+    check('the sign-in page shows the full lockup',
+          'lrmc-logo.png' in (pg.get_attribute('main img', 'src') or ''))
+    check('and the artwork actually loads',
+          pg.evaluate("() => document.querySelector('main img').naturalWidth > 0"))
     check('no navigation away from the task',
           pg.locator('nav').count() == 0)
     check('every input has a real label',
