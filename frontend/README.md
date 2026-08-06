@@ -7,7 +7,8 @@ and it runs.
 ## What is here
 
 ```
-assets/css/theme.css       Every colour, radius and font. Change the brand here.
+assets/css/theme.css       The branding-locked palette, radii and font.
+                           LRMC Blue #1E3A8A · Gold #D4AF37 · Slate #334155.
 assets/css/utilities.css   Buttons, cards, tables, forms, badges.
 assets/js/sdk.js           The only file that calls the LRMC API.
 assets/js/auth.js          Session, permissions, HTMX auth wiring.
@@ -64,12 +65,14 @@ executive tile can say GH₵1.3M, a payment row cannot.
 clicking the wrong thing; it stops nobody who opens the network tab. Every
 rule is enforced again by the backend, which is where enforcement counts.
 
-**Charts use one hue.** The LRMC gold ramp is sequential by design. The brand
-status colours — green, amber, red, blue — are reserved for *state* and must
-never become chart series: run as a categorical palette they fail
-colour-blindness separation outright (amber against green is ΔE 5.7 for a
-protanope, well under the 8 threshold). For more than one series use small
-multiples, not a second hue.
+**Charts use one hue — blue, never gold.** LRMC Gold is 2.1:1 against white,
+which is unreadable as a data mark; it belongs on the logo, the seal and the
+active-nav edge, where it sits beside text rather than carrying a number. The
+chart ramp is derived from LRMC Blue and monotone in lightness, which is what
+makes it a legitimate sequential scale. The status colours — emerald, amber,
+rose — are reserved for *state* and never become series: run as a categorical
+palette, amber against emerald is ΔE 8.9 for a protanope, a pass by a margin
+too thin to bet a ledger on. For more than one series use small multiples.
 
 ## Zone A behaves differently
 

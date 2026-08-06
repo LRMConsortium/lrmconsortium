@@ -1,91 +1,86 @@
 /* ═══════════════════════════════════════════════════════════════════════════
- * LEGACY RENTAL MANAGEMENT CONSORTIUM — DESIGN TOKENS
+ * LEGACY RENTAL MANAGEMENT CONSORTIUM (LRMC) — DESIGN TOKENS
  *
- * This is the only file you edit to change how LRMC looks. Every colour,
- * radius and shadow in the platform resolves to a variable declared here, so
- * a brand change is one file rather than a search across two hundred pages.
+ * Branding-locked. These values are the LRMC identity; do not substitute them.
+ * Everything else in the platform resolves to a variable declared here, so the
+ * brand lives in one file rather than across two hundred pages.
  *
- * The palette carried over from the LRMC governance console deliberately, so
- * the Founder Command Center and the rest of the platform read as one system
- * rather than two products that happen to share a login.
+ * The system is light: white surfaces on a pale slate page, LRMC Blue for
+ * structure and action, LRMC Gold for institutional accent. Institutional and
+ * financial rather than fashionable — this is read for eight hours a day by
+ * people handling other people's money.
  * ═══════════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* ── Surfaces ───────────────────────────────────────────────────────────
-   * Deepest at 900. Each step up is a layer nearer the reader: page, panel,
-   * card, raised card, control. Institutional dark, not fashionable dark —
-   * this is a system people read ledgers in for eight hours.
-   */
-  --lrmc-base-900: #0a0e1a;
-  --lrmc-base-800: #0d1225;
-  --lrmc-base-700: #111827;
-  --lrmc-base-600: #1a2035;
-  --lrmc-base-500: #1f2937;
-  --lrmc-base-400: #2a3347;
-  --lrmc-base-300: #374151;
+  /* ── Primary ────────────────────────────────────────────────────────── */
+  --lrmc-blue:  #1E3A8A;   /* LRMC Blue  — structure, primary action */
+  --lrmc-gold:  #D4AF37;   /* LRMC Gold  — institutional accent, the seal */
+  --lrmc-slate: #334155;   /* LRMC Slate — secondary action, strong text */
 
-  /* ── Gold — the LRMC institutional accent ───────────────────────────────
-   * Used for identity, primary action, and the seal. Never for status: a
-   * gold badge that sometimes means "success" and sometimes means "LRMC"
-   * means neither.
+  /* ── Secondary / status ─────────────────────────────────────────────────
+   * These four mean *state* and nothing else. They are never chart series
+   * colours, and they never travel without a word beside them — run as a
+   * categorical palette, emerald against amber sits at ΔE 8.9 for a
+   * protanope, which is a pass by a margin too thin to bet a ledger on.
    */
-  --lrmc-gold-100: #fef6e0;
-  --lrmc-gold-200: #f5e6b8;
-  --lrmc-gold-300: #e8d08a;
-  --lrmc-gold-400: #d4b96a;
-  --lrmc-gold-500: #c9a84c;
-  --lrmc-gold-600: #b8952f;
-  --lrmc-gold-700: #9a7a1e;
-  --lrmc-gold-800: #7a6018;
+  --lrmc-emerald: #10B981;
+  --lrmc-amber:   #F59E0B;
+  --lrmc-rose:    #E11D48;
 
-  /* ── Ink ────────────────────────────────────────────────────────────────
-   * Text always wears these, never a data colour. A number tinted with its
-   * series colour is a number you cannot read at a glance.
-   */
-  --lrmc-ink-100: #f9fafb;
-  --lrmc-ink-200: #e5e7eb;
-  --lrmc-ink-300: #d1d5db;
-  --lrmc-ink-400: #9ca3af;
-  --lrmc-ink-500: #6b7280;
+  /* Tints, for badge and banner backgrounds. */
+  --lrmc-emerald-tint: #ECFDF5;
+  --lrmc-amber-tint:   #FFFBEB;
+  --lrmc-rose-tint:    #FFF1F2;
+  --lrmc-blue-tint:    #EFF6FF;
 
-  /* ── Status — reserved ──────────────────────────────────────────────────
-   * These four mean state and nothing else. They are never used as chart
-   * series colours, and they never travel without an icon and a word beside
-   * them, so meaning survives colour blindness and a black-and-white print.
+  /* ── Grays ──────────────────────────────────────────────────────────── */
+  --lrmc-gray-50:  #F8FAFC;   /* page background */
+  --lrmc-gray-200: #E2E8F0;   /* borders, dividers */
+  --lrmc-gray-400: #94A3B8;   /* muted text, disabled */
+  --lrmc-gray-500: #64748B;   /* secondary text */
+  --lrmc-gray-900: #1E293B;   /* primary text */
+  --lrmc-white:    #FFFFFF;   /* card surface */
+
+  /* ── Blue ramp ──────────────────────────────────────────────────────────
+   * Derived from LRMC Blue for hover states and chart marks. Monotone in
+   * lightness, which is what makes it a legitimate sequential scale.
    */
-  --lrmc-success: #22c55e;
-  --lrmc-warning: #f59e0b;
-  --lrmc-danger:  #ef4444;
-  --lrmc-info:    #3b82f6;
+  --lrmc-blue-100: #DBEAFE;
+  --lrmc-blue-300: #93C5FD;
+  --lrmc-blue-500: #3B82F6;
+  --lrmc-blue-600: #2563EB;
+  --lrmc-blue-700: #1D4ED8;
+  --lrmc-blue-900: #172554;
 
   /* ── Chart marks ────────────────────────────────────────────────────────
-   * A single-hue gold ramp, light to dark. Sequential by construction, so
-   * magnitude reads correctly and there is no categorical palette to get
-   * wrong. Multi-series charts should use small multiples rather than
-   * inventing a second hue — see docs/FRONTEND-GUIDE.md.
+   * Single hue, light to dark. Both steps clear 3:1 against white.
+   *
+   * LRMC Gold is deliberately **not** here. At 2.1:1 on white it is unreadable
+   * as a data mark — it belongs on the logo and the seal, where it is
+   * decoration beside text rather than the thing carrying the number.
    */
-  --lrmc-mark-1: #e8d08a;
-  --lrmc-mark-2: #d4b96a;
-  --lrmc-mark-3: #c9a84c;
-  --lrmc-mark-4: #b8952f;
-  --lrmc-mark-5: #9a7a1e;
-  --lrmc-grid:   rgba(55, 65, 81, 0.55);
+  --lrmc-mark:           #3B82F6;
+  --lrmc-mark-emphasis:  #1E3A8A;
+  --lrmc-grid:           #E2E8F0;
 
-  /* ── Shape ──────────────────────────────────────────────────────────── */
-  --lrmc-radius-sm: 0.5rem;
-  --lrmc-radius:    0.75rem;
-  --lrmc-radius-lg: 1rem;
-  --lrmc-radius-xl: 1.25rem;
+  /* ── Shape ────────────────────────────────────────────────────────────
+   * rounded-xl and shadow-md, per the locked system.
+   */
+  --lrmc-radius-sm: 0.5rem;    /* rounded-lg — controls */
+  --lrmc-radius:    0.75rem;   /* rounded-xl — cards */
+  --lrmc-radius-lg: 0.75rem;
+  --lrmc-radius-full: 9999px;
 
-  --lrmc-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --lrmc-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --lrmc-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --lrmc-shadow:    0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --lrmc-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --lrmc-shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
 
   /* ── Type ───────────────────────────────────────────────────────────── */
   --lrmc-font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --lrmc-font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
 
   /* Layout constants the sidebar and topbar agree on. */
-  --lrmc-sidebar-w: 260px;
+  --lrmc-sidebar-w: 264px;
   --lrmc-topbar-h: 64px;
 }
 
@@ -96,26 +91,25 @@
 html { -webkit-text-size-adjust: 100%; }
 
 body {
-  background: var(--lrmc-base-900);
-  color: var(--lrmc-ink-200);
+  background: var(--lrmc-gray-50);
+  color: var(--lrmc-gray-900);
   font-family: var(--lrmc-font);
-  font-feature-settings: 'tnum' 1; /* Ledgers align. Always. */
+  /* Ledgers align. Always. */
+  font-feature-settings: 'tnum' 1;
   margin: 0;
   min-height: 100vh;
 }
 
-/* Numbers in tables and stat tiles line up column-to-column. Without this a
- * currency column reads as ragged noise and nobody trusts the total. */
 .lrmc-num { font-variant-numeric: tabular-nums; }
 
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--lrmc-base-700); }
-::-webkit-scrollbar-thumb { background: var(--lrmc-base-300); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--lrmc-gray-50); }
+::-webkit-scrollbar-thumb { background: var(--lrmc-gray-200); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--lrmc-gray-400); }
 
 /* Keyboard users must be able to see where they are. Never remove this. */
 :focus-visible {
-  outline: 2px solid var(--lrmc-gold-500);
+  outline: 2px solid var(--lrmc-blue);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -124,7 +118,7 @@ body {
  * MOTION
  *
  * Respected, not decorative. Somebody with vestibular sensitivity should be
- * able to use the collections queue without feeling ill.
+ * able to work a collections queue without feeling ill.
  * ═══════════════════════════════════════════════════════════════════════ */
 
 @media (prefers-reduced-motion: reduce) {

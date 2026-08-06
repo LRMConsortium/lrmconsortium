@@ -23,10 +23,14 @@
   <script>
     tailwind.config = { theme: { extend: {
       colors: {
-        base: { 900:'#0a0e1a', 800:'#0d1225', 700:'#111827', 600:'#1a2035', 500:'#1f2937', 400:'#2a3347', 300:'#374151' },
-        gold: { 100:'#fef6e0', 200:'#f5e6b8', 300:'#e8d08a', 400:'#d4b96a', 500:'#c9a84c', 600:'#b8952f', 700:'#9a7a1e', 800:'#7a6018' },
-        ink:  { 100:'#f9fafb', 200:'#e5e7eb', 300:'#d1d5db', 400:'#9ca3af', 500:'#6b7280' },
-        success:'#22c55e', warning:'#f59e0b', danger:'#ef4444', info:'#3b82f6',
+        /* LRMC branding-locked palette */
+        lrmc: { blue:'#1E3A8A', gold:'#D4AF37', slate:'#334155' },
+        blue: { 100:'#DBEAFE', 300:'#93C5FD', 500:'#3B82F6', 600:'#2563EB', 700:'#1D4ED8', 800:'#1E3A8A', 900:'#172554' },
+        slate:{ 50:'#F8FAFC', 100:'#F1F5F9', 200:'#E2E8F0', 300:'#CBD5E1', 400:'#94A3B8', 500:'#64748B', 700:'#334155', 800:'#1E293B', 900:'#0F172A' },
+        emerald:{ 50:'#ECFDF5', 100:'#D1FAE5', 500:'#10B981', 600:'#059669', 700:'#047857' },
+        amber:{ 50:'#FFFBEB', 100:'#FEF3C7', 500:'#F59E0B', 600:'#D97706', 700:'#B45309' },
+        rose:{ 50:'#FFF1F2', 100:'#FFE4E6', 600:'#E11D48', 700:'#BE123C' },
+        gold: { 100:'#FBF6E5', 500:'#D4AF37', 700:'#8A6D1C' },
       },
       fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
     } } };
@@ -46,7 +50,7 @@
 
 <a href="#lrmc-main" class="lrmc-skip-link">Skip to main content</a>
 
-<header class="border-b border-base-500/60 bg-base-800/80 backdrop-blur sticky top-0 z-20">
+<header class="border-b border-slate-200 bg-white backdrop-blur sticky top-0 z-20">
   <div class="max-w-7xl mx-auto px-4 lg:px-6 h-16 flex items-center gap-4">
     <a href="/public/index.html" class="flex items-center gap-3 min-w-0">
       <img src="/assets/img/lrmc-logo.svg" alt="Legacy Rental Management Consortium" class="w-9 h-9 flex-shrink-0" />
@@ -70,16 +74,16 @@
   <!-- SLOT: page content -->
 </main>
 
-<footer class="border-t border-base-500/60 mt-16">
+<footer class="border-t border-slate-200 mt-16">
   <div class="max-w-7xl mx-auto px-4 lg:px-6 py-8">
     <div class="flex items-center gap-3 mb-4">
       <img src="/assets/img/lrmc-logo.svg" alt="" class="w-8 h-8" />
       <p class="text-sm font-bold text-gold-500">Legacy Rental Management Consortium</p>
     </div>
-    <p class="text-xs text-ink-500 max-w-md">
+    <p class="text-xs text-slate-400 max-w-md">
       Institutional property and mobility management. Accra, Ghana.
     </p>
-    <p class="text-[11px] text-ink-500 mt-6">
+    <p class="text-[11px] text-slate-400 mt-6">
       © <span class="lrmc-year"></span> Legacy Rental Management Consortium. All rights reserved.
     </p>
   </div>

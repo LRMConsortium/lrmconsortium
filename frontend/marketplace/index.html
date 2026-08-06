@@ -36,10 +36,14 @@
   <script>
     tailwind.config = { theme: { extend: {
       colors: {
-        base: { 900:'#0a0e1a', 800:'#0d1225', 700:'#111827', 600:'#1a2035', 500:'#1f2937', 400:'#2a3347', 300:'#374151' },
-        gold: { 100:'#fef6e0', 200:'#f5e6b8', 300:'#e8d08a', 400:'#d4b96a', 500:'#c9a84c', 600:'#b8952f', 700:'#9a7a1e', 800:'#7a6018' },
-        ink:  { 100:'#f9fafb', 200:'#e5e7eb', 300:'#d1d5db', 400:'#9ca3af', 500:'#6b7280' },
-        success:'#22c55e', warning:'#f59e0b', danger:'#ef4444', info:'#3b82f6',
+        /* LRMC branding-locked palette */
+        lrmc: { blue:'#1E3A8A', gold:'#D4AF37', slate:'#334155' },
+        blue: { 100:'#DBEAFE', 300:'#93C5FD', 500:'#3B82F6', 600:'#2563EB', 700:'#1D4ED8', 800:'#1E3A8A', 900:'#172554' },
+        slate:{ 50:'#F8FAFC', 100:'#F1F5F9', 200:'#E2E8F0', 300:'#CBD5E1', 400:'#94A3B8', 500:'#64748B', 700:'#334155', 800:'#1E293B', 900:'#0F172A' },
+        emerald:{ 50:'#ECFDF5', 100:'#D1FAE5', 500:'#10B981', 600:'#059669', 700:'#047857' },
+        amber:{ 50:'#FFFBEB', 100:'#FEF3C7', 500:'#F59E0B', 600:'#D97706', 700:'#B45309' },
+        rose:{ 50:'#FFF1F2', 100:'#FFE4E6', 600:'#E11D48', 700:'#BE123C' },
+        gold: { 100:'#FBF6E5', 500:'#D4AF37', 700:'#8A6D1C' },
       },
       fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
     } } };
@@ -66,16 +70,16 @@
 
   <!-- ═══ SIDEBAR ═══════════════════════════════════════════════════════ -->
   <aside id="lrmc-sidebar"
-         class="fixed lg:static inset-y-0 left-0 z-40 w-[260px] bg-base-800 border-r border-base-500/60
+         class="fixed lg:static inset-y-0 left-0 z-40 w-[260px] bg-blue-800 border-r border-slate-200
                 flex flex-col transition-transform duration-200 lg:translate-x-0"
          :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
          :aria-hidden="(!sidebarOpen && window.innerWidth < 1024).toString()">
 
-    <div class="h-16 flex items-center gap-3 px-5 border-b border-base-500/60 flex-shrink-0">
+    <div class="h-16 flex items-center gap-3 px-5 border-b border-slate-200 flex-shrink-0">
       <img src="/assets/img/lrmc-logo.svg" alt="" class="w-9 h-9 flex-shrink-0" />
       <div class="min-w-0">
         <p class="text-sm font-extrabold text-gold-500 leading-tight tracking-wide">LRMC</p>
-        <p class="text-[10px] text-ink-500 leading-tight truncate">Legacy Rental Management Consortium</p>
+        <p class="text-[10px] text-slate-400 leading-tight truncate">Legacy Rental Management Consortium</p>
       </div>
     </div>
 
@@ -109,13 +113,13 @@
       </a>
     </nav>
 
-    <div class="border-t border-base-500/60 p-3 flex-shrink-0">
+    <div class="border-t border-slate-200 p-3 flex-shrink-0">
       <div class="flex items-center gap-3 px-2 py-2">
-        <div class="w-8 h-8 rounded-full bg-gold-500/20 flex items-center justify-center flex-shrink-0">
+        <div class="w-8 h-8 rounded-full bg-gold-100 flex items-center justify-center flex-shrink-0">
           <i data-lucide="user" class="w-4 h-4 text-gold-500"></i>
         </div>
         <div class="min-w-0 flex-1">
-          <p id="lrmc-actor-name" class="text-xs font-semibold text-ink-200 truncate">Signed in</p>
+          <p id="lrmc-actor-name" class="text-xs font-semibold text-slate-800 truncate">Signed in</p>
           <p id="lrmc-actor-role" class="text-[10px] font-bold text-gold-500 tracking-wider uppercase truncate">—</p>
         </div>
         <button type="button"
@@ -128,12 +132,12 @@
   </aside>
 
   <div x-show="sidebarOpen" x-cloak @click="close()"
-       class="fixed inset-0 bg-black/60 z-30 lg:hidden" aria-hidden="true"></div>
+       class="fixed inset-0 bg-slate-900/50 z-30 lg:hidden" aria-hidden="true"></div>
 
   <!-- ═══ MAIN ══════════════════════════════════════════════════════════ -->
   <div class="flex-1 flex flex-col min-w-0">
 
-    <header class="h-16 bg-base-800/80 backdrop-blur border-b border-base-500/60
+    <header class="h-16 bg-white backdrop-blur border-b border-slate-200
                    flex items-center gap-4 px-4 lg:px-6 flex-shrink-0 sticky top-0 z-20">
       <button type="button" @click="toggle()" class="lg:hidden lrmc-btn lrmc-btn-ghost !min-h-0 !p-2"
               aria-label="Toggle navigation" aria-controls="lrmc-sidebar">
@@ -141,8 +145,8 @@
       </button>
 
       <div class="min-w-0 flex-1">
-        <h1 class="text-base font-bold text-ink-100 truncate">Marketplace</h1>
-        <p id="hdr-account" class="text-xs text-ink-500 truncate">Legacy Rental Management Consortium</p>
+        <h1 class="text-base font-bold text-slate-900 truncate">Marketplace</h1>
+        <p id="hdr-account" class="text-xs text-slate-400 truncate">Legacy Rental Management Consortium</p>
       </div>
 
       <a href="/marketplace/products.html"
@@ -185,7 +189,7 @@
           <header class="lrmc-card-header">
             <div>
               <h2 id="mk-actions-heading" class="lrmc-card-title">Needs you</h2>
-              <p class="text-xs text-ink-500 mt-0.5">Orders waiting on something you can do</p>
+              <p class="text-xs text-slate-400 mt-0.5">Orders waiting on something you can do</p>
             </div>
             <a href="/marketplace/orders.html" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">
               All orders <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
@@ -233,15 +237,15 @@
                    hx-get="/api/v1/orders?limit=8"
                    hx-trigger="load"
                    hx-swap="innerHTML">
-              <tr><td colspan="5" class="p-6 text-center text-xs text-ink-500">Loading…</td></tr>
+              <tr><td colspan="5" class="p-6 text-center text-xs text-slate-400">Loading…</td></tr>
             </tbody>
           </table>
         </div>
       </section>
     </main>
 
-    <footer class="border-t border-base-500/60 px-4 lg:px-6 py-3 flex-shrink-0">
-      <p class="text-[11px] text-ink-500">
+    <footer class="border-t border-slate-200 px-4 lg:px-6 py-3 flex-shrink-0">
+      <p class="text-[11px] text-slate-400">
         © <span id="lrmc-year"></span> Legacy Rental Management Consortium · Accra, Ghana
       </p>
     </footer>
@@ -291,7 +295,7 @@ document.body.addEventListener('htmx:beforeSwap', function (evt) {
 
   if (evt.detail.xhr.status >= 400) {
     evt.detail.serverResponse = id === 'mk-orders'
-      ? '<tr><td colspan="5" class="p-6 text-center text-xs text-ink-500">Could not load orders.</td></tr>'
+      ? '<tr><td colspan="5" class="p-6 text-center text-xs text-slate-400">Could not load orders.</td></tr>'
       : emptyState('Could not load this panel.', 'alert-triangle');
     return;
   }
@@ -306,8 +310,8 @@ document.body.addEventListener('htmx:beforeSwap', function (evt) {
 
 function emptyState(message, icon) {
   return '<div class="flex flex-col items-center justify-center py-8 text-center">' +
-    '<i data-lucide="' + (icon || 'inbox') + '" class="w-6 h-6 text-ink-500 mb-2"></i>' +
-    '<p class="text-xs text-ink-500">' + LrmcUI.esc(message) + '</p></div>';
+    '<i data-lucide="' + (icon || 'inbox') + '" class="w-6 h-6 text-slate-400 mb-2"></i>' +
+    '<p class="text-xs text-slate-400">' + LrmcUI.esc(message) + '</p></div>';
 }
 
 /* ── Overview ─────────────────────────────────────────────────────────────
@@ -390,8 +394,8 @@ function applySide(d) {
     notice.className = 'lrmc-card border-warning/40 flex items-start gap-3';
     notice.innerHTML =
       '<i data-lucide="alert-triangle" class="w-5 h-5 text-warning flex-shrink-0 mt-0.5"></i>' +
-      '<div><p class="text-sm font-semibold text-ink-100">Verification pending</p>' +
-      '<p class="text-xs text-ink-400 mt-1">You can build your catalogue now, but nothing goes live ' +
+      '<div><p class="text-sm font-semibold text-slate-900">Verification pending</p>' +
+      '<p class="text-xs text-slate-500 mt-1">You can build your catalogue now, but nothing goes live ' +
       'until LRMC verifies this merchant account.</p></div>';
   }
 }
@@ -412,15 +416,15 @@ function renderActions(rows) {
 
   host.innerHTML = rows.map(function (r) {
     return '<a href="/marketplace/orders.html#' + LrmcUI.esc(r._id) + '" ' +
-      'class="flex items-center gap-3 p-3 rounded-lg bg-base-600/50 hover:bg-base-600 transition-colors">' +
-      '<div class="w-9 h-9 rounded-lg bg-gold-500/15 flex items-center justify-center flex-shrink-0">' +
+      'class="flex items-center gap-3 p-3 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors">' +
+      '<div class="w-9 h-9 rounded-lg bg-gold-100 flex items-center justify-center flex-shrink-0">' +
         '<i data-lucide="receipt" class="w-4 h-4 text-gold-500"></i></div>' +
       '<div class="min-w-0 flex-1">' +
-        '<p class="text-sm font-semibold text-ink-200 truncate">' + LrmcUI.esc(r.reference) + '</p>' +
-        '<p class="text-xs text-ink-500 truncate">' + LrmcUI.esc(r.statusLabel || r.status) + '</p></div>' +
+        '<p class="text-sm font-semibold text-slate-800 truncate">' + LrmcUI.esc(r.reference) + '</p>' +
+        '<p class="text-xs text-slate-400 truncate">' + LrmcUI.esc(r.statusLabel || r.status) + '</p></div>' +
       '<div class="text-right flex-shrink-0">' +
-        '<p class="text-sm font-bold text-ink-100 lrmc-num">' + LrmcUI.money(r.total) + '</p>' +
-        '<p class="text-[11px] text-ink-500">' + LrmcUI.relative(r.createdAt) + '</p></div>' +
+        '<p class="text-sm font-bold text-slate-900 lrmc-num">' + LrmcUI.money(r.total) + '</p>' +
+        '<p class="text-[11px] text-slate-400">' + LrmcUI.relative(r.createdAt) + '</p></div>' +
     '</a>';
   }).join('');
   if (window.lucide) window.lucide.createIcons();
@@ -451,13 +455,13 @@ function renderPipeline(byStatus, total) {
     var pct = Math.max(4, (n / max) * 100);
     return '<div>' +
       '<div class="flex items-center justify-between mb-1 gap-2">' +
-        '<span class="text-xs text-ink-400 capitalize truncate">' + LrmcUI.esc(s) + '</span>' +
-        '<span class="text-xs font-semibold text-ink-200 lrmc-num flex-shrink-0">' + n + '</span></div>' +
-      '<div class="h-1.5 rounded-full bg-base-500 overflow-hidden">' +
+        '<span class="text-xs text-slate-500 capitalize truncate">' + LrmcUI.esc(s) + '</span>' +
+        '<span class="text-xs font-semibold text-slate-800 lrmc-num flex-shrink-0">' + n + '</span></div>' +
+      '<div class="h-1.5 rounded-full bg-slate-200 overflow-hidden">' +
         '<div class="h-full rounded-full" style="width:' + pct + '%;background:var(--lrmc-mark-3)"></div>' +
       '</div></div>';
   }).join('') +
-  '<p class="text-[11px] text-ink-500 pt-1">' + LrmcUI.number(total) + ' order(s) in total</p>';
+  '<p class="text-[11px] text-slate-400 pt-1">' + LrmcUI.number(total) + ' order(s) in total</p>';
 }
 
 /* ── Order table ─────────────────────────────────────────────────────── */
@@ -465,22 +469,22 @@ function renderOrders(rows) {
   if (!Array.isArray(rows)) rows = (rows && rows.items) || [];
   LAST_ORDERS = rows;
   if (!rows.length) {
-    return '<tr><td colspan="5" class="p-6 text-center text-xs text-ink-500">No orders yet.</td></tr>';
+    return '<tr><td colspan="5" class="p-6 text-center text-xs text-slate-400">No orders yet.</td></tr>';
   }
 
   return rows.map(function (r) {
     /* Escrow gets a word of its own. "Paid" alone reads to a merchant as
      * "the money is mine", which is exactly what it is not. */
     var escrow = ['paid', 'accepted', 'fulfilled', 'confirmed', 'disputed'].indexOf(r.status) !== -1;
-    return '<tr class="border-b border-base-500/20">' +
-      '<td class="py-2.5 px-3 text-xs font-semibold text-ink-200 whitespace-nowrap">' +
+    return '<tr class="border-b border-slate-200">' +
+      '<td class="py-2.5 px-3 text-xs font-semibold text-slate-800 whitespace-nowrap">' +
         LrmcUI.esc(r.reference) + '</td>' +
       '<td class="py-2.5 px-3">' + LrmcUI.badge(r.status) +
-        (escrow ? '<span class="block text-[10px] text-ink-500 mt-1">held by LRMC</span>' : '') + '</td>' +
-      '<td class="py-2.5 px-3 text-xs text-ink-400 hidden sm:table-cell whitespace-nowrap">' +
+        (escrow ? '<span class="block text-[10px] text-slate-400 mt-1">held by LRMC</span>' : '') + '</td>' +
+      '<td class="py-2.5 px-3 text-xs text-slate-500 hidden sm:table-cell whitespace-nowrap">' +
         LrmcUI.date(r.placedAt || r.createdAt) + '</td>' +
-      '<td class="py-2.5 px-3 text-xs lrmc-td-num text-ink-200">' + LrmcUI.money(r.total) + '</td>' +
-      '<td class="py-2.5 px-3 text-xs lrmc-td-num hidden md:table-cell text-ink-300">' +
+      '<td class="py-2.5 px-3 text-xs lrmc-td-num text-slate-800">' + LrmcUI.money(r.total) + '</td>' +
+      '<td class="py-2.5 px-3 text-xs lrmc-td-num hidden md:table-cell text-slate-700">' +
         (SIDE === 'merchant' ? LrmcUI.money(r.merchantNet) : LrmcUI.esc(r.statusLabel || '—')) + '</td>' +
     '</tr>';
   }).join('');

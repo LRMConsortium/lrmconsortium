@@ -1,3 +1,15 @@
+#!/usr/bin/env python3
+"""LRMC — headless checks for hq/index.html.
+
+Renders the Command Center against stubbed LRMC API responses and asserts what
+it actually draws: figures formatted, chart geometry, empty and failure states,
+escaping, accessibility, and the responsive sidebar.
+
+The CDN libraries are replaced with small stand-ins in /tmp so this runs with
+no network. Run from the frontend/ folder:
+
+    python3 verify-hq.py
+"""
 import json, sys, http.server, socketserver, threading, pathlib
 from playwright.sync_api import sync_playwright
 
@@ -21,7 +33,9 @@ class H(http.server.SimpleHTTPRequestHandler):
         s.send_response(200); s.send_header('Content-Type',ct)
         s.send_header('Content-Length',str(len(body))); s.end_headers(); s.wfile.write(body)
 
-srv=socketserver.TCPServer(('127.0.0.1',8985),H); srv.allow_reuse_address=True
+socketserver.TCPServer.allow_reuse_address = True
+srv = socketserver.TCPServer(('127.0.0.1', 0), H)
+PORT = srv.server_address[1]
 threading.Thread(target=srv.serve_forever,daemon=True).start()
 
 fails=[]
@@ -33,7 +47,7 @@ with sync_playwright() as p:
     b=p.chromium.launch(); pg=b.new_page(viewport={'width':1440,'height':1000})
     errs=[]; pg.on('pageerror',lambda e:errs.append(str(e)))
     pg.on('console',lambda m:errs.append(m.text) if m.type=='error' else None)
-    pg.goto('http://127.0.0.1:8985/page',wait_until='networkidle'); pg.wait_for_timeout(1200)
+    pg.goto(f'http://127.0.0.1:{PORT}/page',wait_until='networkidle'); pg.wait_for_timeout(1200)
 
     print('— headline tiles —')
     check('four tiles',pg.locator('#hq-headline .lrmc-stat').count()==4)
@@ -107,8 +121,13 @@ with sync_playwright() as p:
         .every(s=>s.getAttribute('aria-labelledby'))"""))
     check('skip link is first focusable',pg.evaluate("""() => {
         const a=document.querySelector('a,button'); return a && a.classList.contains('lrmc-skip-link'); }"""))
-    check('logo img has empty alt where decorative',pg.evaluate("""() => {
-        const i=document.querySelector('aside img'); return i && i.getAttribute('alt')===''; }"""))
+    # The LRMC branding spec mandates alt="LRMC Logo" on the mark. Note that
+    # it sits beside the words "LRMC" and the full institution name, so a
+    # screen reader reads the brand three times — strictly, alt="" would be
+    # the accessible choice here. The brand requirement is explicit, so it
+    # wins, and this records that the trade-off was seen rather than missed.
+    check('logo carries the branded alt text',
+          pg.get_attribute('aside img', 'alt') == 'LRMC Logo')
 
     print('— responsive —')
     pg.set_viewport_size({'width':390,'height':844}); pg.wait_for_timeout(600)

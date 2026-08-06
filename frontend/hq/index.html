@@ -4,21 +4,24 @@
  LEGACY RENTAL MANAGEMENT CONSORTIUM (LRMC)
  HQ EXECUTIVE PORTAL — COMMAND CENTER
 
- The first page an executive sees. Extends layouts/dashboard.html.
+ Extends layouts/dashboard.html. Built to the LRMC branding-locked design
+ system: LRMC Blue for structure and action, LRMC Gold for institutional
+ accent, white cards on a pale slate page, Inter throughout, rounded-xl and
+ shadow-md.
 
  Reads from:
    GET /hq/command-center     headline figures
-   GET /hq/kpis               the measures below them
+   GET /hq/kpis               collections history
    GET /hq/system-health      platform state
    GET /hq/audit-log          recent institutional activity
    GET /governance/health     governance composite
 
- How the loading works, and why:
+ Two things about the loading are deliberate:
 
  The shell paints immediately and each panel fills itself through HTMX with
- `hx-trigger="load"`. One slow endpoint therefore delays one card rather than
- the whole page — which matters on a Ghanaian mobile connection far more than
- it does on an office fibre line.
+ `hx-trigger="load"`, so one slow endpoint delays one card rather than the
+ whole page — which matters far more on a Ghanaian mobile connection than on
+ an office fibre line.
 
  Every panel has three states — loading, loaded, empty — and the empty one is
  written out rather than left blank. A card that renders nothing looks broken;
@@ -30,21 +33,25 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Command Center · Legacy Rental Management Consortium</title>
-  <meta name="description" content="LRMC HQ Executive Command Center." />
+  <meta name="description" content="LRMC HQ Executive Command Center — Legacy Rental Management Consortium." />
 
   <link rel="icon" href="/assets/img/lrmc-favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = { theme: { extend: {
       colors: {
-        base: { 900:'#0a0e1a', 800:'#0d1225', 700:'#111827', 600:'#1a2035', 500:'#1f2937', 400:'#2a3347', 300:'#374151' },
-        gold: { 100:'#fef6e0', 200:'#f5e6b8', 300:'#e8d08a', 400:'#d4b96a', 500:'#c9a84c', 600:'#b8952f', 700:'#9a7a1e', 800:'#7a6018' },
-        ink:  { 100:'#f9fafb', 200:'#e5e7eb', 300:'#d1d5db', 400:'#9ca3af', 500:'#6b7280' },
-        success:'#22c55e', warning:'#f59e0b', danger:'#ef4444', info:'#3b82f6',
+        /* LRMC branding-locked palette */
+        lrmc: { blue:'#1E3A8A', gold:'#D4AF37', slate:'#334155' },
+        blue: { 100:'#DBEAFE', 300:'#93C5FD', 500:'#3B82F6', 600:'#2563EB', 700:'#1D4ED8', 800:'#1E3A8A', 900:'#172554' },
+        slate:{ 50:'#F8FAFC', 100:'#F1F5F9', 200:'#E2E8F0', 300:'#CBD5E1', 400:'#94A3B8', 500:'#64748B', 700:'#334155', 800:'#1E293B', 900:'#0F172A' },
+        emerald:{ 50:'#ECFDF5', 100:'#D1FAE5', 500:'#10B981', 600:'#059669', 700:'#047857' },
+        amber:{ 50:'#FFFBEB', 100:'#FEF3C7', 500:'#F59E0B', 600:'#D97706', 700:'#B45309' },
+        rose:{ 50:'#FFF1F2', 100:'#FFE4E6', 600:'#E11D48', 700:'#BE123C' },
+        gold: { 100:'#FBF6E5', 500:'#D4AF37', 700:'#8A6D1C' },
       },
       fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
     } } };
@@ -69,18 +76,22 @@
 
 <div class="flex h-full">
 
-  <!-- ═══ SIDEBAR ═══════════════════════════════════════════════════════ -->
+  <!-- ═══ SIDEBAR ═══════════════════════════════════════════════════════
+       LRMC Blue, per the institutional palette. A dark rail against a light
+       working area: navigation stays put, and the content is what the eye
+       returns to.
+  -->
   <aside id="lrmc-sidebar"
-         class="fixed lg:static inset-y-0 left-0 z-40 w-[260px] bg-base-800 border-r border-base-500/60
+         class="fixed lg:static inset-y-0 left-0 z-40 w-[264px] bg-blue-800
                 flex flex-col transition-transform duration-200 lg:translate-x-0"
          :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
          :aria-hidden="(!sidebarOpen && window.innerWidth < 1024).toString()">
 
-    <div class="h-16 flex items-center gap-3 px-5 border-b border-base-500/60 flex-shrink-0">
-      <img src="/assets/img/lrmc-logo.svg" alt="" class="w-9 h-9 flex-shrink-0" />
+    <div class="h-16 flex items-center gap-3 px-5 border-b border-white/10 flex-shrink-0">
+      <img src="/assets/img/lrmc-logo.svg" alt="LRMC Logo" class="w-9 h-9 flex-shrink-0" />
       <div class="min-w-0">
-        <p class="text-sm font-extrabold text-gold-500 leading-tight tracking-wide">LRMC</p>
-        <p class="text-[10px] text-ink-500 leading-tight truncate">Legacy Rental Management Consortium</p>
+        <p class="text-sm font-bold text-white leading-tight tracking-wide">LRMC</p>
+        <p class="text-[11px] text-blue-300 leading-tight truncate">Legacy Rental Management Consortium</p>
       </div>
     </div>
 
@@ -116,18 +127,19 @@
       </a>
     </nav>
 
-    <div class="border-t border-base-500/60 p-3 flex-shrink-0">
+    <div class="border-t border-white/10 p-3 flex-shrink-0">
       <div class="flex items-center gap-3 px-2 py-2">
-        <div class="w-8 h-8 rounded-full bg-gold-500/20 flex items-center justify-center flex-shrink-0">
+        <div class="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
           <i data-lucide="user" class="w-4 h-4 text-gold-500"></i>
         </div>
         <div class="min-w-0 flex-1">
-          <p id="lrmc-actor-name" class="text-xs font-semibold text-ink-200 truncate">Signed in</p>
-          <p id="lrmc-actor-role" class="text-[10px] font-bold text-gold-500 tracking-wider uppercase truncate">—</p>
+          <p id="lrmc-actor-name" class="text-sm font-medium text-white truncate">Signed in</p>
+          <p id="lrmc-actor-role" class="text-[11px] text-blue-300 truncate">—</p>
         </div>
         <button type="button"
                 onclick="LrmcAuth.signOut().then(function(){ location.href='/public/login.html'; })"
-                class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm !min-h-0 !p-1.5" aria-label="Sign out">
+                class="p-2 rounded-lg text-blue-300 hover:bg-white/10 hover:text-white transition"
+                aria-label="Sign out">
           <i data-lucide="log-out" class="w-4 h-4"></i>
         </button>
       </div>
@@ -135,118 +147,101 @@
   </aside>
 
   <div x-show="sidebarOpen" x-cloak @click="close()"
-       class="fixed inset-0 bg-black/60 z-30 lg:hidden" aria-hidden="true"></div>
+       class="fixed inset-0 bg-slate-900/50 z-30 lg:hidden" aria-hidden="true"></div>
 
   <!-- ═══ MAIN ══════════════════════════════════════════════════════════ -->
   <div class="flex-1 flex flex-col min-w-0">
 
-    <header class="h-16 bg-base-800/80 backdrop-blur border-b border-base-500/60
-                   flex items-center gap-4 px-4 lg:px-6 flex-shrink-0 sticky top-0 z-20">
-      <button type="button" @click="toggle()" class="lg:hidden lrmc-btn lrmc-btn-ghost !min-h-0 !p-2"
+    <header class="h-16 bg-white border-b border-slate-200 flex items-center gap-4
+                   px-4 lg:px-6 flex-shrink-0 sticky top-0 z-20">
+      <button type="button" @click="toggle()"
+              class="lg:hidden p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition"
               aria-label="Toggle navigation" aria-controls="lrmc-sidebar">
         <i data-lucide="menu" class="w-5 h-5"></i>
       </button>
 
       <div class="min-w-0 flex-1">
-        <h1 class="text-base font-bold text-ink-100 truncate">Command Center</h1>
-        <p class="text-xs text-ink-500 truncate">Legacy Rental Management Consortium · HQ Executive</p>
+        <h1 class="text-lg font-semibold text-slate-900 truncate">Command Center</h1>
+        <p class="text-sm text-slate-500 truncate">Legacy Rental Management Consortium · HQ Executive</p>
       </div>
 
-      <button type="button" class="lrmc-btn lrmc-btn-secondary lrmc-btn-sm hidden sm:inline-flex"
-              hx-get="/api/v1/hq/command-center"
-              hx-target="#hq-headline"
-              hx-swap="innerHTML"
+      <button type="button" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm hidden sm:inline-flex"
+              hx-get="/api/v1/hq/command-center" hx-target="#hq-headline" hx-swap="innerHTML"
               hx-indicator="#refresh-spinner">
-        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-        <span>Refresh</span>
-        <span id="refresh-spinner" class="htmx-indicator"><i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i></span>
+        <i data-lucide="refresh-cw" class="w-4 h-4"></i><span>Refresh</span>
+        <span id="refresh-spinner" class="htmx-indicator">
+          <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i></span>
       </button>
 
-      <button type="button" class="lrmc-btn lrmc-btn-ghost !min-h-0 !p-2 relative" aria-label="Notifications">
+      <button type="button" class="p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition relative"
+              aria-label="Notifications">
         <i data-lucide="bell" class="w-5 h-5"></i>
-        <span id="lrmc-unread"
-              class="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full
-                     bg-gold-500 text-base-900 text-[10px] font-bold
-                     flex items-center justify-center lrmc-num hidden"></span>
       </button>
     </header>
 
     <main id="lrmc-main" class="flex-1 overflow-y-auto p-4 lg:p-6 space-y-6">
 
       <!-- ── Headline figures ────────────────────────────────────────────
-           Four tiles, not fourteen. An executive dashboard that opens with
-           twenty numbers is a dashboard nobody reads: everything is equally
-           prominent, so nothing is. These four are the ones that would make
-           somebody act today.
+           Four, not fourteen. A dashboard that opens with twenty numbers is
+           one nobody reads: everything is equally prominent, so nothing is.
+           The first tile is solid LRMC Blue because collections is the figure
+           an executive came for; the rest are white, so the hierarchy is
+           visible before a single number has been read.
       -->
       <section aria-labelledby="hq-headline-heading">
         <h2 id="hq-headline-heading" class="lrmc-sr-only">Headline figures</h2>
 
         <div id="hq-headline"
              class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"
-             hx-get="/api/v1/hq/command-center"
-             hx-trigger="load"
-             hx-swap="innerHTML">
-
-          <!-- Loading state. Same dimensions as the real tiles, so nothing
-               jumps when the data lands. -->
-          <div class="lrmc-stat"><div class="lrmc-skeleton h-3 w-24 mb-3"></div><div class="lrmc-skeleton h-7 w-32"></div></div>
-          <div class="lrmc-stat"><div class="lrmc-skeleton h-3 w-24 mb-3"></div><div class="lrmc-skeleton h-7 w-32"></div></div>
-          <div class="lrmc-stat"><div class="lrmc-skeleton h-3 w-24 mb-3"></div><div class="lrmc-skeleton h-7 w-32"></div></div>
-          <div class="lrmc-stat"><div class="lrmc-skeleton h-3 w-24 mb-3"></div><div class="lrmc-skeleton h-7 w-32"></div></div>
+             hx-get="/api/v1/hq/command-center" hx-trigger="load" hx-swap="innerHTML">
+          <div class="lrmc-stat lrmc-stat-muted"><div class="lrmc-skeleton h-8 w-32 mb-2"></div><div class="lrmc-skeleton h-4 w-24"></div></div>
+          <div class="lrmc-stat lrmc-stat-muted"><div class="lrmc-skeleton h-8 w-32 mb-2"></div><div class="lrmc-skeleton h-4 w-24"></div></div>
+          <div class="lrmc-stat lrmc-stat-muted"><div class="lrmc-skeleton h-8 w-32 mb-2"></div><div class="lrmc-skeleton h-4 w-24"></div></div>
+          <div class="lrmc-stat lrmc-stat-muted"><div class="lrmc-skeleton h-8 w-32 mb-2"></div><div class="lrmc-skeleton h-4 w-24"></div></div>
         </div>
       </section>
 
       <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
 
-        <!-- ── Rent collected, twelve months ─────────────────────────────
+        <!-- ── Collections ───────────────────────────────────────────────
              One series, one hue. A single measure over time needs no legend
-             and no second colour — the title names it. Values are labelled
-             on the axis rather than on every bar, because a number on every
-             bar is noise you have to read past to see the shape.
+             and no second colour — the title names it. LRMC Gold is
+             deliberately absent from the bars: at 2.1:1 against white it is
+             not readable as a data mark. It belongs on the logo and the seal.
         -->
         <section class="lrmc-card xl:col-span-2" aria-labelledby="hq-collections-heading">
           <header class="lrmc-card-header">
             <div>
               <h2 id="hq-collections-heading" class="lrmc-card-title">Rent collected</h2>
-              <p class="text-xs text-ink-500 mt-0.5">Last 12 months · GH₵</p>
+              <p class="text-sm text-slate-500 mt-0.5">Last 12 months</p>
             </div>
             <a href="/hq/finance.html" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">
               Finance <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
             </a>
           </header>
 
-          <div id="hq-collections"
-               hx-get="/api/v1/hq/kpis"
-               hx-trigger="load"
-               hx-swap="innerHTML">
+          <div id="hq-collections" hx-get="/api/v1/hq/kpis" hx-trigger="load" hx-swap="innerHTML">
             <div class="lrmc-skeleton h-52 w-full"></div>
           </div>
 
-          <!-- The table view. Not a fallback — the honest reading of a chart
-               for anyone using a screen reader, and the fastest way for
-               anyone else to get exact figures. -->
+          <!-- Not a fallback — the honest reading of a chart for a screen
+               reader, and the fastest route to exact figures for everyone. -->
           <details class="mt-4">
-            <summary class="text-xs text-ink-400 cursor-pointer hover:text-ink-200">View as table</summary>
+            <summary class="text-sm text-slate-500 cursor-pointer hover:text-slate-700">View as table</summary>
             <div id="hq-collections-table" class="mt-3 overflow-x-auto"></div>
           </details>
         </section>
 
-        <!-- ── Governance ───────────────────────────────────────────────
-             The composite score, and the Founder Command Center's state.
-        -->
+        <!-- ── Governance ──────────────────────────────────────────────── -->
         <section class="lrmc-card lrmc-card-institutional" aria-labelledby="hq-governance-heading">
           <header class="lrmc-card-header">
             <h2 id="hq-governance-heading" class="lrmc-card-title">Governance</h2>
-            <i data-lucide="shield-check" class="w-4 h-4 text-gold-500"></i>
+            <i data-lucide="shield-check" class="w-5 h-5 text-gold-500"></i>
           </header>
 
-          <div id="hq-governance"
-               hx-get="/api/v1/governance/health"
-               hx-trigger="load"
-               hx-swap="innerHTML">
-            <div class="lrmc-skeleton h-4 w-20 mb-3"></div>
-            <div class="lrmc-skeleton h-10 w-24 mb-4"></div>
+          <div id="hq-governance" hx-get="/api/v1/governance/health" hx-trigger="load" hx-swap="innerHTML">
+            <div class="lrmc-skeleton h-6 w-24 mb-3"></div>
+            <div class="lrmc-skeleton h-10 w-28 mb-4"></div>
             <div class="lrmc-skeleton h-3 w-full mb-2"></div>
             <div class="lrmc-skeleton h-3 w-4/5"></div>
           </div>
@@ -255,49 +250,41 @@
 
       <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
 
-        <!-- ── Recent institutional activity ──────────────────────────── -->
+        <!-- ── Recent activity ─────────────────────────────────────────── -->
         <section class="lrmc-card xl:col-span-2" aria-labelledby="hq-activity-heading">
           <header class="lrmc-card-header">
             <h2 id="hq-activity-heading" class="lrmc-card-title">Recent activity</h2>
             <a href="/hq/governance.html" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">
-              Full audit trail <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+              Audit trail <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
             </a>
           </header>
 
-          <div id="hq-activity"
-               class="space-y-2"
-               hx-get="/api/v1/hq/audit-log?limit=6"
-               hx-trigger="load"
-               hx-swap="innerHTML">
-            <div class="lrmc-skeleton h-12 w-full"></div>
-            <div class="lrmc-skeleton h-12 w-full"></div>
-            <div class="lrmc-skeleton h-12 w-full"></div>
+          <div id="hq-activity" class="space-y-2"
+               hx-get="/api/v1/hq/audit-log?limit=6" hx-trigger="load" hx-swap="innerHTML">
+            <div class="lrmc-skeleton h-14 w-full"></div>
+            <div class="lrmc-skeleton h-14 w-full"></div>
+            <div class="lrmc-skeleton h-14 w-full"></div>
           </div>
         </section>
 
-        <!-- ── Platform health ──────────────────────────────────────────
-             Status carries an icon and a word, never colour alone.
-        -->
+        <!-- ── Platform health ─────────────────────────────────────────── -->
         <section class="lrmc-card" aria-labelledby="hq-health-heading">
           <header class="lrmc-card-header">
             <h2 id="hq-health-heading" class="lrmc-card-title">Platform health</h2>
           </header>
 
-          <div id="hq-health"
-               class="space-y-3"
-               hx-get="/api/v1/hq/system-health"
-               hx-trigger="load"
-               hx-swap="innerHTML">
-            <div class="lrmc-skeleton h-8 w-full"></div>
-            <div class="lrmc-skeleton h-8 w-full"></div>
-            <div class="lrmc-skeleton h-8 w-full"></div>
+          <div id="hq-health" class="space-y-1"
+               hx-get="/api/v1/hq/system-health" hx-trigger="load" hx-swap="innerHTML">
+            <div class="lrmc-skeleton h-9 w-full"></div>
+            <div class="lrmc-skeleton h-9 w-full"></div>
+            <div class="lrmc-skeleton h-9 w-full"></div>
           </div>
         </section>
       </div>
     </main>
 
-    <footer class="border-t border-base-500/60 px-4 lg:px-6 py-3 flex-shrink-0">
-      <p class="text-[11px] text-ink-500">
+    <footer class="border-t border-slate-200 bg-white px-4 lg:px-6 py-4 flex-shrink-0">
+      <p class="text-sm text-slate-500">
         © <span id="lrmc-year"></span> Legacy Rental Management Consortium · Accra, Ghana
       </p>
     </footer>
@@ -306,48 +293,47 @@
 
 <!-- Founder Authorisation Code prompt, raised by auth.js on CLEARANCE_REQUIRED. -->
 <div x-data="lrmcClearance" x-show="open" x-cloak
-     class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+     class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
      role="dialog" aria-modal="true" aria-labelledby="lrmc-clearance-title"
      @keydown.escape.window="hide()">
-  <div class="lrmc-card lrmc-card-institutional max-w-md w-full" @click.outside="hide()">
+  <div class="bg-white rounded-xl p-6 w-full max-w-lg shadow-xl border-t-4 border-gold-500"
+       @click.outside="hide()">
     <div class="flex items-start gap-3 mb-4">
-      <div class="w-10 h-10 rounded-full bg-gold-500/20 flex items-center justify-center flex-shrink-0">
-        <i data-lucide="key-round" class="w-5 h-5 text-gold-500"></i>
+      <div class="w-10 h-10 rounded-full bg-gold-100 flex items-center justify-center flex-shrink-0">
+        <i data-lucide="key-round" class="w-5 h-5 text-gold-700"></i>
       </div>
       <div>
-        <h2 id="lrmc-clearance-title" class="text-base font-bold text-gold-500">Founder Command Center</h2>
-        <p class="text-xs text-ink-400 mt-1" x-text="instruction"></p>
+        <h2 id="lrmc-clearance-title" class="text-xl font-semibold text-slate-900">Founder Command Center</h2>
+        <p class="text-sm text-slate-600 mt-1" x-text="instruction"></p>
       </div>
     </div>
     <div class="flex gap-2">
       <a href="/hq/governance.html" class="lrmc-btn lrmc-btn-primary flex-1">Continue</a>
-      <button type="button" class="lrmc-btn lrmc-btn-secondary" @click="hide()">Not now</button>
+      <button type="button" class="lrmc-btn lrmc-btn-ghost" @click="hide()">Not now</button>
     </div>
   </div>
 </div>
 
-<div id="lrmc-toasts" aria-live="polite" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 items-end"></div>
+<div id="lrmc-toasts" aria-live="polite" class="fixed top-4 right-4 z-50 flex flex-col gap-2 items-end"></div>
 
 <script>
 /* ═══════════════════════════════════════════════════════════════════════════
  * RENDERERS
  *
- * The LRMC backend returns JSON, so this page turns JSON into HTML on
- * arrival. HTMX's `htmx:beforeSwap` is the hook: intercept the response,
- * render it, and hand HTMX the markup to swap in. The alternative — a server
- * that returns HTML fragments — would mean a second presentation layer in
- * the backend, and the backend is deliberately an API.
+ * The LRMC backend returns JSON, so this page turns JSON into HTML on arrival.
+ * `htmx:beforeSwap` is the hook: intercept, render, hand HTMX the markup. The
+ * alternative — a server returning HTML fragments — would put a second
+ * presentation layer in the backend, and the backend is deliberately an API.
  * ═══════════════════════════════════════════════════════════════════════ */
 
 document.getElementById('lrmc-year').textContent = new Date().getFullYear();
 
-/* Which renderer handles which target. */
 var RENDERERS = {
-  'hq-headline':   renderHeadline,
-  'hq-collections':renderCollections,
-  'hq-governance': renderGovernance,
-  'hq-activity':   renderActivity,
-  'hq-health':     renderHealth,
+  'hq-headline':    renderHeadline,
+  'hq-collections': renderCollections,
+  'hq-governance':  renderGovernance,
+  'hq-activity':    renderActivity,
+  'hq-health':      renderHealth,
 };
 
 document.body.addEventListener('htmx:beforeSwap', function (evt) {
@@ -356,104 +342,101 @@ document.body.addEventListener('htmx:beforeSwap', function (evt) {
   if (!renderer) return;
 
   if (evt.detail.xhr.status >= 400) {
-    /* An error is shown in place, in the card that failed. A toast alone
-     * leaves a skeleton shimmering forever, which reads as "still loading"
-     * to somebody who looks away and back. */
+    /* Shown in the card that failed. A toast alone leaves a skeleton
+     * shimmering for ever, which reads as "still loading" to anyone who looks
+     * away and back. */
     evt.detail.serverResponse = emptyState('Could not load this panel.', 'alert-triangle');
     return;
   }
 
   var payload = {};
-  try { payload = JSON.parse(evt.detail.serverResponse) || {}; } catch (e) { /* not JSON */ }
+  try { payload = JSON.parse(evt.detail.serverResponse) || {}; } catch (e) {}
   var data = payload.data !== undefined ? payload.data : payload;
 
-  try {
-    evt.detail.serverResponse = renderer(data, payload.meta);
-  } catch (e) {
-    evt.detail.serverResponse = emptyState('Could not display this panel.', 'alert-triangle');
-  }
+  try { evt.detail.serverResponse = renderer(data, payload.meta); }
+  catch (e) { evt.detail.serverResponse = emptyState('Could not display this panel.', 'alert-triangle'); }
 });
 
-/* A card with nothing in it looks broken. A card that says so looks done. */
 function emptyState(message, icon) {
   return '<div class="flex flex-col items-center justify-center py-8 text-center">' +
-    '<i data-lucide="' + (icon || 'inbox') + '" class="w-6 h-6 text-ink-500 mb-2"></i>' +
-    '<p class="text-xs text-ink-500">' + LrmcUI.esc(message) + '</p></div>';
+    '<i data-lucide="' + (icon || 'inbox') + '" class="w-6 h-6 text-slate-400 mb-2"></i>' +
+    '<p class="text-sm text-slate-500">' + LrmcUI.esc(message) + '</p></div>';
 }
 
 /* ── Headline tiles ──────────────────────────────────────────────────────
- * Trend is an arrow AND a word AND a colour. Any two can fail — greyscale
- * printing, colour blindness — and the figure still reads correctly.
+ * The first is solid LRMC Blue, the rest white. Trend is an arrow AND a word
+ * AND a colour: any two can fail — greyscale printing, colour blindness — and
+ * the figure still reads correctly.
  */
 function renderHeadline(d) {
   d = d || {};
   var tiles = [
-    { label: 'Rent collected',   value: LrmcUI.moneyCompact(d.rentCollected),        meta: trend(d.rentCollectedChange, 'vs last month') },
-    { label: 'Active leases',    value: LrmcUI.number(d.activeLeases),               meta: LrmcUI.number(d.expiringSoon) + ' expiring in 30 days' },
-    { label: 'Outstanding',      value: LrmcUI.moneyCompact(d.outstandingBalance),   meta: LrmcUI.number(d.overdueCount) + ' accounts overdue' },
-    { label: 'Ususu rides',      value: LrmcUI.number(d.ridesCompleted),             meta: 'completed this month' },
+    { primary: true,
+      label: 'Rent collected', value: LrmcUI.moneyCompact(d.rentCollected),
+      meta: trend(d.rentCollectedChange, 'vs last month') },
+    { label: 'Active leases', value: LrmcUI.number(d.activeLeases),
+      meta: LrmcUI.number(d.expiringSoon) + ' expiring in 30 days' },
+    { label: 'Outstanding', value: LrmcUI.moneyCompact(d.outstandingBalance),
+      meta: LrmcUI.number(d.overdueCount) + ' accounts overdue' },
+    { label: 'Ususu rides', value: LrmcUI.number(d.ridesCompleted),
+      meta: 'completed this month' },
   ];
 
   return tiles.map(function (t) {
-    return '<div class="lrmc-stat">' +
-      '<p class="lrmc-stat-label">' + LrmcUI.esc(t.label) + '</p>' +
+    return '<div class="lrmc-stat' + (t.primary ? '' : ' lrmc-stat-muted') + '">' +
       '<p class="lrmc-stat-value">' + t.value + '</p>' +
-      '<p class="lrmc-stat-meta">' + t.meta + '</p>' +
-    '</div>';
+      '<p class="lrmc-stat-label">' + LrmcUI.esc(t.label) + '</p>' +
+      '<p class="lrmc-stat-meta">' + t.meta + '</p></div>';
   }).join('');
 }
 
 function trend(change, suffix) {
   if (change === null || change === undefined || isNaN(change)) return '—';
   var up = Number(change) >= 0;
-  var tone = up ? 'text-success' : 'text-danger';
-  var arrow = up ? '▲' : '▼';
-  return '<span class="' + tone + ' font-semibold">' + arrow + ' ' +
-         LrmcUI.percent(Math.abs(Number(change))) + '</span> ' + LrmcUI.esc(suffix);
+  return '<span class="font-semibold">' + (up ? '▲' : '▼') + ' ' +
+    LrmcUI.percent(Math.abs(Number(change))) + '</span> ' + LrmcUI.esc(suffix);
 }
 
 /* ── Collections chart ───────────────────────────────────────────────────
- * A plain SVG bar chart. No charting library, per the LRMC stack decision —
- * and for twelve bars a library is more code than the chart.
+ * Plain SVG. No charting library, per the LRMC stack decision — and for
+ * twelve bars a library is more code than the chart.
  *
- * Deliberate choices:
- *  • One hue. A single series needs no categorical palette and no legend.
- *  • 4px rounded tops, anchored to the baseline. The rounding is on the data
- *    end only; rounding the base would lift bars off the axis and misstate
- *    small values.
- *  • Only the newest bar is labelled. A number on every bar is noise.
- *  • <title> per bar gives a native browser tooltip on hover with no script.
- *  • role="img" with an aria-label, plus the table view beneath, so the
- *    figures are available to a screen reader rather than announced as a
- *    meaningless list of rectangles.
+ * Deliberate:
+ *  • One hue, LRMC Blue. A single series needs no categorical palette.
+ *  • 4px rounded tops anchored to the baseline. Rounding the base too would
+ *    lift bars off the axis and misstate small values.
+ *  • Only the newest bar is labelled. A number on every bar is noise you have
+ *    to read past to see the shape.
+ *  • <title> per bar gives a native tooltip with no script.
+ *  • role="img" plus the table beneath, so a screen reader gets figures
+ *    rather than a list of rectangles.
  */
 function renderCollections(d) {
   var series = (d && (d.rentByMonth || d.monthly || d.series)) || [];
   if (!series.length) return emptyState('No collection history yet.', 'bar-chart-3');
 
-  var W = 680, H = 210, PAD_L = 56, PAD_R = 12, PAD_T = 16, PAD_B = 30;
+  var W = 680, H = 210, PAD_L = 60, PAD_R = 12, PAD_T = 18, PAD_B = 30;
   var plotW = W - PAD_L - PAD_R, plotH = H - PAD_T - PAD_B;
 
   var values = series.map(function (p) { return Number(p.amount || p.value || 0); });
   var max = Math.max.apply(null, values) || 1;
-  /* Round the top of the scale up, so the axis reads in whole numbers
-   * instead of ending on 1,283,417. */
-  var niceMax = Math.pow(10, Math.floor(Math.log10(max)));
-  niceMax = Math.ceil(max / niceMax) * niceMax;
+  /* Round the scale top up so the axis reads in whole numbers rather than
+   * ending on 1,283,417. */
+  var step = Math.pow(10, Math.floor(Math.log10(max)));
+  var niceMax = Math.ceil(max / step) * step;
 
   var slot = plotW / series.length;
-  var barW = Math.min(34, slot * 0.62);
+  var barW = Math.min(34, slot * 0.6);
 
-  var gridlines = '';
+  var grid = '';
   for (var g = 0; g <= 2; g++) {
     var frac = g / 2;
     var y = PAD_T + plotH - frac * plotH;
-    gridlines +=
+    grid +=
       '<line x1="' + PAD_L + '" y1="' + y + '" x2="' + (W - PAD_R) + '" y2="' + y +
         '" stroke="var(--lrmc-grid)" stroke-width="1" />' +
       '<text x="' + (PAD_L - 8) + '" y="' + (y + 4) + '" text-anchor="end" ' +
-        'font-size="10" fill="var(--lrmc-ink-500)">' +
-        LrmcUI.moneyCompact(niceMax * frac) + '</text>';
+        'font-size="11" fill="var(--lrmc-gray-500)">' + LrmcUI.moneyCompact(niceMax * frac) + '</text>';
   }
 
   var bars = series.map(function (p, i) {
@@ -467,20 +450,17 @@ function renderCollections(d) {
     return '<g>' +
       '<title>' + LrmcUI.esc(label) + ': ' + LrmcUI.money(v) + '</title>' +
       '<rect x="' + x + '" y="' + y + '" width="' + barW + '" height="' + h + '" rx="4" ' +
-        'fill="' + (newest ? 'var(--lrmc-mark-1)' : 'var(--lrmc-mark-3)') + '" />' +
+        'fill="' + (newest ? 'var(--lrmc-mark-emphasis)' : 'var(--lrmc-mark)') + '" />' +
       '<text x="' + (x + barW / 2) + '" y="' + (H - 10) + '" text-anchor="middle" ' +
-        'font-size="10" fill="var(--lrmc-ink-500)">' + LrmcUI.esc(label.slice(0, 3)) + '</text>' +
-      /* Only the newest month gets a printed figure — the one an executive
-       * came to this card to read. */
+        'font-size="11" fill="var(--lrmc-gray-500)">' + LrmcUI.esc(label.slice(0, 3)) + '</text>' +
       (newest
         ? '<text x="' + (x + barW / 2) + '" y="' + (y - 6) + '" text-anchor="middle" ' +
-          'font-size="10" font-weight="700" fill="var(--lrmc-ink-200)">' +
+          'font-size="11" font-weight="600" fill="var(--lrmc-gray-900)">' +
           LrmcUI.moneyCompact(v) + '</text>'
         : '') +
     '</g>';
   }).join('');
 
-  /* The table view, rendered now and revealed by the <details> above. */
   var rows = series.map(function (p) {
     return '<tr><td>' + LrmcUI.esc(p.month || p.label || '') + '</td>' +
       '<td class="lrmc-td-num">' + LrmcUI.money(p.amount || p.value || 0) + '</td></tr>';
@@ -496,11 +476,9 @@ function renderCollections(d) {
 
   return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="w-full h-auto" role="img" ' +
     'aria-label="Rent collected by month for the last ' + series.length +
-    ' months. Full figures in the table below.">' +
-    gridlines + bars +
+    ' months. Full figures in the table below.">' + grid + bars +
     '<line x1="' + PAD_L + '" y1="' + (PAD_T + plotH) + '" x2="' + (W - PAD_R) + '" y2="' + (PAD_T + plotH) +
-      '" stroke="var(--lrmc-grid)" stroke-width="1" />' +
-  '</svg>';
+      '" stroke="var(--lrmc-grid)" stroke-width="1" /></svg>';
 }
 
 /* ── Governance composite ─────────────────────────────────────────────── */
@@ -515,25 +493,24 @@ function renderGovernance(d) {
   var components = (d.components || []).map(function (c) {
     var pct = Math.max(0, Math.min(100, Number(c.score || 0)));
     return '<div>' +
-      '<div class="flex items-center justify-between mb-1">' +
-        '<span class="text-xs text-ink-400">' + LrmcUI.esc(c.label || c.component || '') + '</span>' +
-        '<span class="text-xs font-semibold text-ink-300 lrmc-num">' + Math.round(pct) + '</span>' +
-      '</div>' +
-      '<div class="h-1.5 rounded-full bg-base-500 overflow-hidden">' +
-        '<div class="h-full rounded-full" style="width:' + pct + '%;background:var(--lrmc-mark-3)"></div>' +
-      '</div>' +
-    '</div>';
+      '<div class="flex items-center justify-between mb-1 gap-2">' +
+        '<span class="text-sm text-slate-600 truncate">' + LrmcUI.esc(c.label || c.component || '') + '</span>' +
+        '<span class="text-sm font-semibold text-slate-900 lrmc-num flex-shrink-0">' + Math.round(pct) + '</span></div>' +
+      '<div class="h-2 rounded-full bg-slate-100 overflow-hidden">' +
+        '<div class="h-full rounded-full" style="width:' + pct + '%;background:var(--lrmc-mark)"></div>' +
+      '</div></div>';
   }).join('');
 
   return '<div class="mb-4">' +
-      /* Icon and word, not colour alone. */
+      /* Icon and word, never colour alone. */
       '<span class="lrmc-badge lrmc-badge-' + tone + '">' +
-        '<i data-lucide="' + (tone === 'success' ? 'shield-check' : 'shield-alert') + '" class="w-3 h-3"></i>' +
+        '<i data-lucide="' + (tone === 'success' ? 'shield-check' : 'shield-alert') + '" class="w-3.5 h-3.5"></i>' +
         LrmcUI.esc(word) + '</span>' +
-      '<p class="lrmc-stat-value mt-3">' + Math.round(score) + '<span class="text-base text-ink-500 font-medium"> / 100</span></p>' +
-      (d.weakest ? '<p class="lrmc-stat-meta">Weakest: ' + LrmcUI.esc(d.weakest) + '</p>' : '') +
+      '<p class="text-3xl font-bold text-slate-900 mt-3 lrmc-num">' + Math.round(score) +
+        '<span class="text-base font-medium text-slate-400"> / 100</span></p>' +
+      (d.weakest ? '<p class="text-sm text-slate-500 mt-1">Weakest: ' + LrmcUI.esc(d.weakest) + '</p>' : '') +
     '</div>' +
-    (components ? '<div class="space-y-3 pt-3 border-t border-base-500/60">' + components + '</div>' : '');
+    (components ? '<div class="space-y-3 pt-4 border-t border-slate-200">' + components + '</div>' : '');
 }
 
 /* ── Activity feed ───────────────────────────────────────────────────── */
@@ -542,17 +519,16 @@ function renderActivity(rows) {
   if (!rows.length) return emptyState('No recent activity.', 'history');
 
   return rows.slice(0, 6).map(function (r) {
-    return '<div class="flex items-start gap-3 p-3 rounded-lg bg-base-600/50">' +
-      '<div class="w-8 h-8 rounded-full bg-gold-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">' +
-        '<i data-lucide="activity" class="w-4 h-4 text-gold-500"></i></div>' +
+    return '<div class="flex items-start gap-3 p-3 rounded-lg bg-slate-50">' +
+      '<div class="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">' +
+        '<i data-lucide="activity" class="w-4 h-4 text-blue-800"></i></div>' +
       '<div class="min-w-0 flex-1">' +
-        '<p class="text-sm text-ink-200 truncate">' +
+        '<p class="text-sm font-medium text-slate-900 truncate">' +
           LrmcUI.esc(r.summary || r.action || r.event || 'Activity') + '</p>' +
-        '<p class="text-xs text-ink-500 mt-0.5">' +
+        '<p class="text-sm text-slate-500 mt-0.5 truncate">' +
           LrmcUI.esc(r.actorLabel || r.actor || '') +
           (r.at || r.createdAt ? ' · ' + LrmcUI.relative(r.at || r.createdAt) : '') + '</p>' +
-      '</div>' +
-    '</div>';
+      '</div></div>';
   }).join('');
 }
 
@@ -564,19 +540,17 @@ function renderHealth(d) {
   return items.map(function (c) {
     var tone = LrmcUI.badgeTone(c.status);
     var icon = tone === 'success' ? 'check-circle' : tone === 'danger' ? 'x-circle' : 'alert-triangle';
-    return '<div class="flex items-center justify-between gap-3 py-1.5">' +
-      '<span class="text-sm text-ink-300 truncate">' + LrmcUI.esc(c.label || c.name || '') + '</span>' +
+    return '<div class="flex items-center justify-between gap-3 py-2">' +
+      '<span class="text-sm text-slate-700 truncate">' + LrmcUI.esc(c.label || c.name || '') + '</span>' +
       '<span class="lrmc-badge lrmc-badge-' + tone + '">' +
-        '<i data-lucide="' + icon + '" class="w-3 h-3"></i>' +
-        LrmcUI.esc(c.status || 'unknown') + '</span>' +
-    '</div>';
+        '<i data-lucide="' + icon + '" class="w-3.5 h-3.5"></i>' +
+        LrmcUI.esc(c.status || 'unknown') + '</span></div>';
   }).join('');
 }
 
 /* ── Boot ────────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', function () {
   if (window.lucide) window.lucide.createIcons();
-
   var actor = window.LrmcAuth && LrmcAuth.actor();
   if (actor) {
     document.getElementById('lrmc-actor-name').textContent = actor.name || actor.email || 'Signed in';
