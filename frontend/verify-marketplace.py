@@ -9,6 +9,7 @@ with small stand-ins so this runs with no network.
 """
 import json, sys, re, time, pathlib, http.server, socketserver, threading, random
 from playwright.sync_api import sync_playwright
+from lrmc_checks import run_shared_checks
 
 ROOT = pathlib.Path(__file__).parent
 # Test doubles for the CDN libraries, kept in the repo so this suite runs
@@ -99,6 +100,9 @@ fails = []
 def check(n, c):
     print(('  ok   ' if c else '  FAIL ') + n)
     if not c: fails.append(n)
+
+print('— rules that apply to every LRMC page —')
+run_shared_checks(ROOT, check)
 
 with sync_playwright() as p:
     b = p.chromium.launch(); pg = b.new_page(viewport={'width': 1440, 'height': 1000})

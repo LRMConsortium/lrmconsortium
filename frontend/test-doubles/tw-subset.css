@@ -127,3 +127,40 @@ img{display:block;max-width:100%;height:auto}
 .mb-6{margin-bottom:1.5rem}.mb-8{margin-bottom:2rem}.mt-6{margin-top:1.5rem}
 .w-64{width:16rem}.space-y-4>*+*{margin-top:1rem}
 .my-auto{margin-top:auto;margin-bottom:auto}
+
+/* Responsive variants used by the public pages. These were absent, so every
+   `md:hidden` / `sm:inline` element was measured at one width only — which is
+   how two mutations survived a suite that otherwise catches everything. */
+@media(min-width:640px){
+  .sm\:inline{display:inline}
+  .sm\:flex-row{flex-direction:row}
+  .sm\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(min-width:768px){
+  .md\:flex{display:flex}
+  .md\:hidden{display:none}
+  .md\:grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(min-width:1024px){
+  .lg\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .lg\:grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .lg\:grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .lg\:py-24{padding-top:6rem;padding-bottom:6rem}
+  .lg\:text-5xl{font-size:3rem;line-height:1}
+}
+.grid-cols-1{grid-template-columns:repeat(1,minmax(0,1fr))}
+.max-w-7xl{max-width:80rem}.max-w-3xl{max-width:48rem}.max-w-2xl{max-width:42rem}
+.max-w-md{max-width:28rem}.max-w-xl{max-width:36rem}.mx-auto{margin-left:auto;margin-right:auto}
+.py-16{padding-top:4rem;padding-bottom:4rem}.py-12{padding-top:3rem;padding-bottom:3rem}
+.py-6{padding-top:1.5rem;padding-bottom:1.5rem}.py-10{padding-top:2.5rem;padding-bottom:2.5rem}
+.mb-8{margin-bottom:2rem}.mt-8{margin-top:2rem}.w-56{width:14rem}.w-7{width:1.75rem}.h-7{height:1.75rem}
+.h-40{height:10rem}.h-16{height:4rem}.object-cover{object-fit:cover}.object-contain{object-fit:contain}
+.gap-x-6{column-gap:1.5rem}.gap-y-2{row-gap:.5rem}.flex-wrap{flex-wrap:wrap}
+.items-end{align-items:flex-end}.leading-tight{line-height:1.25}
+.text-2xl{font-size:1.5rem;line-height:2rem}.text-5xl{font-size:3rem;line-height:1}
+.text-lg{font-size:1.125rem;line-height:1.75rem}
+.text-blue-100{color:#DBEAFE}.text-blue-800{color:#1E3A8A}.text-gold-500{color:#D4AF37}
+.text-blue-700{color:#1D4ED8}.bg-blue-800{background:#1E3A8A}.bg-slate-50{background:#F8FAFC}
+.border-y{border-top-width:1px;border-bottom-width:1px}
+.sticky{position:sticky}.top-0{top:0}.z-20{z-index:20}.w-4\/5{width:80%}.w-1\/2{width:50%}
+.space-y-4>*+*{margin-top:1rem}

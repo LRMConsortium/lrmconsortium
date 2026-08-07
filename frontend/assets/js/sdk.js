@@ -184,7 +184,18 @@
       requestReset: function (b) { return post('/fac/reset-requests', b); },
     },
 
+    /* Zone E. No token required, and the backend names what it reveals
+     * rather than blacklisting what it hides. */
+    publicPortal: {
+      content:       function (q) { return get('/public/content', q); },
+      contentBySlug: function (slug) { return get('/public/content/' + seg(slug)); },
+      track:         function (b) { return post('/public/track', b); },
+    },
+
     properties: {
+      /* The public listing search — vacant, publicly listed, price and photos
+       * only. Distinct from `list`, which is the authenticated collection. */
+      public: function (q) { return get('/properties/public', q); },
       list:   function (q) { return get('/properties', q); },
       read:   function (id) { return get('/property/' + seg(id)); },
       create: function (b) { return post('/properties', b); },

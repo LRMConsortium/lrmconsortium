@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<!--
+ ═══════════════════════════════════════════════════════════════════════════
+ LEGACY RENTAL MANAGEMENT CONSORTIUM (LRMC)
+ HOME
+
+ Extends layouts/public.html. Zone E — a visitor is not an actor, so nothing
+ here needs a token and nothing here asks for one.
+
+ The job of this page is to answer, in the first screen, a question a stranger
+ is actually asking: *is there a home for me, and can I trust who is holding
+ the money?* Everything else is second.
+
+ Five decisions worth not undoing:
+
+ 1. **Real listings, not a stock photograph.** The homes section reads
+    `GET /properties/public` — the same endpoint the search page will use. A
+    marketing page showing invented properties teaches visitors that the
+    numbers on this site are decorative.
+
+ 2. **It works before the data arrives, and if it never does.** The hero, the
+    services and the calls to action are in the markup. The listings section
+    has four honest states — loading, results, nothing available, and could
+    not load — and the last two say what to do next rather than showing an
+    empty grid.
+
+ 3. **A section with nothing in it removes itself.** Announcements are read
+    from `GET /public/content`. If LRMC has published none, the heading goes
+    too. An empty "Latest news" box says the institution is dormant.
+
+ 4. **Prices are in Gambian dalasi**, formatted the way `LrmcUI.money` does it
+    everywhere else. A rent shown as a bare number is a rent in an unknown
+    currency.
+
+ 5. **The page counts itself, and stops when asked.** `POST /public/track`
+    records the visit so HQ's traffic metrics are not permanently empty — but
+    Do Not Track and Global Privacy Control are honoured, and nothing that
+    identifies a person is sent.
+ ═══════════════════════════════════════════════════════════════════════════
+-->
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Homes, mobility and trade in The Gambia · Legacy Rental Management Consortium</title>
+  <meta name="description" content="LRMC manages rentals, maintenance, a marketplace and Ususu rideshare across The Gambia. Find a home, list a property, or start earning." />
+
+  <link rel="canonical" href="https://lrmconsortium.com/" />
+  <meta property="og:title" content="Legacy Rental Management Consortium" />
+  <meta property="og:description" content="Homes, maintenance, marketplace and mobility — managed as one institution." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="/assets/img/lrmc-logo.png" />
+
+  <link rel="icon" href="/assets/img/lrmc-favicon.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/assets/img/lrmc-apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: {
+      colors: {
+        /* LRMC branding-locked palette */
+        lrmc: { blue:'#1E3A8A', gold:'#D4AF37', slate:'#334155' },
+        blue: { 100:'#DBEAFE', 300:'#93C5FD', 500:'#3B82F6', 600:'#2563EB', 700:'#1D4ED8', 800:'#1E3A8A', 900:'#172554' },
+        slate:{ 50:'#F8FAFC', 100:'#F1F5F9', 200:'#E2E8F0', 300:'#CBD5E1', 400:'#94A3B8', 500:'#64748B', 700:'#334155', 800:'#1E293B', 900:'#0F172A' },
+        emerald:{ 50:'#ECFDF5', 100:'#D1FAE5', 500:'#10B981', 600:'#059669', 700:'#047857' },
+        amber:{ 50:'#FFFBEB', 100:'#FEF3C7', 500:'#F59E0B', 600:'#D97706', 700:'#B45309' },
+        rose:{ 50:'#FFF1F2', 100:'#FFE4E6', 600:'#E11D48', 700:'#BE123C' },
+        gold: { 100:'#FBF6E5', 500:'#D4AF37', 700:'#8A6D1C' },
+      },
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+    } } };
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/theme.css" />
+  <link rel="stylesheet" href="/assets/css/utilities.css" />
+
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="/assets/js/sdk.js" defer></script>
+  <script src="/assets/js/auth.js" defer></script>
+  <script src="/assets/js/ui.js" defer></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+
+  <style>[x-cloak] { display: none !important; }</style>
+</head>
+
+<body class="h-full antialiased flex flex-col" x-data="{ menu: false }">
+
+<a href="#lrmc-main" class="lrmc-skip-link">Skip to main content</a>
+
+<header class="border-b border-slate-200 bg-white sticky top-0 z-20">
+  <div class="max-w-7xl mx-auto px-4 lg:px-6 h-16 flex items-center gap-4">
+    <a href="/public/index.html" class="flex items-center gap-3 min-w-0">
+      <img src="/assets/img/lrmc-mark.png" alt="" class="w-9 h-9 flex-shrink-0 object-contain" />
+      <!-- Blue, not gold. LRMC Gold measures 2.1:1 on white; a wordmark
+           nobody can read is not a wordmark. Gold does its work on the blue
+           band below, where it measures 4.9:1. -->
+      <span class="text-sm font-extrabold text-blue-800 tracking-wide hidden sm:inline">LRMC</span>
+      <span class="lrmc-sr-only">Legacy Rental Management Consortium — home</span>
+    </a>
+
+    <nav class="hidden md:flex items-center gap-1 ml-6 flex-1" aria-label="Main">
+      <a href="/public/index.html"   class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm" aria-current="page">Home</a>
+      <a href="/public/about.html"   class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">About</a>
+      <a href="/public/pricing.html" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Pricing</a>
+      <a href="/public/contact.html" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Contact</a>
+    </nav>
+
+    <div class="ml-auto flex items-center gap-2">
+      <!-- The signed-out pair is what ships in the markup, so a visitor with
+           no JavaScript sees a working door. `lrmcNav()` swaps it for a way
+           back to their portal if they already have a session. -->
+      <span class="hidden sm:inline-flex"><a id="lrmc-nav-signin" href="/public/login.html"
+         class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Sign in</a></span>
+      <a id="lrmc-nav-cta" href="/public/register.html"
+         class="lrmc-btn lrmc-btn-primary lrmc-btn-sm">Get started</a>
+
+      <span class="md:hidden"><button type="button" class="lrmc-btn lrmc-btn-ghost !min-h-0 !p-2"
+              @click="menu = !menu"
+              :aria-expanded="menu ? 'true' : 'false'"
+              aria-controls="lrmc-public-menu" aria-label="Menu">
+        <i data-lucide="menu" class="w-5 h-5" x-show="!menu"></i>
+        <i data-lucide="x" class="w-5 h-5" x-show="menu" x-cloak></i>
+      </button></span>
+    </div>
+  </div>
+
+  <!-- Without this the navigation is unreachable on a phone, which is the
+       device most of the launch market will arrive on. -->
+  <nav id="lrmc-public-menu" class="md:hidden border-t border-slate-200 bg-white px-4 py-2"
+       x-show="menu" x-cloak aria-label="Main">
+    <a href="/public/index.html"    class="lrmc-menu-item" aria-current="page">Home</a>
+    <a href="/public/about.html"    class="lrmc-menu-item">About</a>
+    <a href="/public/pricing.html"  class="lrmc-menu-item">Pricing</a>
+    <a href="/public/contact.html"  class="lrmc-menu-item">Contact</a>
+    <a href="/public/login.html"    class="lrmc-menu-item">Sign in</a>
+    <a href="/public/register.html" class="lrmc-menu-item">Get started</a>
+  </nav>
+</header>
+
+<main id="lrmc-main" class="flex-1">
+
+  <!-- ══ HERO ═══════════════════════════════════════════════════════════════
+       One heading, one sentence, two doors. The lockup is decorative because
+       the heading beneath already says whose page this is.
+  -->
+  <section class="bg-blue-800 text-white">
+    <div class="max-w-7xl mx-auto px-4 lg:px-6 py-16 lg:py-24">
+      <div class="max-w-3xl">
+        <img src="/assets/img/lrmc-logo-white.png" alt="" class="w-56 mb-8" />
+
+        <h1 class="text-3xl lg:text-5xl font-extrabold leading-tight mb-4">
+          Homes, mobility and trade — held to one standard.
+        </h1>
+
+        <p class="text-lg text-blue-100 mb-8 max-w-2xl">
+          LRMC manages rentals, maintenance, a marketplace and Ususu rideshare
+          across The Gambia. One account, one set of records, one institution
+          answerable for all of it.
+        </p>
+
+        <div class="flex flex-col sm:flex-row gap-3">
+          <a href="#homes" class="lrmc-btn lrmc-btn-gold">
+            <i data-lucide="search" class="w-4 h-4"></i>
+            Find a home
+          </a>
+          <a href="/public/register.html?role=landlord" class="lrmc-btn lrmc-btn-on-blue">
+            <i data-lucide="key-round" class="w-4 h-4"></i>
+            List your property
+          </a>
+        </div>
+
+        <!-- Gold on the blue band: 4.9:1, and the only place the seal colour
+             is legible at this size. -->
+        <p class="mt-8 text-sm text-gold-500 font-medium">
+          Rent held in escrow · Vendors vetted · Every payment on the record
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ WHAT LRMC DOES ═════════════════════════════════════════════════════ -->
+  <section class="max-w-7xl mx-auto px-4 lg:px-6 py-16" aria-labelledby="services-heading">
+    <h2 id="services-heading" class="text-2xl font-bold text-slate-900 mb-2">Four services, one account</h2>
+    <p class="text-slate-600 mb-8 max-w-2xl">
+      A landlord, a tenant, a driver and a merchant see different screens. They
+      are the same institution underneath, with the same record of who did what.
+    </p>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="lrmc-card">
+        <i data-lucide="home" class="w-6 h-6 text-blue-800 mb-3"></i>
+        <h3 class="font-semibold text-slate-900 mb-1">Rentals</h3>
+        <p class="text-sm text-slate-600">
+          Listings, applications, leases and rent — collected, receipted and
+          reconciled rather than remembered.
+        </p>
+      </div>
+      <div class="lrmc-card">
+        <i data-lucide="wrench" class="w-6 h-6 text-blue-800 mb-3"></i>
+        <h3 class="font-semibold text-slate-900 mb-1">Maintenance</h3>
+        <p class="text-sm text-slate-600">
+          Report a fault and a coordinator dispatches a vetted vendor. You can
+          see where the job is without ringing anybody.
+        </p>
+      </div>
+      <div class="lrmc-card">
+        <i data-lucide="store" class="w-6 h-6 text-blue-800 mb-3"></i>
+        <h3 class="font-semibold text-slate-900 mb-1">Marketplace</h3>
+        <p class="text-sm text-slate-600">
+          Buy from verified merchants. LRMC holds the money until the goods
+          arrive, and releases it when they do.
+        </p>
+      </div>
+      <div class="lrmc-card">
+        <i data-lucide="car-front" class="w-6 h-6 text-blue-800 mb-3"></i>
+        <h3 class="font-semibold text-slate-900 mb-1">Ususu rideshare</h3>
+        <p class="text-sm text-slate-600">
+          Rides across the city, and earnings drivers can see, count and
+          withdraw on the same day.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ HOMES AVAILABLE NOW ════════════════════════════════════════════════
+       Live from `GET /properties/public`. Four states, all of them honest.
+  -->
+  <section id="homes" class="bg-slate-50 border-y border-slate-200" aria-labelledby="homes-heading">
+    <div class="max-w-7xl mx-auto px-4 lg:px-6 py-16">
+
+      <div class="flex flex-wrap items-end justify-between gap-4 mb-8">
+        <div>
+          <h2 id="homes-heading" class="text-2xl font-bold text-slate-900 mb-1">Homes available now</h2>
+          <p class="text-slate-600">Vacant, listed and ready to view.</p>
+        </div>
+        <a href="/public/properties.html" class="lrmc-btn lrmc-btn-secondary">
+          See all listings
+          <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </a>
+      </div>
+
+      <!-- Loading. Six cards' worth of shape, so the section does not jump
+           when the real ones land. -->
+      <div id="homes-loading" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" aria-hidden="true">
+        <div class="lrmc-card"><div class="lrmc-skeleton h-40 mb-3"></div><div class="lrmc-skeleton h-4 w-4/5 mb-2"></div><div class="lrmc-skeleton h-4 w-1/2"></div></div>
+        <div class="lrmc-card"><div class="lrmc-skeleton h-40 mb-3"></div><div class="lrmc-skeleton h-4 w-4/5 mb-2"></div><div class="lrmc-skeleton h-4 w-1/2"></div></div>
+        <div class="lrmc-card"><div class="lrmc-skeleton h-40 mb-3"></div><div class="lrmc-skeleton h-4 w-4/5 mb-2"></div><div class="lrmc-skeleton h-4 w-1/2"></div></div>
+      </div>
+
+      <p id="homes-status" class="lrmc-sr-only" role="status" aria-live="polite"></p>
+
+      <ul id="homes-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" hidden></ul>
+
+      <!-- Nothing available is a real answer, and it is not a failure. It
+           still has to leave somebody with something to do. -->
+      <div id="homes-empty" class="lrmc-card text-center py-10" hidden>
+        <i data-lucide="house" class="w-8 h-8 text-slate-400 mx-auto mb-3"></i>
+        <p class="font-medium text-slate-900 mb-1">No homes are listed just now</p>
+        <p class="text-sm text-slate-600 mb-4 max-w-md mx-auto">
+          New properties are added as landlords bring them to LRMC. Register and
+          we will tell you when something matches.
+        </p>
+        <a href="/public/register.html?role=tenant" class="lrmc-btn lrmc-btn-primary">
+          Tell me when a home is listed
+        </a>
+      </div>
+
+      <!-- Our fault, said as ours. -->
+      <div id="homes-error" class="lrmc-card text-center py-10" hidden>
+        <i data-lucide="cloud-off" class="w-8 h-8 text-slate-400 mx-auto mb-3"></i>
+        <p class="font-medium text-slate-900 mb-1">We could not load listings just now</p>
+        <p class="text-sm text-slate-600 mb-4">This is on our side, not yours.</p>
+        <button type="button" id="homes-retry" class="lrmc-btn lrmc-btn-secondary">
+          Try again
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ HOW IT WORKS ═══════════════════════════════════════════════════════ -->
+  <section class="max-w-7xl mx-auto px-4 lg:px-6 py-16" aria-labelledby="how-heading">
+    <h2 id="how-heading" class="text-2xl font-bold text-slate-900 mb-8">How it works</h2>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div>
+        <h3 class="font-semibold text-slate-900 mb-4 flex items-center gap-2">
+          <i data-lucide="user" class="w-5 h-5 text-blue-800"></i>
+          If you are looking for a home
+        </h3>
+        <ol class="space-y-4">
+          <li class="flex gap-3">
+            <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-800 text-sm font-bold flex items-center justify-center flex-shrink-0">1</span>
+            <p class="text-sm text-slate-600"><span class="font-medium text-slate-900">Register and verify.</span> One set of documents, checked once, reused for every application.</p>
+          </li>
+          <li class="flex gap-3">
+            <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-800 text-sm font-bold flex items-center justify-center flex-shrink-0">2</span>
+            <p class="text-sm text-slate-600"><span class="font-medium text-slate-900">Apply to a listing.</span> The landlord sees a verified applicant, so a decision takes days rather than weeks.</p>
+          </li>
+          <li class="flex gap-3">
+            <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-800 text-sm font-bold flex items-center justify-center flex-shrink-0">3</span>
+            <p class="text-sm text-slate-600"><span class="font-medium text-slate-900">Pay rent through LRMC.</span> Every payment receipted, and a record you can produce years later.</p>
+          </li>
+        </ol>
+      </div>
+
+      <div>
+        <h3 class="font-semibold text-slate-900 mb-4 flex items-center gap-2">
+          <i data-lucide="key-round" class="w-5 h-5 text-blue-800"></i>
+          If you own property
+        </h3>
+        <ol class="space-y-4">
+          <li class="flex gap-3">
+            <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-800 text-sm font-bold flex items-center justify-center flex-shrink-0">1</span>
+            <p class="text-sm text-slate-600"><span class="font-medium text-slate-900">List it.</span> A coordinator is assigned to your property and is the person you call.</p>
+          </li>
+          <li class="flex gap-3">
+            <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-800 text-sm font-bold flex items-center justify-center flex-shrink-0">2</span>
+            <p class="text-sm text-slate-600"><span class="font-medium text-slate-900">We collect and chase.</span> Rent, arrears and maintenance handled without you being the one to ring anybody.</p>
+          </li>
+          <li class="flex gap-3">
+            <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-800 text-sm font-bold flex items-center justify-center flex-shrink-0">3</span>
+            <p class="text-sm text-slate-600"><span class="font-medium text-slate-900">Get paid on a schedule.</span> Payouts you can forecast, with the arithmetic shown.</p>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ ANNOUNCEMENTS ══════════════════════════════════════════════════════
+       Removes itself when LRMC has published nothing. An empty "Latest news"
+       box says the institution is dormant.
+  -->
+  <section id="news" class="bg-slate-50 border-y border-slate-200" aria-labelledby="news-heading" hidden>
+    <div class="max-w-7xl mx-auto px-4 lg:px-6 py-16">
+      <h2 id="news-heading" class="text-2xl font-bold text-slate-900 mb-8">From LRMC</h2>
+      <ul id="news-grid" class="grid grid-cols-1 md:grid-cols-3 gap-4"></ul>
+    </div>
+  </section>
+
+  <!-- ══ CLOSING CALL TO ACTION ═════════════════════════════════════════════ -->
+  <section class="max-w-7xl mx-auto px-4 lg:px-6 py-16" aria-labelledby="start-heading">
+    <div class="lrmc-card-institutional text-center py-12">
+      <h2 id="start-heading" class="text-2xl font-bold text-slate-900 mb-2">Start with one account</h2>
+      <p class="text-slate-600 mb-6 max-w-xl mx-auto">
+        Tenant, landlord, driver, vendor or merchant — registration takes two
+        steps and asks only what your role actually needs.
+      </p>
+      <div class="flex flex-col sm:flex-row gap-3 justify-center">
+        <a href="/public/register.html" class="lrmc-btn lrmc-btn-primary">Create your account</a>
+        <a href="/public/contact.html" class="lrmc-btn lrmc-btn-secondary">Talk to us first</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="border-t border-slate-200">
+  <div class="max-w-7xl mx-auto px-4 lg:px-6 py-8">
+    <div class="flex items-center gap-3 mb-4">
+      <img src="/assets/img/lrmc-mark.png" alt="" class="w-8 h-8 object-contain" />
+      <p class="text-sm font-bold text-blue-800">Legacy Rental Management Consortium</p>
+    </div>
+
+    <nav class="flex flex-wrap gap-x-6 gap-y-2 mb-6 text-sm" aria-label="Footer">
+      <a href="/public/about.html"   class="text-slate-600 hover:text-blue-700">About</a>
+      <a href="/public/pricing.html" class="text-slate-600 hover:text-blue-700">Pricing</a>
+      <a href="/public/contact.html" class="text-slate-600 hover:text-blue-700">Contact</a>
+      <a href="/public/terms.html"   class="text-slate-600 hover:text-blue-700">Terms</a>
+      <a href="/public/privacy.html" class="text-slate-600 hover:text-blue-700">Privacy</a>
+    </nav>
+
+    <!-- The market LRMC serves, not a registered address. Both are facts, but
+         only one of them is settled — see `claude/frontend-build-status.md`. -->
+    <p class="text-xs text-slate-500 max-w-md">
+      Institutional property and mobility management. Serving The Gambia.
+    </p>
+    <p class="text-[11px] text-slate-500 mt-6">
+      © <span class="lrmc-year"></span> Legacy Rental Management Consortium. All rights reserved.
+    </p>
+  </div>
+</footer>
+
+<div id="lrmc-toasts" aria-live="polite" class="fixed top-4 right-4 z-50 flex flex-col gap-2 items-end"></div>
+
+<script>
+document.querySelectorAll('.lrmc-year').forEach(function (el) {
+  el.textContent = new Date().getFullYear();
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Wording
+ *
+ * The API returns `compoundHouse`; a person reads "Compound house". Held here
+ * rather than derived from the string, because "shortLetUnit" split on capital
+ * letters reads "Short Let Unit", which is not how anybody writes it.
+ * ──────────────────────────────────────────────────────────────────────── */
+var PROPERTY_TYPE_LABELS = {
+  singleFamily: 'House', apartment: 'Apartment', compoundHouse: 'Compound house',
+  townhouse: 'Townhouse', duplex: 'Duplex', studio: 'Studio',
+  shortLetUnit: 'Short-let unit', hotelRoom: 'Hotel room', resortVilla: 'Resort villa',
+  commercialSpace: 'Commercial space', land: 'Land',
+};
+
+var RENT_PERIOD_LABELS = { monthly: 'per month', nightly: 'per night', yearly: 'per year' };
+
+function show(id, on) {
+  var el = document.getElementById(id);
+  if (el) el.hidden = !on;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Homes
+ * ──────────────────────────────────────────────────────────────────────── */
+
+function homeCard(p) {
+  var esc = LrmcUI.esc;
+  var type = PROPERTY_TYPE_LABELS[p.propertyType] || 'Property';
+  var where = [p.city, p.region].filter(Boolean).join(', ');
+
+  /* Rent may genuinely be absent — a listing can be published before a price
+   * is agreed. "D 0" would be a lie; "Price on application" is not. */
+  var price = (typeof p.rentAmount === 'number')
+    ? LrmcUI.moneyWhole(p.rentAmount, p.rentCurrency)
+    : 'Price on application';
+  var period = (typeof p.rentAmount === 'number')
+    ? (RENT_PERIOD_LABELS[p.rentPeriod] || '')
+    : '';
+
+  var rooms = [];
+  if (p.bedrooms) rooms.push(p.bedrooms + (p.bedrooms === 1 ? ' bedroom' : ' bedrooms'));
+  if (p.bathrooms) rooms.push(p.bathrooms + (p.bathrooms === 1 ? ' bathroom' : ' bathrooms'));
+  if (p.floorAreaSqm) rooms.push(p.floorAreaSqm + ' m²');
+
+  /* The photo is decorative: the title beside it already names the property,
+   * and a screen reader reading a filename twice helps nobody. A listing with
+   * no photograph gets a placeholder rather than a broken image. */
+  var photo = (p.photos && p.photos.length)
+    ? '<img src="' + esc(p.photos[0]) + '" alt="" loading="lazy" ' +
+      'class="w-full h-40 object-cover rounded-lg mb-3 bg-slate-100" />'
+    : '<div class="w-full h-40 rounded-lg mb-3 bg-slate-100 flex items-center justify-center">' +
+      '<i data-lucide="image" class="w-6 h-6 text-slate-400"></i></div>';
+
+  return '<li class="lrmc-card">' + photo +
+    '<p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">' + esc(type) + '</p>' +
+    '<h3 class="font-semibold text-slate-900 mb-1">' + esc(p.title || 'Untitled listing') + '</h3>' +
+    (where ? '<p class="text-sm text-slate-600 mb-2">' + esc(where) + '</p>' : '') +
+    (rooms.length ? '<p class="text-sm text-slate-500 mb-3">' + esc(rooms.join(' · ')) + '</p>' : '') +
+    '<p class="font-bold text-blue-800">' + esc(price) +
+      (period ? ' <span class="text-sm font-normal text-slate-500">' + esc(period) + '</span>' : '') +
+    '</p>' +
+    (p.reference ? '<p class="text-[11px] text-slate-500 mt-2">Ref ' + esc(p.reference) + '</p>' : '') +
+    '</li>';
+}
+
+function loadHomes() {
+  show('homes-loading', true);
+  show('homes-grid', false);
+  show('homes-empty', false);
+  show('homes-error', false);
+
+  return Lrmc.properties.public({ limit: 6 })
+    .then(function (items) {
+      show('homes-loading', false);
+
+      /* A paginated endpoint returns the rows, but a defensive read costs
+       * nothing and a homepage that throws on an unexpected shape is worse
+       * than one that says it could not load. */
+      var rows = Array.isArray(items) ? items : (items && items.data) || [];
+
+      if (!rows.length) {
+        show('homes-empty', true);
+        document.getElementById('homes-status').textContent = 'No homes are listed at the moment.';
+        return;
+      }
+
+      document.getElementById('homes-grid').innerHTML = rows.map(homeCard).join('');
+      show('homes-grid', true);
+      document.getElementById('homes-status').textContent =
+        rows.length + (rows.length === 1 ? ' home listed.' : ' homes listed.');
+      if (window.lucide) window.lucide.createIcons();
+    })
+    .catch(function () {
+      show('homes-loading', false);
+      show('homes-error', true);
+      document.getElementById('homes-status').textContent = 'Listings could not be loaded.';
+      if (window.lucide) window.lucide.createIcons();
+    });
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Announcements
+ * ──────────────────────────────────────────────────────────────────────── */
+
+function newsCard(item) {
+  var esc = LrmcUI.esc;
+  var when = item.publishedAt ? LrmcUI.date(item.publishedAt) : '';
+  return '<li class="lrmc-card">' +
+    (when ? '<p class="text-xs text-slate-500 mb-2">' + esc(when) + '</p>' : '') +
+    '<h3 class="font-semibold text-slate-900 mb-2">' + esc(item.title || '') + '</h3>' +
+    (item.excerpt ? '<p class="text-sm text-slate-600 mb-3">' + esc(item.excerpt) + '</p>' : '') +
+    '<a href="/public/article.html?slug=' + encodeURIComponent(item.slug || '') +
+      '" class="text-sm font-medium text-blue-600 hover:text-blue-700">Read more</a>' +
+    '</li>';
+}
+
+function loadNews() {
+  return Lrmc.publicPortal.content({ contentType: 'announcement', limit: 3 })
+    .then(function (items) {
+      var rows = Array.isArray(items) ? items : (items && items.data) || [];
+      /* No announcements is the ordinary case for a new institution. The
+       * section stays hidden rather than advertising that fact. */
+      if (!rows.length) return;
+      document.getElementById('news-grid').innerHTML = rows.map(newsCard).join('');
+      show('news', true);
+      if (window.lucide) window.lucide.createIcons();
+    })
+    .catch(function () { /* A homepage does not owe anybody a news feed. */ });
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Navigation for somebody who already has an account
+ * ──────────────────────────────────────────────────────────────────────── */
+
+function lrmcNav() {
+  if (!window.LrmcAuth || !LrmcAuth.isSignedIn()) return;
+  var signin = document.getElementById('lrmc-nav-signin');
+  var cta = document.getElementById('lrmc-nav-cta');
+  if (signin) signin.hidden = true;
+  if (cta) {
+    cta.textContent = 'Go to your dashboard';
+    cta.href = LrmcAuth.homeFor(LrmcAuth.actor());
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Counting the visit
+ *
+ * HQ's traffic metrics read from `POST /public/track`. Nothing calls it, so
+ * that dashboard would be permanently empty — this is the call.
+ *
+ * Do Not Track and Global Privacy Control are honoured. Neither is legally
+ * binding everywhere, but a platform that holds people's identity documents
+ * should not be the one arguing about that. Nothing sent identifies a person:
+ * the session id is random, lives in sessionStorage, and dies with the tab.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+function trackingRefused() {
+  return navigator.globalPrivacyControl === true
+      || navigator.doNotTrack === '1'
+      || window.doNotTrack === '1'
+      || navigator.msDoNotTrack === '1';
+}
+
+function visitSessionId() {
+  try {
+    var id = sessionStorage.getItem('lrmc.visit');
+    if (!id) {
+      id = (window.crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : String(Date.now()) + '-' + Math.round(Math.random() * 1e9);
+      sessionStorage.setItem('lrmc.visit', id);
+    }
+    return id;
+  } catch (e) { return undefined; }
+}
+
+function deviceClass() {
+  var w = window.innerWidth;
+  if (w < 640) return 'mobile';
+  if (w < 1024) return 'tablet';
+  return 'desktop';
+}
+
+function trackVisit() {
+  if (trackingRefused()) return;
+  /* A referrer from another site is useful; our own is noise. */
+  var ref = document.referrer || '';
+  if (ref && ref.indexOf(location.origin) === 0) ref = '';
+
+  Lrmc.publicPortal.track({
+    domain: location.hostname,
+    path: location.pathname,
+    referrer: ref || undefined,
+    sessionId: visitSessionId(),
+    device: deviceClass(),
+  }).catch(function () { /* A visit that could not be counted is not an error. */ });
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  if (window.lucide) window.lucide.createIcons();
+  lrmcNav();
+  loadHomes();
+  loadNews();
+  trackVisit();
+
+  document.getElementById('homes-retry').addEventListener('click', loadHomes);
+});
+</script>
+</body>
+</html>

@@ -17,6 +17,7 @@ Run from the frontend/ folder:  python3 verify-register.py
 """
 import json, sys, re, pathlib, http.server, socketserver, threading
 from playwright.sync_api import sync_playwright
+from lrmc_checks import run_shared_checks
 
 ROOT = pathlib.Path(__file__).parent
 DOUBLES = ROOT / 'test-doubles'
@@ -141,6 +142,9 @@ check('and states the same password floor', page_password_min == API_PASSWORD_MI
 check('every extra field has an error slot on the page',
       all(('data-error-for="%s"' % f) in src
           for fields in page_extras.values() for f in fields))
+
+print('— rules that apply to every LRMC page —')
+run_shared_checks(ROOT, check)
 
 with sync_playwright() as p:
     b = p.chromium.launch()

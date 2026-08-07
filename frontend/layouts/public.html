@@ -12,7 +12,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Legacy Rental Management Consortium</title>
-  <meta name="description" content="Legacy Rental Management Consortium — institutional property and mobility management in Ghana." />
+  <meta name="description" content="Legacy Rental Management Consortium — institutional property and mobility management in The Gambia." />
 
   <link rel="icon" href="/assets/img/lrmc-favicon.png" type="image/png" />
   <link rel="apple-touch-icon" href="/assets/img/lrmc-apple-touch-icon.png" />
@@ -42,9 +42,11 @@
 
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <script src="/assets/js/sdk.js" defer></script>
+  <script src="/assets/js/auth.js" defer></script>
   <script src="/assets/js/ui.js" defer></script>
   <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+  <style>[x-cloak] { display: none !important; }</style>
 </head>
 
 <body class="h-full antialiased flex flex-col" x-data="{ menu: false }">
@@ -56,20 +58,48 @@
     <a href="/public/index.html" class="flex items-center gap-3 min-w-0">
       <img src="/assets/img/lrmc-mark.png" alt=""
            class="w-9 h-9 flex-shrink-0 object-contain" />
-      <span class="text-sm font-extrabold text-gold-500 tracking-wide hidden sm:inline">LRMC</span>
+      <!-- Blue, not gold. LRMC Gold is 2.1:1 on white — a wordmark nobody can
+           read is not a wordmark. Gold belongs on the blue, where it measures
+           4.9:1 and does the job it was chosen for. -->
+      <span class="text-sm font-extrabold text-blue-800 tracking-wide hidden sm:inline">LRMC</span>
+      <span class="lrmc-sr-only">Legacy Rental Management Consortium — home</span>
     </a>
 
     <nav class="hidden md:flex items-center gap-1 ml-6 flex-1" aria-label="Main">
+      <a href="/public/index.html"   class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Home</a>
       <a href="/public/about.html"   class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">About</a>
       <a href="/public/pricing.html" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Pricing</a>
       <a href="/public/contact.html" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Contact</a>
     </nav>
 
     <div class="ml-auto flex items-center gap-2">
-      <a href="/public/login.html"    class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Sign in</a>
-      <a href="/public/register.html" class="lrmc-btn lrmc-btn-primary lrmc-btn-sm">Get started</a>
+      <!-- Somebody already signed in does not need to be sold an account.
+           Filled in by the page script; the signed-out pair is what ships in
+           the markup, so it is what a visitor with no JavaScript sees. -->
+      <span class="hidden sm:inline-flex"><a id="lrmc-nav-signin"  href="/public/login.html"    class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Sign in</a></span>
+      <a id="lrmc-nav-cta"     href="/public/register.html" class="lrmc-btn lrmc-btn-primary lrmc-btn-sm">Get started</a>
+
+      <!-- Without this the whole of the navigation is unreachable on a phone,
+           which is the device most of the launch market will arrive on. -->
+      <span class="md:hidden"><button type="button" class="lrmc-btn lrmc-btn-ghost !min-h-0 !p-2"
+              @click="menu = !menu"
+              :aria-expanded="menu ? 'true' : 'false'"
+              aria-controls="lrmc-public-menu" aria-label="Menu">
+        <i data-lucide="menu" class="w-5 h-5" x-show="!menu"></i>
+        <i data-lucide="x" class="w-5 h-5" x-show="menu" x-cloak></i>
+      </button></span>
     </div>
   </div>
+
+  <nav id="lrmc-public-menu" class="md:hidden border-t border-slate-200 bg-white px-4 py-2"
+       x-show="menu" x-cloak aria-label="Main">
+    <a href="/public/index.html"    class="lrmc-menu-item">Home</a>
+    <a href="/public/about.html"    class="lrmc-menu-item">About</a>
+    <a href="/public/pricing.html"  class="lrmc-menu-item">Pricing</a>
+    <a href="/public/contact.html"  class="lrmc-menu-item">Contact</a>
+    <a href="/public/login.html"    class="lrmc-menu-item">Sign in</a>
+    <a href="/public/register.html" class="lrmc-menu-item">Get started</a>
+  </nav>
 </header>
 
 <main id="lrmc-main" class="flex-1">
@@ -80,12 +110,16 @@
   <div class="max-w-7xl mx-auto px-4 lg:px-6 py-8">
     <div class="flex items-center gap-3 mb-4">
       <img src="/assets/img/lrmc-mark.png" alt="" class="w-8 h-8 object-contain" />
-      <p class="text-sm font-bold text-gold-500">Legacy Rental Management Consortium</p>
+      <p class="text-sm font-bold text-blue-800">Legacy Rental Management Consortium</p>
     </div>
-    <p class="text-xs text-slate-400 max-w-md">
-      Institutional property and mobility management. Accra, Ghana.
+    <!-- The market LRMC serves, not a registered address. Both are facts, but
+         only one of them is known here — see the note in
+         `claude/frontend-build-status.md`. Change it in this file and every
+         public page follows. -->
+    <p class="text-xs text-slate-500 max-w-md">
+      Institutional property and mobility management. Serving The Gambia.
     </p>
-    <p class="text-[11px] text-slate-400 mt-6">
+    <p class="text-[11px] text-slate-500 mt-6">
       © <span class="lrmc-year"></span> Legacy Rental Management Consortium. All rights reserved.
     </p>
   </div>

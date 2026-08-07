@@ -60,6 +60,22 @@
 
 .lrmc-btn-sm { padding: .375rem .75rem; font-size: .8125rem; min-height: 2.25rem; }
 
+/* Gold, the institutional seal, used as a button — and only ever with dark
+ * text on it. White on LRMC Gold measures 2.1:1 and is unreadable; slate-900
+ * on the same gold measures 8.5:1. The colour is not the problem, the pairing
+ * is. */
+.lrmc-btn-gold { background: var(--lrmc-gold); color: #0F172A; }
+.lrmc-btn-gold:hover:not(:disabled) { background: #C19B2E; }
+
+/* For the blue hero band, where a white-backed ghost button would sit on the
+ * page like a hole. Outlined in white on blue: 10.4:1. */
+.lrmc-btn-on-blue {
+  background: transparent;
+  color: #fff;
+  border-color: rgba(255, 255, 255, .55);
+}
+.lrmc-btn-on-blue:hover:not(:disabled) { background: rgba(255, 255, 255, .12); }
+
 /* ── Cards ───────────────────────────────────────────────────────────────
  * bg-white rounded-xl shadow-md p-6, per the locked system.
  */
@@ -214,6 +230,25 @@
 .lrmc-field-hint  { margin-top: .375rem; font-size: .8125rem; color: var(--lrmc-gray-500); }
 
 /* ── Navigation ──────────────────────────────────────────────────────── */
+
+/* The public mobile menu sits on white. `.lrmc-nav-item` below is slate-300
+ * for the dark sidebar — on white it measures 1.7:1, which is a menu nobody
+ * can read. Same shape, legible colours, and a 44px touch target, because a
+ * navigation drawer exists to be tapped. */
+.lrmc-menu-item {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  min-height: 2.75rem;
+  padding: .625rem .875rem;
+  border-radius: var(--lrmc-radius-sm);
+  font-size: .9375rem;
+  font-weight: 500;
+  color: var(--lrmc-slate);
+  text-decoration: none;
+}
+.lrmc-menu-item:hover { background: var(--lrmc-gray-50); color: var(--lrmc-blue-700); }
+.lrmc-menu-item[aria-current='page'] { color: var(--lrmc-blue-700); font-weight: 600; }
 
 .lrmc-nav-item {
   display: flex;
