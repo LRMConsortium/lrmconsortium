@@ -9,6 +9,7 @@ import { adPolicy } from './adPolicy.js';
 import { ads } from './ads.js';
 import { advertisers } from './advertisers.js';
 import { airbnbHosts } from './airbnbHosts.js';
+import { application } from './application.js';
 import { auth } from './auth.js';
 import { blueprint } from './blueprint.js';
 import { commercialClients } from './commercialClients.js';
@@ -40,11 +41,13 @@ import { rides } from './rides.js';
 import { staff } from './staff.js';
 import { tenants } from './tenants.js';
 import { vendors } from './vendors.js';
+import { viewing } from './viewing.js';
 
 export { adPolicy, META as adPolicyMeta, type AdPolicyApi } from './adPolicy.js';
 export { ads, META as adsMeta, type AdsApi } from './ads.js';
 export { advertisers, META as advertisersMeta, type AdvertisersApi } from './advertisers.js';
 export { airbnbHosts, META as airbnbHostsMeta, type AirbnbHostsApi } from './airbnbHosts.js';
+export { application, META as applicationMeta, type ApplicationApi } from './application.js';
 export { auth, META as authMeta, type AuthApi } from './auth.js';
 export { blueprint, META as blueprintMeta, type BlueprintApi } from './blueprint.js';
 export { commercialClients, META as commercialClientsMeta, type CommercialClientsApi } from './commercialClients.js';
@@ -76,6 +79,7 @@ export { rides, META as ridesMeta, type RidesApi } from './rides.js';
 export { staff, META as staffMeta, type StaffApi } from './staff.js';
 export { tenants, META as tenantsMeta, type TenantsApi } from './tenants.js';
 export { vendors, META as vendorsMeta, type VendorsApi } from './vendors.js';
+export { viewing, META as viewingMeta, type ViewingApi } from './viewing.js';
 
 /**
  * The whole API, grouped by module.
@@ -88,6 +92,7 @@ export const api = {
   ads,
   advertisers,
   airbnbHosts,
+  application,
   auth,
   blueprint,
   commercialClients,
@@ -119,6 +124,7 @@ export const api = {
   staff,
   tenants,
   vendors,
+  viewing,
 } as const;
 
 export type Api = typeof api;

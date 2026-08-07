@@ -203,6 +203,38 @@
       archive:function (id) { return del('/property/' + seg(id)); },
     },
 
+    /* Asking to see a property. Every rule about *when* is server-side in
+     * `viewingRules` — this is only the wire. */
+    viewings: {
+      list:     function (q) { return get('/viewings', q); },
+      read:     function (id) { return get('/viewing/' + seg(id)); },
+      request:  function (b) { return post('/viewings', b); },
+      update:   function (id, b) { return patch('/viewing/' + seg(id), b); },
+      confirm:  function (id, b) { return post('/viewing/' + seg(id) + '/confirm', b || {}); },
+      decline:  function (id, b) { return post('/viewing/' + seg(id) + '/decline', b || {}); },
+      cancel:   function (id, b) { return post('/viewing/' + seg(id) + '/cancel', b || {}); },
+      complete: function (id, b) { return post('/viewing/' + seg(id) + '/complete', b || {}); },
+      noShow:   function (id, b) { return post('/viewing/' + seg(id) + '/no-show', b || {}); },
+    },
+
+    /* Asking to live in one. `assess` recommends; `approve` and `reject` are
+     * the only calls that decide, and both require a reason. */
+    applications: {
+      list:    function (q) { return get('/applications', q); },
+      read:    function (id) { return get('/application/' + seg(id)); },
+      apply:   function (b) { return post('/applications', b); },
+      update:  function (id, b) { return patch('/application/' + seg(id), b); },
+      assess:  function (id) { return post('/application/' + seg(id) + '/assess', {}); },
+      review:  function (id) { return post('/application/' + seg(id) + '/review', {}); },
+      requestInformation: function (id, b) {
+        return post('/application/' + seg(id) + '/request-information', b);
+      },
+      approve:  function (id, b) { return post('/application/' + seg(id) + '/approve', b); },
+      reject:   function (id, b) { return post('/application/' + seg(id) + '/reject', b); },
+      withdraw: function (id) { return post('/application/' + seg(id) + '/withdraw', {}); },
+      recordLease: function (id, b) { return post('/application/' + seg(id) + '/lease', b); },
+    },
+
     leases:   { list: function (q) { return get('/leases', q); },
                 read: function (id) { return get('/lease/' + seg(id)); },
                 create: function (b) { return post('/leases', b); } },

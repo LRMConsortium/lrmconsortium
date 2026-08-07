@@ -1985,6 +1985,190 @@ const RESOURCES: Record<string, JsonSchema> = {
 
   // ── Marketplace ────────────────────────────────────────────────────────
 
+  // ── Viewings ──────────────────────────────────────────────────────────────
+
+  Viewing: {
+    type: 'object',
+    description:
+      'A tenant asking to see a property, and LRMC agreeing to be there. `localHour` is stored alongside `requestedFor` because the server runs in UTC and the tenant does not — the hour a person meant is not recoverable from an instant without their offset.',
+    properties: {
+      _id: oid(),
+      property: oid(),
+      requestedBy: oid('The User who asked. Not a TenantProfile — an applicant may not have one yet.'),
+      landlord: oid(),
+      coordinator: oid(),
+      requestedFor: date(),
+      localHour: int({ minimum: 0, maximum: 23, description: 'The hour the tenant meant, in their own day.' }),
+      alternateFor: date(),
+      alternateLocalHour: int({ minimum: 0, maximum: 23 }),
+      status: str({ enum: ['requested', 'confirmed', 'declined', 'completed', 'cancelled', 'noShow'] }),
+      note: str({ maxLength: 600, description: 'What the tenant said when asking.' }),
+      decisionReason: str({ maxLength: 600 }),
+      outcomeNote: str({ maxLength: 600, description: "LRMC's account, kept apart from the tenant's." }),
+      decidedBy: oid(),
+      decidedAt: date(),
+      outcomeRecordedAt: date(),
+      createdAt: date(),
+      updatedAt: date(),
+    },
+    required: ['property', 'requestedBy', 'requestedFor', 'localHour', 'status'],
+  },
+
+  ViewingList: arr(ref('Viewing')),
+
+  // ── Applications ──────────────────────────────────────────────────────────
+
+  EligibilityFactor: {
+    type: 'object',
+    description: 'One scored factor, with the reason in words the applicant could be shown.',
+    properties: {
+      factor: str({
+        enum: ['identity', 'employment', 'references', 'paymentHistory', 'ususuContributions', 'disputes'],
+      }),
+      label: str(),
+      status: str({
+        enum: ['pass', 'concern', 'fail', 'unknown'],
+        description:
+          '`unknown` means LRMC has no evidence, which is not the same as bad evidence and is never scored as a failure.',
+      }),
+      points: num({ minimum: 0 }),
+      max: num({ minimum: 0 }),
+      reason: str(),
+    },
+    required: ['factor', 'label', 'status', 'points', 'max', 'reason'],
+  },
+
+  Assessment: {
+    type: 'object',
+    description:
+      'A recommendation, never a decision. Stored on the application as a snapshot of what the decider was looking at — recomputing on read would rewrite history every time somebody paid their rent.',
+    properties: {
+      factors: arr(ref('EligibilityFactor')),
+      score: num({ minimum: 0, maximum: 100 }),
+      recommendation: str({ enum: ['recommend', 'review', 'decline'] }),
+      blockedBy: strArr(),
+      missing: strArr(),
+      summary: str(),
+      takenAt: date(),
+      takenBy: oid(),
+    },
+    required: ['factors', 'score', 'recommendation', 'summary'],
+  },
+
+  Application: {
+    type: 'object',
+    description:
+      'A tenancy application. LRMC scores it; a named person decides it. `decision` carries both the author and the reason, for an approval as much as for a refusal.',
+    properties: {
+      _id: oid(),
+      property: oid(),
+      applicant: oid(),
+      landlord: oid(),
+      coordinator: oid(),
+      status: str({
+        enum: ['submitted', 'underReview', 'awaitingApplicant', 'approved', 'rejected', 'withdrawn', 'leaseIssued'],
+      }),
+      proposedRent: num({ minimum: 0 }),
+      currency: str({ enum: ['GMD', 'GHS', 'USD', 'EUR', 'GBP', 'NGN', 'XOF'] }),
+      proposedStart: date(),
+      termMonths: int({ minimum: 1, maximum: 120 }),
+      householdSize: int({ minimum: 1, maximum: 30 }),
+      message: str({ maxLength: 2000 }),
+      documentKeys: strArr(),
+      assessment: ref('Assessment'),
+      decision: {
+        type: 'object',
+        properties: {
+          outcome: str({ enum: ['approved', 'rejected'] }),
+          decidedBy: oid(),
+          decidedAt: date(),
+          reason: str({ maxLength: 2000 }),
+          againstRecommendation: bool({
+            description: 'Recorded so a decision taken against the score is findable later.',
+          }),
+        },
+      },
+      lease: oid(),
+      outstandingRequest: str({ maxLength: 600 }),
+      createdAt: date(),
+      updatedAt: date(),
+    },
+    required: ['property', 'applicant', 'status', 'currency'],
+  },
+
+  ApplicationList: arr(ref('Application')),
+
+  ApplicationAssessment: {
+    type: 'object',
+    properties: {
+      assessment: ref('Assessment'),
+      application: ref('Application'),
+    },
+    required: ['assessment', 'application'],
+  },
+
+  RequestViewingRequest: {
+    type: 'object',
+    description:
+      '`localHour` is required rather than derived: the server runs in UTC and the tenant does not, so the hour a person meant cannot be recovered from an instant without their offset.',
+    properties: {
+      property: oid(),
+      requestedFor: date(),
+      localHour: int({ minimum: 0, maximum: 23 }),
+      alternateFor: date(),
+      alternateLocalHour: int({ minimum: 0, maximum: 23 }),
+      note: str({ maxLength: 600 }),
+    },
+    required: ['property', 'requestedFor', 'localHour'],
+  },
+
+  UpdateViewingRequest: {
+    type: 'object',
+    description: "The tenant's own note. Status moves through the action routes.",
+    properties: { note: str({ maxLength: 600 }) },
+  },
+
+  ViewingDecisionRequest: {
+    type: 'object',
+    properties: { reason: str({ maxLength: 600 }) },
+  },
+
+  ViewingOutcomeRequest: {
+    type: 'object',
+    properties: { outcomeNote: str({ maxLength: 600 }) },
+  },
+
+  CreateApplicationRequest: {
+    type: 'object',
+    description:
+      'What the applicant states. Notably absent: whether their income is evidenced, their payment history, and whether a dispute is open — those LRMC looks up, never accepts.',
+    properties: {
+      property: oid(),
+      proposedRent: num({ minimum: 0 }),
+      proposedStart: date(),
+      termMonths: int({ minimum: 1, maximum: 120 }),
+      householdSize: int({ minimum: 1, maximum: 30 }),
+      monthlyIncome: num({ minimum: 0, description: 'Declared, not evidenced.' }),
+      message: str({ maxLength: 2000 }),
+      documentKeys: strArr(),
+    },
+    required: ['property'],
+  },
+
+  DecideApplicationRequest: {
+    type: 'object',
+    description:
+      'Required for an approval as much as for a refusal. An approval nobody signed is the thing that cannot be defended later.',
+    properties: { reason: str({ minLength: 4, maxLength: 2000 }) },
+    required: ['reason'],
+  },
+
+  RequestFromApplicantRequest: {
+    type: 'object',
+    properties: { outstandingRequest: str({ minLength: 4, maxLength: 600 }) },
+    required: ['outstandingRequest'],
+  },
+
   Listing: {
     type: 'object',
     description:
@@ -3531,5 +3715,13 @@ export const REQUEST_SCHEMA_BY_NAME: Record<string, string> = {
   adStatusSchema: 'AdStatusRequest',
   adReviewSchema: 'AdReviewRequest',
   advertiserTermsSchema: 'AdvertiserTermsRequest',
+  requestViewingSchema: 'RequestViewingRequest',
+  updateViewingSchema: 'UpdateViewingRequest',
+  viewingDecisionSchema: 'ViewingDecisionRequest',
+  viewingOutcomeSchema: 'ViewingOutcomeRequest',
+  createApplicationSchema: 'CreateApplicationRequest',
+  updateApplicationSchema: 'CreateApplicationRequest',
+  decideApplicationSchema: 'DecideApplicationRequest',
+  requestFromApplicantSchema: 'RequestFromApplicantRequest',
   trackTrafficSchema: 'TrafficEventRequest',
 };

@@ -25,6 +25,10 @@ export const RESOURCES = [
   'lease',
   'rentPayment',
   'maintenanceRequest',
+  /** A tenant asking to see a property, and LRMC agreeing to be there. */
+  'viewing',
+  /** A tenancy application: scored by LRMC, decided by a person. */
+  'application',
 
   // LRMC commercial clients
   'airbnbHostProfile',

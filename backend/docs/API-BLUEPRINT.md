@@ -7,7 +7,7 @@
 
 All paths are relative to `API_PREFIX` (default `/api/v1`).
 
-**303 endpoints** — 141 from the generic profile surface across 16 collections, 162 hand-mounted.
+**323 endpoints** — 141 from the generic profile surface across 16 collections, 182 hand-mounted.
 
 ---
 
@@ -174,6 +174,57 @@ get the clauses below, OR-ed together.
 ---
 
 ## Endpoints by module
+
+### viewing
+
+| Method | Path | Zone | Permission (any of) | Own | Request | Roles |
+|---|---|---|---|---|---|---|
+| `POST` | `/api/v1/viewings` | D · Member | `viewing:create` | — | body: `requestViewingSchema` | FN BO TE |
+| `GET` | `/api/v1/viewings` | D · Member | `viewing:readOwn`<br>`viewing:read` | scoped | query: `viewingQuerySchema` | FN BO CO LL TE |
+| `GET` | `/api/v1/viewing/:viewingId` | D · Member | `viewing:readOwn`<br>`viewing:read` | scoped | — | FN BO CO LL TE |
+| `PATCH` | `/api/v1/viewing/:viewingId` | D · Member | `viewing:updateOwn` | scoped | body: `updateViewingSchema` | FN BO CO TE |
+| `POST` | `/api/v1/viewing/:viewingId/confirm` | D · Member | `viewing:approve` | scoped | body: `viewingDecisionSchema` | FN BO CO |
+| `POST` | `/api/v1/viewing/:viewingId/decline` | D · Member | `viewing:approve` | scoped | body: `viewingDecisionSchema` | FN BO CO |
+| `POST` | `/api/v1/viewing/:viewingId/cancel` | D · Member | `viewing:readOwn` | scoped | body: `viewingDecisionSchema` | FN BO CO LL TE |
+| `POST` | `/api/v1/viewing/:viewingId/complete` | D · Member | `viewing:update` | scoped | body: `viewingOutcomeSchema` | FN BO CO |
+| `POST` | `/api/v1/viewing/:viewingId/no-show` | D · Member | `viewing:update` | scoped | body: `viewingOutcomeSchema` | FN BO CO |
+
+**Notes**
+
+- **`POST /api/v1/viewings`** — Refuses a slot outside viewing hours, inside the notice window, or beyond the booking horizon — see `viewingRules.slotProblem`. Also refuses a second live request on the same property.
+- **`GET /api/v1/viewings`** — A tenant sees their own, a landlord sees those on their properties, a coordinator sees their region, Back Office sees all.
+- **`PATCH /api/v1/viewing/:viewingId`** — The tenant’s own words only. Status moves through the action routes.
+- **`POST /api/v1/viewing/:viewingId/cancel`** — No permission gate: `viewingRules.mayAct` is what stops a landlord cancelling on a tenant’s behalf, which would leave a record reading as though the tenant lost interest.
+- **`POST /api/v1/viewing/:viewingId/complete`** — Refused before the slot has passed. An outcome recorded early is a prediction.
+- **`POST /api/v1/viewing/:viewingId/no-show`** — Refused before the slot has passed, and it lands on a tenant’s record where it counts at application time.
+
+
+### application
+
+| Method | Path | Zone | Permission (any of) | Own | Request | Roles |
+|---|---|---|---|---|---|---|
+| `POST` | `/api/v1/applications` | D · Member | `application:create` | — | body: `createApplicationSchema` | FN BO TE |
+| `GET` | `/api/v1/applications` | D · Member | `application:readOwn`<br>`application:read` | scoped | query: `applicationQuerySchema` | FN BO CO LL TE |
+| `GET` | `/api/v1/application/:applicationId` | D · Member | `application:readOwn`<br>`application:read` | scoped | — | FN BO CO LL TE |
+| `PATCH` | `/api/v1/application/:applicationId` | D · Member | `application:updateOwn` | scoped | body: `updateApplicationSchema` | FN BO CO TE |
+| `POST` | `/api/v1/application/:applicationId/assess` | D · Member | `application:update` | scoped | — | FN BO CO |
+| `POST` | `/api/v1/application/:applicationId/review` | D · Member | `application:update` | scoped | — | FN BO CO |
+| `POST` | `/api/v1/application/:applicationId/request-information` | D · Member | `application:update` | scoped | body: `requestFromApplicantSchema` | FN BO CO |
+| `POST` | `/api/v1/application/:applicationId/approve` | D · Member | `application:approve` | scoped | body: `decideApplicationSchema` | FN BO CO |
+| `POST` | `/api/v1/application/:applicationId/reject` | D · Member | `application:approve` | scoped | body: `decideApplicationSchema` | FN BO CO |
+| `POST` | `/api/v1/application/:applicationId/withdraw` | D · Member | `application:readOwn` | scoped | — | FN BO CO LL TE |
+| `POST` | `/api/v1/application/:applicationId/lease` | D · Member | `lease:create` | scoped | — | FN BO LL |
+
+**Notes**
+
+- **`POST /api/v1/applications`** — Scored on submission by `eligibility.assessApplication`, which recommends and never decides. One live application per person per property.
+- **`GET /api/v1/applications`** — A landlord sees who applied for their property and what LRMC made of them; they do not decide.
+- **`PATCH /api/v1/application/:applicationId`** — Re-scored on change. Refused once the application has been decided.
+- **`POST /api/v1/application/:applicationId/assess`** — The stored assessment is a snapshot of what the decider saw, not a live view — this is how it is deliberately refreshed.
+- **`POST /api/v1/application/:applicationId/approve`** — A landlord cannot: LRMC carries the tenancy, holds the deposit and answers for the decision. A reason is required for an approval, not only for a refusal.
+- **`POST /api/v1/application/:applicationId/withdraw`** — Only the applicant. LRMC does not withdraw on somebody’s behalf — it rejects, which is a different word with a different record.
+- **`POST /api/v1/application/:applicationId/lease`** — Only from `approved`. The lease itself is created through `POST /leases`.
+
 
 ### marketplace
 

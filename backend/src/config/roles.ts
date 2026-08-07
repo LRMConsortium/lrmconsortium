@@ -250,6 +250,8 @@ const backOfficeStaff = define({
     'property:read',
     'property:update',
     'lease:read',
+    all('viewing'),
+    all('application'),
     'maintenanceRequest:read',
     'maintenanceRequest:assign',
     'maintenanceRequest:update',
@@ -324,6 +326,15 @@ const coordinator = define({
     'maintenanceRequest:read',
     'maintenanceRequest:update',
     'maintenanceRequest:assign',
+    // The coordinator runs the viewing diary in their region and is the first
+    // person to look at an application. `approve` here is the grant to record
+    // a decision; which decisions exist is the lifecycle table's business.
+    'viewing:read',
+    'viewing:update',
+    'viewing:approve',
+    'application:read',
+    'application:update',
+    'application:approve',
     'rentPayment:read',
     'rentPayment:create',
     'lease:read',
@@ -399,6 +410,12 @@ const landlord = define({
     'property:updateOwn',
     'lease:readOwn',
     'rentPayment:readOwn',
+    // Read-only on both. LRMC carries the tenancy, holds the deposit and
+    // answers for the decision, so a landlord sees who applied and what LRMC
+    // made of them — and does not approve or reject. See
+    // `applicationLifecycle.mayDecide`.
+    'viewing:readOwn',
+    'application:readOwn',
     'maintenanceRequest:readOwn',
     'maintenanceRequest:approve',
     'tenantProfile:readOwn',
@@ -441,6 +458,15 @@ const tenant = define({
     'rentPayment:create',
     'maintenanceRequest:create',
     'maintenanceRequest:readOwn',
+    // A tenant asks for a viewing and applies for a tenancy. They may update
+    // their own — which is how a withdrawal happens — but `mayDecide` is what
+    // stops that becoming an approval.
+    'viewing:create',
+    'viewing:readOwn',
+    'viewing:updateOwn',
+    'application:create',
+    'application:readOwn',
+    'application:updateOwn',
     'property:readOwn',
     'lease:readOwn',
     'payment:readOwn',

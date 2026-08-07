@@ -518,6 +518,8 @@ async function main(): Promise<void> {
     'commercialClients', 'payoutBatches', 'documents', 'fac', 'governance',
     // Marketplace: two party collections plus listings, orders and the overview
     'merchant', 'customer', 'marketplace',
+    // Lettings: asking to see a property, and asking to live in one
+    'viewing', 'application',
   ];
   for (const name of EXPECTED_MODULES) {
     check(`module ${name} exists`, name in api, `missing from the api surface`);

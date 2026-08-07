@@ -294,6 +294,55 @@ export type AirbnbHostInput = (ContactFields & LocationFields & LifecycleFieldsI
   serviceTier?: "basic" | "standard" | "premium";
 });
 
+/** A tenancy application. LRMC scores it; a named person decides it. `decision` carries both the author and the reason, for an approval as much as for a refusal. */
+export interface Application {
+  _id?: string;
+  property: string;
+  applicant: string;
+  landlord?: string;
+  coordinator?: string;
+  status: "submitted" | "underReview" | "awaitingApplicant" | "approved" | "rejected" | "withdrawn" | "leaseIssued";
+  proposedRent?: number;
+  currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  proposedStart?: string;
+  termMonths?: number;
+  householdSize?: number;
+  message?: string;
+  documentKeys?: string[];
+  assessment?: Assessment;
+  decision?: {
+    outcome?: "approved" | "rejected";
+    decidedBy?: string;
+    decidedAt?: string;
+    reason?: string;
+    /** Recorded so a decision taken against the score is findable later. */
+    againstRecommendation?: boolean;
+  };
+  lease?: string;
+  outstandingRequest?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ApplicationAssessment {
+  assessment: Assessment;
+  application: Application;
+}
+
+export type ApplicationList = Application[];
+
+/** A recommendation, never a decision. Stored on the application as a snapshot of what the decider was looking at — recomputing on read would rewrite history every time somebody paid their rent. */
+export interface Assessment {
+  factors: EligibilityFactor[];
+  score: number;
+  recommendation: "recommend" | "review" | "decline";
+  blockedBy?: string[];
+  missing?: string[];
+  summary: string;
+  takenAt?: string;
+  takenBy?: string;
+}
+
 /** Posts a coordinator to a set of properties, replacing the current assignment. */
 export interface AssignPropertiesRequest {
   propertyIds: string[];
@@ -607,6 +656,19 @@ export type CoordinatorInput = (ContactFields & LocationFields & LifecycleFields
   startDate?: string;
 });
 
+/** What the applicant states. Notably absent: whether their income is evidenced, their payment history, and whether a dispute is open — those LRMC looks up, never accepts. */
+export interface CreateApplicationRequest {
+  property: string;
+  proposedRent?: number;
+  proposedStart?: string;
+  termMonths?: number;
+  householdSize?: number;
+  /** Declared, not evidenced. */
+  monthlyIncome?: number;
+  message?: string;
+  documentKeys?: string[];
+}
+
 /** Everything a frontend needs on boot: identity, grants, zones, actions. */
 export interface CurrentActor {
   user?: Record<string, unknown> | null;
@@ -647,6 +709,11 @@ export interface CustomerBuyersRequest {
 }
 
 export type CustomerList = Customer[];
+
+/** Required for an approval as much as for a refusal. An approval nobody signed is the thing that cannot be defended later. */
+export interface DecideApplicationRequest {
+  reason: string;
+}
 
 export interface DisputeOrderRequest {
   reason: string;
@@ -1012,6 +1079,17 @@ export interface DriverVerificationQueue {
 export interface DriverVerificationQueueInput {
   items?: DriverInput[];
   meta?: PageMeta;
+}
+
+/** One scored factor, with the reason in words the applicant could be shown. */
+export interface EligibilityFactor {
+  factor: "identity" | "employment" | "references" | "paymentHistory" | "ususuContributions" | "disputes";
+  label: string;
+  /** `unknown` means LRMC has no evidence, which is not the same as bad evidence and is never scored as a failure. */
+  status: "pass" | "concern" | "fail" | "unknown";
+  points: number;
+  max: number;
+  reason: string;
 }
 
 export interface EmergencyContactFields {
@@ -2463,6 +2541,10 @@ export type RentalCarCompanyInput = (ContactFields & LocationFields & LifecycleF
   contractEnd?: string;
 });
 
+export interface RequestFromApplicantRequest {
+  outstandingRequest: string;
+}
+
 /** Asking for more without saying what is the single most common way a queue stalls. */
 export interface RequestInfoRequest {
   reason: string;
@@ -2483,6 +2565,16 @@ export interface RequestRideRequest {
   estimatedDistanceKm?: number;
   estimatedDurationMin?: number;
   notes?: string;
+}
+
+/** `localHour` is required rather than derived: the server runs in UTC and the tenant does not, so the hour a person meant cannot be recovered from an instant without their offset. */
+export interface RequestViewingRequest {
+  property: string;
+  requestedFor: string;
+  localHour: number;
+  alternateFor?: string;
+  alternateLocalHour?: number;
+  note?: string;
 }
 
 /** A refund ruling must carry an amount; the other two must not. Commission is returned pro rata. */
@@ -2930,6 +3022,11 @@ export interface UpdateRideRequest {
   estimatedFare?: number;
 }
 
+/** The tenant's own note. Status moves through the action routes. */
+export interface UpdateViewingRequest {
+  note?: string;
+}
+
 /** The account. One credential, one or more roles; profiles are separate documents. */
 export interface User {
   id?: string;
@@ -3048,6 +3145,42 @@ export interface VerifyDocumentRequest {
 
 export interface VerifyFacCodeRequest {
   code: string;
+}
+
+/** A tenant asking to see a property, and LRMC agreeing to be there. `localHour` is stored alongside `requestedFor` because the server runs in UTC and the tenant does not — the hour a person meant is not recoverable from an instant without their offset. */
+export interface Viewing {
+  _id?: string;
+  property: string;
+  /** The User who asked. Not a TenantProfile — an applicant may not have one yet. */
+  requestedBy: string;
+  landlord?: string;
+  coordinator?: string;
+  requestedFor: string;
+  /** The hour the tenant meant, in their own day. */
+  localHour: number;
+  alternateFor?: string;
+  alternateLocalHour?: number;
+  status: "requested" | "confirmed" | "declined" | "completed" | "cancelled" | "noShow";
+  /** What the tenant said when asking. */
+  note?: string;
+  decisionReason?: string;
+  /** LRMC's account, kept apart from the tenant's. */
+  outcomeNote?: string;
+  decidedBy?: string;
+  decidedAt?: string;
+  outcomeRecordedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ViewingDecisionRequest {
+  reason?: string;
+}
+
+export type ViewingList = Viewing[];
+
+export interface ViewingOutcomeRequest {
+  outcomeNote?: string;
 }
 
 export interface VisibilityMatrix {

@@ -56,6 +56,8 @@ tags:
     description: 'Outbound transfer batches: built by Back Office from the ledger, released by the Founder.'
   - name: fac
     description: The Founder Authorisation Code — issuance, verification, lockout and the attempt ledger. Sits in front of Zone A.
+  - name: viewing
+  - name: application
   - name: marketplace
   - name: governance
     description: Governance tiers, the seal visibility matrix, and institutional health.
@@ -4604,6 +4606,376 @@ components:
       type: array
       items:
         '$ref': '#/components/schemas/FacAttempt'
+    Viewing:
+      type: object
+      description: A tenant asking to see a property, and LRMC agreeing to be there. `localHour` is stored alongside `requestedFor` because the server runs in UTC and the tenant does not — the hour a person meant is not recoverable from an instant without their offset.
+      properties:
+        _id:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        property:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        requestedBy:
+          type: string
+          pattern: ^[a-f\d]{24}$
+          description: The User who asked. Not a TenantProfile — an applicant may not have one yet.
+        landlord:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        coordinator:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        requestedFor:
+          type: string
+          format: date-time
+        localHour:
+          type: integer
+          minimum: 0
+          maximum: 23
+          description: The hour the tenant meant, in their own day.
+        alternateFor:
+          type: string
+          format: date-time
+        alternateLocalHour:
+          type: integer
+          minimum: 0
+          maximum: 23
+        status:
+          type: string
+          enum:
+            - requested
+            - confirmed
+            - declined
+            - completed
+            - cancelled
+            - noShow
+        note:
+          type: string
+          maxLength: 600
+          description: What the tenant said when asking.
+        decisionReason:
+          type: string
+          maxLength: 600
+        outcomeNote:
+          type: string
+          maxLength: 600
+          description: LRMC's account, kept apart from the tenant's.
+        decidedBy:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        decidedAt:
+          type: string
+          format: date-time
+        outcomeRecordedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - property
+        - requestedBy
+        - requestedFor
+        - localHour
+        - status
+    ViewingList:
+      type: array
+      items:
+        '$ref': '#/components/schemas/Viewing'
+    EligibilityFactor:
+      type: object
+      description: One scored factor, with the reason in words the applicant could be shown.
+      properties:
+        factor:
+          type: string
+          enum:
+            - identity
+            - employment
+            - references
+            - paymentHistory
+            - ususuContributions
+            - disputes
+        label:
+          type: string
+        status:
+          type: string
+          enum:
+            - pass
+            - concern
+            - fail
+            - unknown
+          description: '`unknown` means LRMC has no evidence, which is not the same as bad evidence and is never scored as a failure.'
+        points:
+          type: number
+          minimum: 0
+        max:
+          type: number
+          minimum: 0
+        reason:
+          type: string
+      required:
+        - factor
+        - label
+        - status
+        - points
+        - max
+        - reason
+    Assessment:
+      type: object
+      description: A recommendation, never a decision. Stored on the application as a snapshot of what the decider was looking at — recomputing on read would rewrite history every time somebody paid their rent.
+      properties:
+        factors:
+          type: array
+          items:
+            '$ref': '#/components/schemas/EligibilityFactor'
+        score:
+          type: number
+          minimum: 0
+          maximum: 100
+        recommendation:
+          type: string
+          enum:
+            - recommend
+            - review
+            - decline
+        blockedBy:
+          type: array
+          items:
+            type: string
+        missing:
+          type: array
+          items:
+            type: string
+        summary:
+          type: string
+        takenAt:
+          type: string
+          format: date-time
+        takenBy:
+          type: string
+          pattern: ^[a-f\d]{24}$
+      required:
+        - factors
+        - score
+        - recommendation
+        - summary
+    Application:
+      type: object
+      description: A tenancy application. LRMC scores it; a named person decides it. `decision` carries both the author and the reason, for an approval as much as for a refusal.
+      properties:
+        _id:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        property:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        applicant:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        landlord:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        coordinator:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        status:
+          type: string
+          enum:
+            - submitted
+            - underReview
+            - awaitingApplicant
+            - approved
+            - rejected
+            - withdrawn
+            - leaseIssued
+        proposedRent:
+          type: number
+          minimum: 0
+        currency:
+          type: string
+          enum:
+            - GMD
+            - GHS
+            - USD
+            - EUR
+            - GBP
+            - NGN
+            - XOF
+        proposedStart:
+          type: string
+          format: date-time
+        termMonths:
+          type: integer
+          minimum: 1
+          maximum: 120
+        householdSize:
+          type: integer
+          minimum: 1
+          maximum: 30
+        message:
+          type: string
+          maxLength: 2000
+        documentKeys:
+          type: array
+          items:
+            type: string
+        assessment:
+          '$ref': '#/components/schemas/Assessment'
+        decision:
+          type: object
+          properties:
+            outcome:
+              type: string
+              enum:
+                - approved
+                - rejected
+            decidedBy:
+              type: string
+              pattern: ^[a-f\d]{24}$
+            decidedAt:
+              type: string
+              format: date-time
+            reason:
+              type: string
+              maxLength: 2000
+            againstRecommendation:
+              type: boolean
+              description: Recorded so a decision taken against the score is findable later.
+        lease:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        outstandingRequest:
+          type: string
+          maxLength: 600
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - property
+        - applicant
+        - status
+        - currency
+    ApplicationList:
+      type: array
+      items:
+        '$ref': '#/components/schemas/Application'
+    ApplicationAssessment:
+      type: object
+      properties:
+        assessment:
+          '$ref': '#/components/schemas/Assessment'
+        application:
+          '$ref': '#/components/schemas/Application'
+      required:
+        - assessment
+        - application
+    RequestViewingRequest:
+      type: object
+      description: '`localHour` is required rather than derived: the server runs in UTC and the tenant does not, so the hour a person meant cannot be recovered from an instant without their offset.'
+      properties:
+        property:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        requestedFor:
+          type: string
+          format: date-time
+        localHour:
+          type: integer
+          minimum: 0
+          maximum: 23
+        alternateFor:
+          type: string
+          format: date-time
+        alternateLocalHour:
+          type: integer
+          minimum: 0
+          maximum: 23
+        note:
+          type: string
+          maxLength: 600
+      required:
+        - property
+        - requestedFor
+        - localHour
+    UpdateViewingRequest:
+      type: object
+      description: The tenant's own note. Status moves through the action routes.
+      properties:
+        note:
+          type: string
+          maxLength: 600
+    ViewingDecisionRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 600
+    ViewingOutcomeRequest:
+      type: object
+      properties:
+        outcomeNote:
+          type: string
+          maxLength: 600
+    CreateApplicationRequest:
+      type: object
+      description: 'What the applicant states. Notably absent: whether their income is evidenced, their payment history, and whether a dispute is open — those LRMC looks up, never accepts.'
+      properties:
+        property:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        proposedRent:
+          type: number
+          minimum: 0
+        proposedStart:
+          type: string
+          format: date-time
+        termMonths:
+          type: integer
+          minimum: 1
+          maximum: 120
+        householdSize:
+          type: integer
+          minimum: 1
+          maximum: 30
+        monthlyIncome:
+          type: number
+          minimum: 0
+          description: Declared, not evidenced.
+        message:
+          type: string
+          maxLength: 2000
+        documentKeys:
+          type: array
+          items:
+            type: string
+      required:
+        - property
+    DecideApplicationRequest:
+      type: object
+      description: Required for an approval as much as for a refusal. An approval nobody signed is the thing that cannot be defended later.
+      properties:
+        reason:
+          type: string
+          minLength: 4
+          maxLength: 2000
+      required:
+        - reason
+    RequestFromApplicantRequest:
+      type: object
+      properties:
+        outstandingRequest:
+          type: string
+          minLength: 4
+          maxLength: 600
+      required:
+        - outstandingRequest
     Listing:
       type: object
       description: A product or a service offered by a merchant. Services carry no stock — a plumber does not run out of plumbing.
@@ -17029,6 +17401,1457 @@ paths:
                 '$ref': '#/components/schemas/ErrorResponse'
         '422':
           description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/viewings':
+    post:
+      operationId: postViewings
+      summary: Ask to view a property
+      tags:
+        - viewing
+      description: Refuses a slot outside viewing hours, inside the notice window, or beyond the booking horizon — see `viewingRules.slotProblem`. Also refuses a second live request on the same property.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - tenant
+      x-permissions:
+        - viewing:create
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/RequestViewingRequest'
+      responses:
+        '201':
+          description: Ask to view a property
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Viewing'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+    get:
+      operationId: getViewings
+      summary: List viewings you can see
+      tags:
+        - viewing
+      description: A tenant sees their own, a landlord sees those on their properties, a coordinator sees their region, Back Office sees all.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+        - landlord
+        - tenant
+      x-permissions:
+        - viewing:readOwn
+        - viewing:read
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List viewings you can see
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/ViewingList'
+                  meta:
+                    '$ref': '#/components/schemas/PageMeta'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/viewing/{viewingId}':
+    get:
+      operationId: getViewingByViewingId
+      summary: Read one viewing
+      tags:
+        - viewing
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+        - landlord
+        - tenant
+      x-permissions:
+        - viewing:readOwn
+        - viewing:read
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: viewingId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '200':
+          description: Read one viewing
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Viewing'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+    patch:
+      operationId: patchViewingByViewingId
+      summary: Change the note on your own request
+      tags:
+        - viewing
+      description: The tenant’s own words only. Status moves through the action routes.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+        - tenant
+      x-permissions:
+        - viewing:updateOwn
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: viewingId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: false
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/UpdateViewingRequest'
+      responses:
+        '200':
+          description: Change the note on your own request
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Viewing'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/viewing/{viewingId}/confirm':
+    post:
+      operationId: postViewingByViewingIdConfirm
+      summary: Agree to be there
+      tags:
+        - viewing
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+      x-permissions:
+        - viewing:approve
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: viewingId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/ViewingDecisionRequest'
+      responses:
+        '201':
+          description: Agree to be there
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Viewing'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/viewing/{viewingId}/decline':
+    post:
+      operationId: postViewingByViewingIdDecline
+      summary: Refuse a slot, with a reason
+      tags:
+        - viewing
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+      x-permissions:
+        - viewing:approve
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: viewingId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/ViewingDecisionRequest'
+      responses:
+        '201':
+          description: Refuse a slot, with a reason
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Viewing'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/viewing/{viewingId}/cancel':
+    post:
+      operationId: postViewingByViewingIdCancel
+      summary: Call off your own viewing
+      tags:
+        - viewing
+      description: 'No permission gate: `viewingRules.mayAct` is what stops a landlord cancelling on a tenant’s behalf, which would leave a record reading as though the tenant lost interest.'
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+        - landlord
+        - tenant
+      x-permissions:
+        - viewing:readOwn
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: viewingId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/ViewingDecisionRequest'
+      responses:
+        '201':
+          description: Call off your own viewing
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Viewing'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/viewing/{viewingId}/complete':
+    post:
+      operationId: postViewingByViewingIdComplete
+      summary: Record that the viewing happened
+      tags:
+        - viewing
+      description: Refused before the slot has passed. An outcome recorded early is a prediction.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+      x-permissions:
+        - viewing:update
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: viewingId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/ViewingOutcomeRequest'
+      responses:
+        '201':
+          description: Record that the viewing happened
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Viewing'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/viewing/{viewingId}/no-show':
+    post:
+      operationId: postViewingByViewingIdNoShow
+      summary: Record that the tenant did not come
+      tags:
+        - viewing
+      description: Refused before the slot has passed, and it lands on a tenant’s record where it counts at application time.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+      x-permissions:
+        - viewing:update
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: viewingId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/ViewingOutcomeRequest'
+      responses:
+        '201':
+          description: Record that the tenant did not come
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Viewing'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/applications':
+    post:
+      operationId: postApplications
+      summary: Apply for a tenancy
+      tags:
+        - application
+      description: Scored on submission by `eligibility.assessApplication`, which recommends and never decides. One live application per person per property.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - tenant
+      x-permissions:
+        - application:create
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/CreateApplicationRequest'
+      responses:
+        '201':
+          description: Apply for a tenancy
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Application'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+    get:
+      operationId: getApplications
+      summary: List applications you can see
+      tags:
+        - application
+      description: A landlord sees who applied for their property and what LRMC made of them; they do not decide.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+        - landlord
+        - tenant
+      x-permissions:
+        - application:readOwn
+        - application:read
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List applications you can see
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/ApplicationList'
+                  meta:
+                    '$ref': '#/components/schemas/PageMeta'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/application/{applicationId}':
+    get:
+      operationId: getApplicationByApplicationId
+      summary: Read one application
+      tags:
+        - application
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+        - landlord
+        - tenant
+      x-permissions:
+        - application:readOwn
+        - application:read
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '200':
+          description: Read one application
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Application'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+    patch:
+      operationId: patchApplicationByApplicationId
+      summary: Improve your own application
+      tags:
+        - application
+      description: Re-scored on change. Refused once the application has been decided.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+        - tenant
+      x-permissions:
+        - application:updateOwn
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: false
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/CreateApplicationRequest'
+      responses:
+        '200':
+          description: Improve your own application
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Application'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/application/{applicationId}/assess':
+    post:
+      operationId: postApplicationByApplicationIdAssess
+      summary: Re-score against current evidence
+      tags:
+        - application
+      description: The stored assessment is a snapshot of what the decider saw, not a live view — this is how it is deliberately refreshed.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+      x-permissions:
+        - application:update
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '201':
+          description: Re-score against current evidence
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/ApplicationAssessment'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/application/{applicationId}/review':
+    post:
+      operationId: postApplicationByApplicationIdReview
+      summary: Open an application
+      tags:
+        - application
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+      x-permissions:
+        - application:update
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '201':
+          description: Open an application
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Application'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/application/{applicationId}/request-information':
+    post:
+      operationId: postApplicationByApplicationIdRequestInformation
+      summary: Ask the applicant for something
+      tags:
+        - application
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+      x-permissions:
+        - application:update
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/RequestFromApplicantRequest'
+      responses:
+        '201':
+          description: Ask the applicant for something
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Application'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/application/{applicationId}/approve':
+    post:
+      operationId: postApplicationByApplicationIdApprove
+      summary: Approve, with a name and a reason
+      tags:
+        - application
+      description: 'A landlord cannot: LRMC carries the tenancy, holds the deposit and answers for the decision. A reason is required for an approval, not only for a refusal.'
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+      x-permissions:
+        - application:approve
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/DecideApplicationRequest'
+      responses:
+        '201':
+          description: Approve, with a name and a reason
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Application'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/application/{applicationId}/reject':
+    post:
+      operationId: postApplicationByApplicationIdReject
+      summary: Reject, with a name and a reason
+      tags:
+        - application
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+      x-permissions:
+        - application:approve
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/DecideApplicationRequest'
+      responses:
+        '201':
+          description: Reject, with a name and a reason
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Application'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/application/{applicationId}/withdraw':
+    post:
+      operationId: postApplicationByApplicationIdWithdraw
+      summary: Withdraw your own application
+      tags:
+        - application
+      description: Only the applicant. LRMC does not withdraw on somebody’s behalf — it rejects, which is a different word with a different record.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+        - landlord
+        - tenant
+      x-permissions:
+        - application:readOwn
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '201':
+          description: Withdraw your own application
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Application'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/application/{applicationId}/lease':
+    post:
+      operationId: postApplicationByApplicationIdLease
+      summary: Record the lease an approval produced
+      tags:
+        - application
+      description: Only from `approved`. The lease itself is created through `POST /leases`.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - landlord
+      x-permissions:
+        - lease:create
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '201':
+          description: Record the lease an approval produced
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Application'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
           content:
             'application/json':
               schema:
