@@ -146,6 +146,7 @@
     base: function () { return API_BASE; },
 
     auth: {
+      register: function (b) { return post('/auth/register', b); },
       login:    function (b) { return post('/auth/login', b); },
       refresh:  function (b) { return post('/auth/refresh', b); },
       me:       function ()  { return get('/auth/me'); },

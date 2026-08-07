@@ -14,6 +14,10 @@ import json, re, sys, http.server, socketserver, threading, pathlib
 from playwright.sync_api import sync_playwright
 
 ROOT = pathlib.Path(__file__).parent
+# Test doubles for the CDN libraries, kept in the repo so this suite runs
+# anywhere — a harness that depends on files in /tmp is a harness nobody else
+# can run.
+DOUBLES = ROOT / 'test-doubles'
 FIX=json.loads(pathlib.Path('/tmp/fixtures.json').read_text())
 
 class H(http.server.SimpleHTTPRequestHandler):
@@ -23,7 +27,7 @@ class H(http.server.SimpleHTTPRequestHandler):
         b=s.path.split('?')[0]
         if b in FIX: return s._raw(json.dumps(FIX[b]).encode(),'application/json')
         if b.startswith('/__t/'):
-            p=pathlib.Path('/tmp')/b[5:]
+            p=DOUBLES/b[5:]
             if p.exists():
                 ct='text/css' if p.suffix=='.css' else 'application/javascript'
                 return s._raw(p.read_bytes(),ct)

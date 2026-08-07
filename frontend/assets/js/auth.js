@@ -23,6 +23,32 @@
 
   var memory = { token: null, refresh: null, actor: null };
 
+  /* ─────────────────────────────────────────────────────────────────────────
+   * Where does a person belong once they have a session?
+   *
+   * Read from the actor the server returned, never from anything the client
+   * decided. A tenant dropped on the HQ dashboard meets a permission error on
+   * their first ever screen and concludes the platform is broken — a support
+   * call, and a bad first impression that is hard to undo.
+   *
+   * Ordered most-privileged first, so somebody who is both a founder and a
+   * landlord lands on the surface that subsumes the other.
+   *
+   * It lives here rather than on the sign-in page because sign-in is not the
+   * only door: registration lands people too, and so will "go to my
+   * dashboard" links. Two copies of this list would drift.
+   * ──────────────────────────────────────────────────────────────────────── */
+  var ROLE_HOME = [
+    ['founder',         '/hq/index.html'],
+    ['hqExecutive',     '/hq/index.html'],
+    ['backOfficeStaff', '/staff/index.html'],
+    ['coordinator',     '/staff/index.html'],
+    ['merchant',        '/marketplace/index.html'],
+    ['seller',          '/marketplace/index.html'],
+    ['customer',        '/marketplace/index.html'],
+    ['buyer',           '/marketplace/index.html'],
+  ];
+
   /* sessionStorage where available, memory otherwise. Wrapped because a
    * browser in private mode can throw on access, and a thrown exception here
    * would take down every page on the platform. */
@@ -97,18 +123,44 @@
       return false;
     },
 
+    /**
+     * The landing page for an actor.
+     *
+     * Everyone not named above — landlords, tenants, drivers, riders, vendors
+     * — is a member. That is the largest group, so it is the fallback rather
+     * than a second list that has to be kept in step with `config/roles.ts`.
+     */
+    homeFor: function (actor) {
+      var roles = (actor && actor.roles) || [];
+      for (var i = 0; i < ROLE_HOME.length; i++) {
+        if (roles.indexOf(ROLE_HOME[i][0]) !== -1) return ROLE_HOME[i][1];
+      }
+      return '/members/index.html';
+    },
+
+    /**
+     * Take a session from an auth response and hold it.
+     *
+     * Separate from `signIn` because sign-in is not the only thing that
+     * returns tokens: `POST /auth/register` returns the same shape, and a
+     * person who has just typed a password twice should not be asked for it a
+     * third time. Both doors store the session the same way, which is what
+     * makes them behave the same afterwards.
+     */
+    adopt: function (data) {
+      memory.token = (data && (data.accessToken || data.token)) || null;
+      memory.refresh = (data && data.refreshToken) || null;
+      memory.actor = (data && (data.user || data.actor)) || null;
+
+      store(TOKEN_KEY, memory.token);
+      store(REFRESH_KEY, memory.refresh);
+      store(ACTOR_KEY, memory.actor ? JSON.stringify(memory.actor) : null);
+
+      return memory.actor;
+    },
+
     signIn: function (credentials) {
-      return global.Lrmc.auth.login(credentials).then(function (data) {
-        memory.token = data.accessToken || data.token || null;
-        memory.refresh = data.refreshToken || null;
-        memory.actor = data.user || data.actor || null;
-
-        store(TOKEN_KEY, memory.token);
-        store(REFRESH_KEY, memory.refresh);
-        store(ACTOR_KEY, memory.actor ? JSON.stringify(memory.actor) : null);
-
-        return memory.actor;
-      });
+      return global.Lrmc.auth.login(credentials).then(LrmcAuth.adopt);
     },
 
     signOut: function () {

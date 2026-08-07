@@ -11,6 +11,10 @@ import json, sys, re, time, pathlib, http.server, socketserver, threading, rando
 from playwright.sync_api import sync_playwright
 
 ROOT = pathlib.Path(__file__).parent
+# Test doubles for the CDN libraries, kept in the repo so this suite runs
+# anywhere — a harness that depends on files in /tmp is a harness nobody else
+# can run.
+DOUBLES = ROOT / 'test-doubles'
 PORT = random.randint(8600, 8899)
 
 MERCHANT = {"success": True, "data": {
@@ -66,7 +70,7 @@ class H(http.server.SimpleHTTPRequestHandler):
             return s._raw(json.dumps(STATE["overview"]).encode(), 'application/json')
         if b == '/api/v1/orders': return s._raw(json.dumps(ORDERS).encode(), 'application/json')
         if b.startswith('/__t/'):
-            p = pathlib.Path('/tmp') / b[5:]
+            p = DOUBLES / b[5:]
             if p.exists():
                 return s._raw(p.read_bytes(), 'text/css' if p.suffix == '.css' else 'application/javascript')
         if b == '/page': return s._raw(pathlib.Path('/tmp/mk-under-test.html').read_bytes(), 'text/html')

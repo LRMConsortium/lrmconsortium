@@ -12,6 +12,10 @@ import json, sys, re, pathlib, http.server, socketserver, threading
 from playwright.sync_api import sync_playwright
 
 ROOT = pathlib.Path(__file__).parent
+# Test doubles for the CDN libraries, kept in the repo so this suite runs
+# anywhere — a harness that depends on files in /tmp is a harness nobody else
+# can run.
+DOUBLES = ROOT / 'test-doubles'
 
 STATE = {"mode": "ok", "roles": ["landlord"]}
 
@@ -45,7 +49,7 @@ class H(http.server.SimpleHTTPRequestHandler):
     def do_GET(s):
         b = s.path.split('?')[0]
         if b.startswith('/__t/'):
-            p = pathlib.Path('/tmp') / b[5:]
+            p = DOUBLES / b[5:]
             if p.exists():
                 return s._raw(p.read_bytes(), 'text/css' if p.suffix == '.css' else 'application/javascript')
         if b == '/page': return s._raw(pathlib.Path('/tmp/login-under-test.html').read_bytes(), 'text/html')

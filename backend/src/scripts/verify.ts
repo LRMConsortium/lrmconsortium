@@ -163,6 +163,7 @@ import {
   stockAfterRelease,
 } from '../modules/marketplace/listingRules.js';
 import { CURRENCIES, CURRENCY_SYMBOLS, LAUNCH_CURRENCY } from '../config/currencies.js';
+import { PASSWORD_MIN_LENGTH, REGISTRATION_EXTRAS, SELF_REGISTERABLE_ROLES } from '../config/registration.js';
 import { CURRENCY } from '../config/openapiSchemas.js';
 import {
   MIN_DISTINCT_CHARS,
@@ -3246,6 +3247,47 @@ check('an unset secret is refused', secretProblem('X', undefined) !== null);
 check('digests compare equal to themselves', digestsMatch('abc123', 'abc123'));
 check('and unequal to others', !digestsMatch('abc123', 'abc124'));
 check('a length mismatch is not a match', !digestsMatch('abc', 'abcd'));
+
+// ═══════════════════════════════════════════════════════════════════════════
+section('Self-registration');
+
+{
+  const open = SELF_REGISTERABLE_ROLES as readonly string[];
+
+  // A marketplace whose buyers cannot sign up has no buyers.
+  check('a customer may create their own account', open.includes('customer'));
+  // Onboarding must not grow only as fast as LRMC can hire.
+  check('and so may a merchant', open.includes('merchant'));
+
+  // Sellers and buyers act *for* an account and are added by its owner.
+  // Self-registration would create people who belong to nobody.
+  check('a seller cannot self-register', !open.includes('seller'));
+  check('nor can a buyer', !open.includes('buyer'));
+
+  // The open door leads to a room they cannot trade in until somebody checks
+  // them: an unverified merchant can list nothing.
+  check('a merchant must still be verified before publishing',
+    !canPublish({ kind: 'product', status: 'draft', title: 'Ceiling fan',
+                  unitPrice: 450, stock: 5, merchantVerified: false }).publishable);
+
+  for (const staff of ['founder', 'hqExecutive', 'backOfficeStaff', 'coordinator']) {
+    check(`${staff} cannot self-register`, !open.includes(staff));
+  }
+  check('every self-registerable name is a real role',
+    open.every((r) => (ROLES as readonly string[]).includes(r)));
+
+  // The form reads REGISTRATION_EXTRAS to decide which questions to ask; the
+  // API rejects a submission that omits them. If a role appears here that
+  // cannot register, the form would ask a question nobody ever sees.
+  check('every role with extra questions can actually register',
+    Object.keys(REGISTRATION_EXTRAS).every((r) => open.includes(r)));
+  eq('a driver must declare a vehicle', REGISTRATION_EXTRAS.driver?.join(','), 'vehicleType');
+  eq('a vendor must declare a service', REGISTRATION_EXTRAS.vendor?.join(','), 'serviceType');
+  check('a merchant must name its business', (REGISTRATION_EXTRAS.merchant ?? []).includes('businessName'));
+  check('a tenant is asked nothing extra', REGISTRATION_EXTRAS.tenant === undefined);
+
+  eq('the password floor is stated once', PASSWORD_MIN_LENGTH, 10);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 section('Currency');
