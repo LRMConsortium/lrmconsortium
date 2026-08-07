@@ -13,16 +13,9 @@ export { SELF_REGISTERABLE_ROLES, type SelfRegisterableRole } from '../../config
 import {
   SELF_REGISTERABLE_ROLES as ROLE_LIST,
   PASSWORD_MIN_LENGTH,
-  REGISTRATION_EXTRAS,
+  EXTRA_LABELS,
+  missingExtras,
 } from '../../config/registration.js';
-
-/** Human wording for the extras, so the refusal names the thing on screen. */
-const EXTRA_LABELS: Record<string, string> = {
-  businessName: 'Business name',
-  businessType: 'Business type',
-  vehicleType: 'Vehicle type',
-  serviceType: 'Service type',
-};
 
 const password = z
   .string()
@@ -66,10 +59,7 @@ export const registerSchema = z
    * translate back into "which box did I miss".
    */
   .superRefine((value, ctx) => {
-    const required = REGISTRATION_EXTRAS[value.role] ?? [];
-    for (const field of required) {
-      const supplied = (value as Record<string, unknown>)[field];
-      if (typeof supplied === 'string' && supplied.trim().length > 0) continue;
+    for (const field of missingExtras(value.role, value as Record<string, unknown>)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: [field],

@@ -229,6 +229,16 @@ with sync_playwright() as p:
           pg.evaluate('()=>document.documentElement.scrollWidth<=window.innerWidth+1'))
     check('the submit button meets the 44px touch target',
           pg.evaluate("()=>document.getElementById('login-submit').getBoundingClientRect().height >= 44"))
+    # A centred flex container whose content outgrows the screen puts the top
+    # of that content above scroll position zero, where no scrolling reaches
+    # it. Sign-in fits today; a landscape phone is 390px tall.
+    pg.set_viewport_size({'width': 390, 'height': 380}); pg.wait_for_timeout(250)
+    check('the top of the panel can be scrolled to on a short screen',
+          pg.evaluate("""() => {
+              window.scrollTo(0, 0);
+              return document.querySelector('main img').getBoundingClientRect().top >= -1;
+          }"""))
+    pg.set_viewport_size({'width': 390, 'height': 844}); pg.wait_for_timeout(250)
     pg.screenshot(path='/tmp/lrmc-login-mobile.png', full_page=False)
     pg.set_viewport_size({'width': 1280, 'height': 900}); pg.wait_for_timeout(300)
     pg.screenshot(path='/tmp/lrmc-login.png', full_page=False)

@@ -117,3 +117,13 @@
 .transition{transition:all .15s}
 .animate-spin{animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* Preflight fragments the real Tailwind applies and the pages rely on. Without
+   these a screenshot shows list markers the shipped page does not have. */
+ol,ul{list-style:none;margin:0;padding:0}
+h1,h2,h3,h4,p,fieldset,legend{margin:0;padding:0;font-size:inherit;font-weight:inherit}
+button,input,select,textarea{font:inherit;color:inherit;margin:0}
+img{display:block;max-width:100%;height:auto}
+.mb-6{margin-bottom:1.5rem}.mb-8{margin-bottom:2rem}.mt-6{margin-top:1.5rem}
+.w-64{width:16rem}.space-y-4>*+*{margin-top:1rem}
+.my-auto{margin-top:auto;margin-bottom:auto}

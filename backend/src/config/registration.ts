@@ -67,5 +67,37 @@ export const REGISTRATION_EXTRAS: Partial<Record<SelfRegisterableRole, readonly 
   customer: ['businessName'],
 };
 
+/** Human wording for the extras, so a refusal names the thing on screen. */
+export const EXTRA_LABELS: Record<string, string> = {
+  businessName: 'Business name',
+  businessType: 'Business type',
+  vehicleType: 'Vehicle type',
+  serviceType: 'Service type',
+};
+
+/**
+ * Which required extras a submission is missing.
+ *
+ * The register schema marks every extra optional, because there is one shape
+ * for thirteen roles and which extras apply depends on the role. This is where
+ * that is made true in fact rather than in a table nobody consults: the schema
+ * calls it, and so does `npm run verify`, which cannot import the schema
+ * because the schema imports Zod.
+ *
+ * Whitespace is not an answer. `'   '` is how a required field gets past a
+ * presence check, and a vendor whose service type is three spaces is a vendor
+ * no coordinator can dispatch.
+ */
+export function missingExtras(
+  role: string,
+  supplied: Record<string, unknown>,
+): string[] {
+  const required = REGISTRATION_EXTRAS[role as SelfRegisterableRole] ?? [];
+  return required.filter((field) => {
+    const value = supplied[field];
+    return typeof value !== 'string' || value.trim().length === 0;
+  });
+}
+
 /** Password floor, stated once so the form and the schema agree. */
 export const PASSWORD_MIN_LENGTH = 10;

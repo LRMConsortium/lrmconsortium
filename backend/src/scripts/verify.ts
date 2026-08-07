@@ -163,7 +163,13 @@ import {
   stockAfterRelease,
 } from '../modules/marketplace/listingRules.js';
 import { CURRENCIES, CURRENCY_SYMBOLS, LAUNCH_CURRENCY } from '../config/currencies.js';
-import { PASSWORD_MIN_LENGTH, REGISTRATION_EXTRAS, SELF_REGISTERABLE_ROLES } from '../config/registration.js';
+import {
+  EXTRA_LABELS,
+  missingExtras,
+  PASSWORD_MIN_LENGTH,
+  REGISTRATION_EXTRAS,
+  SELF_REGISTERABLE_ROLES,
+} from '../config/registration.js';
 import { CURRENCY } from '../config/openapiSchemas.js';
 import {
   MIN_DISTINCT_CHARS,
@@ -3287,6 +3293,42 @@ section('Self-registration');
   check('a tenant is asked nothing extra', REGISTRATION_EXTRAS.tenant === undefined);
 
   eq('the password floor is stated once', PASSWORD_MIN_LENGTH, 10);
+
+  // `REGISTRATION_EXTRAS` only shaped the form until `missingExtras` was
+  // written: the register schema marks every extra optional, so a driver
+  // posting straight to the API could arrive with no vehicle and no error.
+  // This is the rule the schema's `superRefine` calls, tested here because
+  // the schema itself imports Zod and this suite runs without it.
+  {
+    const complete = { vehicleType: 'Minibus', businessName: 'Kairaba Trading', serviceType: 'Plumbing', businessType: 'Agency' };
+
+    eq('a complete driver is missing nothing', missingExtras('driver', complete).length, 0);
+    eq('a driver with no vehicle is refused', missingExtras('driver', {}).join(','), 'vehicleType');
+    eq('a vendor with no service is refused', missingExtras('vendor', {}).join(','), 'serviceType');
+    eq('an advertiser must supply both of its extras',
+      missingExtras('advertiser', {}).slice().sort().join(','), 'businessName,businessType');
+    eq('an advertiser half-answered is still refused',
+      missingExtras('advertiser', { businessName: 'Kairaba Media' }).join(','), 'businessType');
+    eq('a tenant is never blocked on an extra', missingExtras('tenant', {}).length, 0);
+
+    // Whitespace is how a required field gets past a presence check, and a
+    // vendor whose service type is three spaces is one no coordinator can
+    // dispatch.
+    eq('spaces are not an answer', missingExtras('vendor', { serviceType: '   ' }).join(','), 'serviceType');
+    eq('nor is an empty string', missingExtras('vendor', { serviceType: '' }).join(','), 'serviceType');
+    eq('nor is a number that looks like one', missingExtras('vendor', { serviceType: 42 }).join(','), 'serviceType');
+
+    // An unknown role cannot be talked into requiring nothing *and* into
+    // requiring something: it is simply not our business here — `z.enum`
+    // refuses it first.
+    eq('an unknown role adds no extra demands', missingExtras('nobody', {}).length, 0);
+
+    // Every extra anyone can be asked for must have wording, or the refusal
+    // names a database column at somebody who has never seen one.
+    const everyExtra = [...new Set(Object.values(REGISTRATION_EXTRAS).flatMap((f) => [...(f ?? [])]))];
+    check('every extra has human wording for its refusal',
+      everyExtra.every((f) => typeof EXTRA_LABELS[f] === 'string' && EXTRA_LABELS[f].length > 0));
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

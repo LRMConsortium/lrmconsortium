@@ -82,9 +82,14 @@
   <style>[x-cloak] { display: none !important; }</style>
 </head>
 
-<body class="h-full antialiased flex flex-col items-center justify-center p-4 py-10">
+<!-- `my-auto` on the panel rather than `justify-center` on the body. Both
+     centre it; only one survives content taller than the screen. A centred
+     flex container pushes the overflow *above* scroll position zero, where
+     nothing can reach it — on this form that hides the logo and the step
+     indicator outright, and only on small screens. -->
+<body class="h-full antialiased flex flex-col items-center p-4 py-10">
 
-  <main id="lrmc-main" class="w-full max-w-lg">
+  <main id="lrmc-main" class="w-full max-w-lg my-auto">
 
     <!-- The lockup carries the institution's name; repeating it as text would
          put it on screen twice. The name reaches assistive technology once,

@@ -471,6 +471,16 @@ with sync_playwright() as p:
           pg.evaluate('()=>document.documentElement.scrollWidth<=window.innerWidth+1'))
     check('the submit button meets the 44px touch target',
           pg.evaluate("()=>document.getElementById('register-submit').getBoundingClientRect().height >= 44"))
+    # A centred flex container whose content is taller than the screen puts the
+    # top of that content *above* scroll position zero, where no amount of
+    # scrolling reaches it. On a long form that means the logo and the step
+    # indicator simply cannot be seen — and it only shows up on small screens,
+    # which is where most of The Gambia will meet this page.
+    check('the top of the form can be scrolled to',
+          pg.evaluate("""() => {
+              window.scrollTo(0, 0);
+              return document.querySelector('main img').getBoundingClientRect().top >= -1;
+          }"""))
     pg.screenshot(path='/tmp/lrmc-register-mobile-step2.png', full_page=False)
     pg.set_viewport_size({'width': 1280, 'height': 900}); pg.wait_for_timeout(300)
     load()

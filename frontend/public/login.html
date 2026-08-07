@@ -80,9 +80,14 @@
   <style>[x-cloak] { display: none !important; }</style>
 </head>
 
-<body class="h-full antialiased flex flex-col items-center justify-center p-4">
+<!-- `my-auto` on the panel rather than `justify-center` on the body. Both
+     centre it; only one survives content taller than the screen — a centred
+     flex container pushes its overflow above scroll position zero, where
+     nothing reaches it. Sign-in fits today, but a landscape phone is 390px
+     tall and this page must not depend on being short. -->
+<body class="h-full antialiased flex flex-col items-center p-4">
 
-  <main id="lrmc-main" class="w-full max-w-md">
+  <main id="lrmc-main" class="w-full max-w-md my-auto">
 
     <!--
       The full institutional lockup, which already carries the name. Repeating
