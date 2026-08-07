@@ -69,6 +69,8 @@ collectionRouter.get(
       maxRent?: number;
       bedrooms?: number;
       search?: string;
+      furnished?: boolean;
+      amenities?: string[];
     };
     const page = q.page ?? 1;
     const limit = Math.min(50, q.limit ?? 12);
@@ -83,6 +85,9 @@ collectionRouter.get(
     if (q.city) filter.city = q.city;
     if (q.region) filter.region = q.region;
     if (q.bedrooms !== undefined) filter.bedrooms = { $gte: q.bedrooms };
+    if (q.furnished !== undefined) filter.furnished = q.furnished;
+    // `$all`, not `$in`: two ticked amenities are two requirements.
+    if (q.amenities && q.amenities.length) filter.amenities = { $all: q.amenities };
     if (q.minRent !== undefined || q.maxRent !== undefined) {
       filter.rentAmount = {
         ...(q.minRent !== undefined ? { $gte: q.minRent } : {}),

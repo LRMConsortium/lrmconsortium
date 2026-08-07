@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<!--
+ ═══════════════════════════════════════════════════════════════════════════
+ LEGACY RENTAL MANAGEMENT CONSORTIUM (LRMC)
+ FIND A HOME — public listing search
+
+ Extends layouts/public.html. Zone E: a visitor is not an actor, so nothing
+ here needs a token and nothing here asks for one until the moment somebody
+ wants to *do* something — book a viewing or apply — which requires an
+ account, and says so plainly rather than failing.
+
+ Reads `GET /properties/public`, which names what it reveals rather than
+ hiding what it does not. The member-side page at `/members/properties.html`
+ reads the authenticated collection and shows the same cards.
+
+ Six decisions worth not undoing:
+
+ 1. **The URL is the search.** Every filter is a query parameter, pushed with
+    `replaceState`. A tenant who finds a two-bedroom in Kanifing under D 15,000
+    can send that link to their partner and it opens the same results. A search
+    that lives only in memory cannot be shared, bookmarked, or reloaded.
+
+ 2. **Amenities are requirements, not alternatives.** Ticking water and
+    electricity means both — the API uses `$all`. Returning a house with water
+    and no power because it matched one of them wastes a journey.
+
+ 3. **Filters submit on change, and the text box waits.** Typing is not a
+    decision; 300ms of quiet is. Every other control fires immediately, because
+    ticking a box *is* the decision.
+
+ 4. **Four honest states.** Searching, results, nothing matched, could not
+    load. "Nothing matched" is not a failure and offers to widen the search
+    rather than leaving somebody at a dead end.
+
+ 5. **Prices are in dalasi**, and a listing with no agreed rent says so rather
+    than showing D 0.
+
+ 6. **The result count is announced.** A screen-reader user filtering a list
+    must be told what happened; a silently-replaced grid tells them nothing.
+ ═══════════════════════════════════════════════════════════════════════════
+-->
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Find a home in The Gambia · Legacy Rental Management Consortium</title>
+  <meta name="description" content="Search homes to rent across The Gambia — Banjul, Kanifing, Brikama and beyond. Rent held in escrow, vendors vetted, every payment on the record." />
+
+  <link rel="canonical" href="https://lrmconsortium.com/public/properties.html" />
+  <meta property="og:title" content="Find a home — Legacy Rental Management Consortium" />
+  <meta property="og:description" content="Homes to rent across The Gambia, managed by LRMC." />
+  <meta property="og:type" content="website" />
+
+  <link rel="icon" href="/assets/img/lrmc-favicon.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/assets/img/lrmc-apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: {
+      colors: {
+        /* LRMC branding-locked palette */
+        lrmc: { blue:'#1E3A8A', gold:'#D4AF37', slate:'#334155' },
+        blue: { 100:'#DBEAFE', 300:'#93C5FD', 500:'#3B82F6', 600:'#2563EB', 700:'#1D4ED8', 800:'#1E3A8A', 900:'#172554' },
+        slate:{ 50:'#F8FAFC', 100:'#F1F5F9', 200:'#E2E8F0', 300:'#CBD5E1', 400:'#94A3B8', 500:'#64748B', 700:'#334155', 800:'#1E293B', 900:'#0F172A' },
+        emerald:{ 50:'#ECFDF5', 100:'#D1FAE5', 500:'#10B981', 600:'#059669', 700:'#047857' },
+        amber:{ 50:'#FFFBEB', 100:'#FEF3C7', 500:'#F59E0B', 600:'#D97706', 700:'#B45309' },
+        rose:{ 50:'#FFF1F2', 100:'#FFE4E6', 600:'#E11D48', 700:'#BE123C' },
+        gold: { 100:'#FBF6E5', 500:'#D4AF37', 700:'#8A6D1C' },
+      },
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+    } } };
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/theme.css" />
+  <link rel="stylesheet" href="/assets/css/utilities.css" />
+
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="/assets/js/sdk.js" defer></script>
+  <script src="/assets/js/auth.js" defer></script>
+  <script src="/assets/js/ui.js" defer></script>
+  <script src="/assets/js/properties.js" defer></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+
+  <style>[x-cloak] { display: none !important; }</style>
+</head>
+
+<!-- `wide` is state, not a media query in a class list. Tailwind's `hidden`
+     and `lg:block` have equal specificity and are decided by stylesheet order,
+     which is exactly what hid a button on desktop earlier in this project.
+     Tracking the breakpoint here also means turning a phone sideways is
+     handled — a value read once at load is not. -->
+<body class="h-full antialiased flex flex-col"
+      x-data="{
+        menu: false,
+        filters: false,
+        wide: window.innerWidth >= 1024,
+        init() {
+          window.addEventListener('resize', () => { this.wide = window.innerWidth >= 1024; });
+        }
+      }">
+
+<a href="#lrmc-main" class="lrmc-skip-link">Skip to main content</a>
+
+<header class="border-b border-slate-200 bg-white sticky top-0 z-20">
+  <div class="max-w-7xl mx-auto px-4 lg:px-6 h-16 flex items-center gap-4">
+    <a href="/public/index.html" class="flex items-center gap-3 min-w-0">
+      <img src="/assets/img/lrmc-mark.png" alt="" class="w-9 h-9 flex-shrink-0 object-contain" />
+      <span class="text-sm font-extrabold text-blue-800 tracking-wide hidden sm:inline">LRMC</span>
+      <span class="lrmc-sr-only">Legacy Rental Management Consortium — home</span>
+    </a>
+
+    <nav class="hidden md:flex items-center gap-1 ml-6 flex-1" aria-label="Main">
+      <a href="/public/index.html"      class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Home</a>
+      <a href="/public/properties.html" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm" aria-current="page">Find a home</a>
+      <a href="/public/about.html"      class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">About</a>
+      <a href="/public/pricing.html"    class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Pricing</a>
+      <a href="/public/contact.html"    class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Contact</a>
+    </nav>
+
+    <div class="ml-auto flex items-center gap-2">
+      <span class="hidden sm:inline-flex"><a id="lrmc-nav-signin" href="/public/login.html"
+         class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Sign in</a></span>
+      <a id="lrmc-nav-cta" href="/public/register.html"
+         class="lrmc-btn lrmc-btn-primary lrmc-btn-sm">Get started</a>
+
+      <span class="md:hidden"><button type="button" class="lrmc-btn lrmc-btn-ghost !min-h-0 !p-2"
+              @click="menu = !menu"
+              :aria-expanded="menu ? 'true' : 'false'"
+              aria-controls="lrmc-public-menu" aria-label="Menu">
+        <i data-lucide="menu" class="w-5 h-5" x-show="!menu"></i>
+        <i data-lucide="x" class="w-5 h-5" x-show="menu" x-cloak></i>
+      </button></span>
+    </div>
+  </div>
+
+  <nav id="lrmc-public-menu" class="md:hidden border-t border-slate-200 bg-white px-4 py-2"
+       x-show="menu" x-cloak aria-label="Main">
+    <a href="/public/index.html"      class="lrmc-menu-item">Home</a>
+    <a href="/public/properties.html" class="lrmc-menu-item" aria-current="page">Find a home</a>
+    <a href="/public/about.html"      class="lrmc-menu-item">About</a>
+    <a href="/public/pricing.html"    class="lrmc-menu-item">Pricing</a>
+    <a href="/public/contact.html"    class="lrmc-menu-item">Contact</a>
+    <a href="/public/login.html"      class="lrmc-menu-item">Sign in</a>
+    <a href="/public/register.html"   class="lrmc-menu-item">Get started</a>
+  </nav>
+</header>
+
+<main id="lrmc-main" class="flex-1">
+  <div class="max-w-7xl mx-auto px-4 lg:px-6 py-8">
+
+    <h1 class="text-2xl font-bold text-slate-900 mb-1">Find a home</h1>
+    <p class="text-slate-600 mb-6">
+      Every listing is managed by LRMC. Rent is held in escrow and every payment is on the record.
+    </p>
+
+    <!-- ══ FILTERS ═══════════════════════════════════════════════════════════
+         A real <form> with a real GET action, so it narrows results even if
+         the script has not loaded. `search()` intercepts and does it without
+         a reload; the markup is the fallback, not the decoration.
+    -->
+    <form id="property-filters" method="get" action="/public/properties.html"
+          class="lrmc-card mb-6" role="search" aria-label="Filter homes">
+
+      <div class="flex items-center justify-between gap-3 mb-4">
+        <h2 class="font-semibold text-slate-900">Narrow it down</h2>
+        <div class="flex items-center gap-2">
+          <button type="button" id="filters-clear"
+                  class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm" hidden>
+            Clear filters
+          </button>
+          <span x-show="!wide"><button type="button" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm"
+                  @click="filters = !filters"
+                  :aria-expanded="filters ? 'true' : 'false'"
+                  aria-controls="filter-fields">
+            <span x-text="filters ? 'Hide filters' : 'Show filters'">Show filters</span>
+          </button></span>
+        </div>
+      </div>
+
+      <!-- Open at desktop widths, collapsed on a phone where the filters
+           would otherwise push every result below the fold. -->
+      <div id="filter-fields" x-show="wide || filters">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="sm:col-span-2">
+            <label class="lrmc-label" for="f-search">Search</label>
+            <input class="lrmc-input" id="f-search" name="search" type="search"
+                   placeholder="Street, area or keyword" maxlength="120" />
+          </div>
+
+          <div>
+            <label class="lrmc-label" for="f-region">Region</label>
+            <select class="lrmc-select" id="f-region" name="region">
+              <option value="">Anywhere</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="lrmc-label" for="f-propertyType">Property type</label>
+            <select class="lrmc-select" id="f-propertyType" name="propertyType">
+              <option value="">Any type</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="lrmc-label" for="f-minRent">Rent from (D)</label>
+            <input class="lrmc-input" id="f-minRent" name="minRent" type="number"
+                   min="0" step="500" inputmode="numeric" placeholder="0" />
+          </div>
+
+          <div>
+            <label class="lrmc-label" for="f-maxRent">Rent up to (D)</label>
+            <input class="lrmc-input" id="f-maxRent" name="maxRent" type="number"
+                   min="0" step="500" inputmode="numeric" placeholder="No limit" />
+            <p class="lrmc-field-error" id="rent-range-error" hidden>
+              The upper figure needs to be the larger one.
+            </p>
+          </div>
+
+          <div>
+            <label class="lrmc-label" for="f-bedrooms">Bedrooms</label>
+            <select class="lrmc-select" id="f-bedrooms" name="bedrooms">
+              <option value="">Any</option>
+              <option value="1">1 or more</option>
+              <option value="2">2 or more</option>
+              <option value="3">3 or more</option>
+              <option value="4">4 or more</option>
+              <option value="5">5 or more</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="lrmc-label" for="f-furnished">Furnishing</label>
+            <select class="lrmc-select" id="f-furnished" name="furnished">
+              <option value="">Either</option>
+              <option value="true">Furnished</option>
+              <option value="false">Unfurnished</option>
+            </select>
+          </div>
+        </div>
+
+        <fieldset class="mt-4">
+          <!-- Both, not either. Somebody ticking water and electricity is
+               stating two requirements. -->
+          <legend class="lrmc-label">Must have</legend>
+          <div id="amenity-options" class="flex flex-wrap gap-x-6 gap-y-2 mt-1"></div>
+        </fieldset>
+
+        <!-- Only reachable without script; `search()` prevents the submit. -->
+        <button type="submit" class="lrmc-btn lrmc-btn-primary mt-4">Search</button>
+      </div>
+    </form>
+
+    <!-- ══ RESULTS ══════════════════════════════════════════════════════════ -->
+
+    <div class="flex flex-wrap items-baseline justify-between gap-3 mb-4">
+      <p id="results-count" class="text-sm text-slate-600" role="status" aria-live="polite"></p>
+      <div id="active-filters" class="flex flex-wrap gap-2"></div>
+    </div>
+
+    <div id="results-loading" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" aria-hidden="true">
+      <div class="lrmc-card"><div class="lrmc-skeleton h-40 mb-3"></div><div class="lrmc-skeleton h-4 w-4/5 mb-2"></div><div class="lrmc-skeleton h-4 w-1/2"></div></div>
+      <div class="lrmc-card"><div class="lrmc-skeleton h-40 mb-3"></div><div class="lrmc-skeleton h-4 w-4/5 mb-2"></div><div class="lrmc-skeleton h-4 w-1/2"></div></div>
+      <div class="lrmc-card"><div class="lrmc-skeleton h-40 mb-3"></div><div class="lrmc-skeleton h-4 w-4/5 mb-2"></div><div class="lrmc-skeleton h-4 w-1/2"></div></div>
+    </div>
+
+    <ul id="results-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" hidden></ul>
+
+    <!-- Nothing matched is a real answer, not a failure. It still has to leave
+         somebody with something to do. -->
+    <div id="results-empty" class="lrmc-card text-center py-12" hidden>
+      <i data-lucide="search-x" class="w-8 h-8 text-slate-400 mx-auto mb-3"></i>
+      <p class="font-medium text-slate-900 mb-1">Nothing matched that search</p>
+      <p class="text-sm text-slate-600 mb-4 max-w-md mx-auto">
+        Try a wider price range, fewer required amenities, or a neighbouring region.
+      </p>
+      <button type="button" id="empty-clear" class="lrmc-btn lrmc-btn-primary">
+        Clear the filters
+      </button>
+    </div>
+
+    <div id="results-error" class="lrmc-card text-center py-12" hidden>
+      <i data-lucide="cloud-off" class="w-8 h-8 text-slate-400 mx-auto mb-3"></i>
+      <p class="font-medium text-slate-900 mb-1">We could not load listings just now</p>
+      <p class="text-sm text-slate-600 mb-4">This is on our side, not yours.</p>
+      <button type="button" id="results-retry" class="lrmc-btn lrmc-btn-secondary">Try again</button>
+    </div>
+
+    <!-- ══ PAGING ═══════════════════════════════════════════════════════════
+         Numbered pages rather than infinite scroll: a tenant comparing four
+         homes needs to be able to go back to the one on page two, and an
+         endless list on a metered connection is somebody's money.
+    -->
+    <nav id="results-paging" class="flex items-center justify-between gap-4 mt-8" aria-label="Results pages" hidden>
+      <button type="button" id="page-prev" class="lrmc-btn lrmc-btn-secondary">
+        <i data-lucide="arrow-left" class="w-4 h-4"></i>
+        Previous
+      </button>
+      <p id="page-status" class="text-sm text-slate-600"></p>
+      <button type="button" id="page-next" class="lrmc-btn lrmc-btn-secondary">
+        Next
+        <i data-lucide="arrow-right" class="w-4 h-4"></i>
+      </button>
+    </nav>
+
+    <!-- A visitor can look at everything and act on nothing. Saying so here,
+         once, beats a sign-in wall on every card. -->
+    <div class="lrmc-card-institutional mt-10 text-center py-8">
+      <h2 class="text-lg font-bold text-slate-900 mb-2">Ready to book a viewing?</h2>
+      <p class="text-slate-600 mb-5 max-w-xl mx-auto">
+        Browsing needs no account. Booking a viewing or applying for a tenancy does —
+        LRMC has to know who is coming to somebody's home.
+      </p>
+      <a href="/public/register.html?role=tenant" class="lrmc-btn lrmc-btn-primary">
+        Create a free account
+      </a>
+    </div>
+  </div>
+</main>
+
+<footer class="border-t border-slate-200">
+  <div class="max-w-7xl mx-auto px-4 lg:px-6 py-8">
+    <div class="flex items-center gap-3 mb-4">
+      <img src="/assets/img/lrmc-mark.png" alt="" class="w-8 h-8 object-contain" />
+      <p class="text-sm font-bold text-blue-800">Legacy Rental Management Consortium</p>
+    </div>
+    <nav class="flex flex-wrap gap-x-6 gap-y-2 mb-6 text-sm" aria-label="Footer">
+      <a href="/public/about.html"   class="text-slate-600 hover:text-blue-700">About</a>
+      <a href="/public/pricing.html" class="text-slate-600 hover:text-blue-700">Pricing</a>
+      <a href="/public/contact.html" class="text-slate-600 hover:text-blue-700">Contact</a>
+      <a href="/public/terms.html"   class="text-slate-600 hover:text-blue-700">Terms</a>
+      <a href="/public/privacy.html" class="text-slate-600 hover:text-blue-700">Privacy</a>
+    </nav>
+    <p class="text-xs text-slate-500 max-w-md">
+      Institutional property and mobility management. Serving The Gambia.
+    </p>
+    <p class="text-[11px] text-slate-500 mt-6">
+      © <span class="lrmc-year"></span> Legacy Rental Management Consortium. All rights reserved.
+    </p>
+  </div>
+</footer>
+
+<div id="lrmc-toasts" aria-live="polite" class="fixed top-4 right-4 z-50 flex flex-col gap-2 items-end"></div>
+
+<script>
+document.querySelectorAll('.lrmc-year').forEach(function (el) {
+  el.textContent = new Date().getFullYear();
+});
+
+/* Shared with the member-side page — see /assets/js/properties.js. */
+var PAGE_SIZE = 12;
+var state = { page: 1, total: 0, lastQuery: '' };
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * The URL is the search
+ *
+ * A tenant who finds a two-bedroom in Kanifing under D 15,000 should be able
+ * to send that link to their partner. A search kept only in memory cannot be
+ * shared, bookmarked, or survive a reload.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+var FILTER_FIELDS = ['search', 'region', 'propertyType', 'minRent', 'maxRent',
+                     'bedrooms', 'furnished'];
+
+function readFilters() {
+  var out = {};
+  FILTER_FIELDS.forEach(function (name) {
+    var el = document.getElementById('f-' + name);
+    if (el && el.value !== '') out[name] = el.value;
+  });
+  var ticked = [].slice.call(document.querySelectorAll('#amenity-options input:checked'))
+    .map(function (i) { return i.value; });
+  if (ticked.length) out.amenities = ticked.join(',');
+  return out;
+}
+
+function writeFilters(params) {
+  FILTER_FIELDS.forEach(function (name) {
+    var el = document.getElementById('f-' + name);
+    if (el) el.value = params.get(name) || '';
+  });
+  var wanted = (params.get('amenities') || '').split(',').filter(Boolean);
+  [].slice.call(document.querySelectorAll('#amenity-options input')).forEach(function (i) {
+    i.checked = wanted.indexOf(i.value) !== -1;
+  });
+  var page = parseInt(params.get('page') || '1', 10);
+  state.page = Number.isFinite(page) && page > 0 ? page : 1;
+}
+
+function syncUrl(filters) {
+  var params = new URLSearchParams(filters);
+  if (state.page > 1) params.set('page', String(state.page));
+  var qs = params.toString();
+  history.replaceState(null, '', qs ? '?' + qs : location.pathname);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Searching
+ * ──────────────────────────────────────────────────────────────────────── */
+
+function show(id, on) {
+  var el = document.getElementById(id);
+  if (el) el.hidden = !on;
+}
+
+function rentRangeProblem(filters) {
+  var lo = filters.minRent === undefined ? null : Number(filters.minRent);
+  var hi = filters.maxRent === undefined ? null : Number(filters.maxRent);
+  return lo !== null && hi !== null && hi < lo;
+}
+
+function search(opts) {
+  opts = opts || {};
+  if (opts.resetPage !== false) state.page = 1;
+
+  var filters = readFilters();
+
+  /* Caught here rather than sent: the API would return an empty set, and
+   * "nothing matched" is the wrong thing to tell somebody whose numbers are
+   * simply the wrong way round. */
+  var badRange = rentRangeProblem(filters);
+  show('rent-range-error', badRange);
+  document.getElementById('f-maxRent')
+    .setAttribute('aria-invalid', badRange ? 'true' : 'false');
+  if (badRange) return Promise.resolve();
+
+  syncUrl(filters);
+  renderActiveFilters(filters);
+
+  show('results-loading', true);
+  show('results-grid', false);
+  show('results-empty', false);
+  show('results-error', false);
+  show('results-paging', false);
+
+  var query = Object.assign({}, filters, { page: state.page, limit: PAGE_SIZE });
+  state.lastQuery = JSON.stringify(query);
+
+  return Lrmc.properties.public(query)
+    .then(function (items) {
+      /* A late reply from a search the person has already moved on from must
+       * not overwrite the one they are looking at. */
+      if (JSON.stringify(query) !== state.lastQuery) return;
+
+      show('results-loading', false);
+      var rows = Array.isArray(items) ? items : (items && items.data) || [];
+      var meta = (items && items.__meta) || (items && items.meta) || {};
+      state.total = typeof meta.total === 'number' ? meta.total : rows.length;
+
+      if (!rows.length) {
+        show('results-empty', true);
+        document.getElementById('results-count').textContent = 'No homes matched.';
+        return;
+      }
+
+      document.getElementById('results-grid').innerHTML =
+        rows.map(LrmcProperties.card).join('');
+      show('results-grid', true);
+      renderCount(rows.length);
+      renderPaging();
+      if (window.lucide) window.lucide.createIcons();
+    })
+    .catch(function () {
+      show('results-loading', false);
+      show('results-error', true);
+      document.getElementById('results-count').textContent = 'Listings could not be loaded.';
+      if (window.lucide) window.lucide.createIcons();
+    });
+}
+
+function renderCount(shown) {
+  var total = state.total;
+  var word = total === 1 ? 'home' : 'homes';
+  var text = total > shown
+    ? LrmcUI.number(total) + ' ' + word + ' found — showing ' + shown
+    : LrmcUI.number(total) + ' ' + word + ' found';
+  document.getElementById('results-count').textContent = text;
+}
+
+function renderPaging() {
+  var pages = Math.max(1, Math.ceil(state.total / PAGE_SIZE));
+  if (pages <= 1) { show('results-paging', false); return; }
+  show('results-paging', true);
+  document.getElementById('page-status').textContent =
+    'Page ' + state.page + ' of ' + pages;
+  document.getElementById('page-prev').disabled = state.page <= 1;
+  document.getElementById('page-next').disabled = state.page >= pages;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Showing what is currently narrowing the list
+ *
+ * A filter set two screens ago and forgotten is the commonest reason somebody
+ * concludes a site has no homes in it.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+function renderActiveFilters(filters) {
+  var box = document.getElementById('active-filters');
+  var chips = [];
+
+  Object.keys(filters).forEach(function (key) {
+    if (key === 'amenities') {
+      filters.amenities.split(',').forEach(function (a) {
+        chips.push({ key: 'amenity:' + a, label: LrmcProperties.amenityLabel(a) });
+      });
+      return;
+    }
+    chips.push({ key: key, label: LrmcProperties.filterLabel(key, filters[key]) });
+  });
+
+  box.innerHTML = chips.map(function (c) {
+    return '<button type="button" class="lrmc-badge lrmc-badge-info" data-remove="' +
+      LrmcUI.esc(c.key) + '">' + LrmcUI.esc(c.label) +
+      ' <span aria-hidden="true">×</span>' +
+      '<span class="lrmc-sr-only">Remove this filter</span></button>';
+  }).join('');
+
+  document.getElementById('filters-clear').hidden = chips.length === 0;
+}
+
+function clearFilters() {
+  FILTER_FIELDS.forEach(function (name) {
+    var el = document.getElementById('f-' + name);
+    if (el) el.value = '';
+  });
+  [].slice.call(document.querySelectorAll('#amenity-options input')).forEach(function (i) {
+    i.checked = false;
+  });
+  search();
+}
+
+function removeFilter(key) {
+  if (key.indexOf('amenity:') === 0) {
+    var value = key.slice(8);
+    var box = document.querySelector('#amenity-options input[value="' + CSS.escape(value) + '"]');
+    if (box) box.checked = false;
+  } else {
+    var el = document.getElementById('f-' + key);
+    if (el) el.value = '';
+  }
+  search();
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Wiring
+ * ──────────────────────────────────────────────────────────────────────── */
+
+function lrmcNav() {
+  if (!window.LrmcAuth || !LrmcAuth.isSignedIn()) return;
+  var signin = document.getElementById('lrmc-nav-signin');
+  var cta = document.getElementById('lrmc-nav-cta');
+  if (signin) signin.hidden = true;
+  if (cta) {
+    cta.textContent = 'Go to your dashboard';
+    cta.href = LrmcAuth.homeFor(LrmcAuth.actor());
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  LrmcProperties.fillRegions(document.getElementById('f-region'));
+  LrmcProperties.fillTypes(document.getElementById('f-propertyType'));
+  LrmcProperties.fillAmenities(document.getElementById('amenity-options'));
+
+  writeFilters(new URLSearchParams(location.search));
+  lrmcNav();
+
+  var form = document.getElementById('property-filters');
+
+  /* Real form, real action — it narrows results without script. `search()`
+   * prevents the reload when the script is there. */
+  form.addEventListener('submit', function (evt) {
+    evt.preventDefault();
+    search();
+  });
+
+  /* Typing is not a decision; 300ms of quiet is. That applies to the rent
+   * boxes as much as to the search box — waiting for a blur means somebody
+   * types a ceiling, sees nothing happen, and concludes the filter is broken.
+   *
+   * Selects and checkboxes fire at once, because choosing one *is* the
+   * decision, and `change` on those does not repeat while a person thinks. */
+  var typingTimer = null;
+  form.addEventListener('input', function (evt) {
+    var el = evt.target;
+    if (!el || (el.tagName !== 'INPUT') || el.type === 'checkbox') return;
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(function () { search(); }, 300);
+  });
+  form.addEventListener('change', function (evt) {
+    var el = evt.target;
+    /* Already handled above, and `change` also fires on blur — searching
+     * twice for one edit doubles the load for nothing. */
+    if (el && el.tagName === 'INPUT' && el.type !== 'checkbox') return;
+    search();
+  });
+
+  document.getElementById('filters-clear').addEventListener('click', clearFilters);
+  document.getElementById('empty-clear').addEventListener('click', clearFilters);
+  document.getElementById('results-retry').addEventListener('click', function () {
+    search({ resetPage: false });
+  });
+
+  document.getElementById('active-filters').addEventListener('click', function (evt) {
+    var chip = evt.target.closest('[data-remove]');
+    if (chip) removeFilter(chip.getAttribute('data-remove'));
+  });
+
+  document.getElementById('page-prev').addEventListener('click', function () {
+    if (state.page > 1) { state.page -= 1; search({ resetPage: false }); window.scrollTo(0, 0); }
+  });
+  document.getElementById('page-next').addEventListener('click', function () {
+    state.page += 1; search({ resetPage: false }); window.scrollTo(0, 0);
+  });
+
+  if (window.lucide) window.lucide.createIcons();
+  search({ resetPage: false });
+});
+</script>
+</body>
+</html>

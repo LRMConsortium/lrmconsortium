@@ -185,7 +185,9 @@
 .lrmc-badge-warning { background: var(--lrmc-amber-tint);   color: #b45309; }
 .lrmc-badge-danger  { background: var(--lrmc-rose-tint);    color: #be123c; }
 .lrmc-badge-info    { background: var(--lrmc-blue-tint);    color: var(--lrmc-blue); }
-.lrmc-badge-neutral { background: #f1f5f9;                  color: var(--lrmc-gray-500); }
+/* slate-700, not slate-500: gray-500 on this background measures 4.34:1,
+ * which is under AA for text this size. slate-700 is 9.45:1. */
+.lrmc-badge-neutral { background: #f1f5f9;                  color: var(--lrmc-slate); }
 .lrmc-badge-gold    { background: #FBF6E5;                  color: #8a6d1c; }
 
 /* ── Forms ───────────────────────────────────────────────────────────── */

@@ -164,3 +164,4 @@ img{display:block;max-width:100%;height:auto}
 .border-y{border-top-width:1px;border-bottom-width:1px}
 .sticky{position:sticky}.top-0{top:0}.z-20{z-index:20}.w-4\/5{width:80%}.w-1\/2{width:50%}
 .space-y-4>*+*{margin-top:1rem}
+@media(min-width:1024px){.lg\:block{display:block}.lg\:flex{display:flex}}
