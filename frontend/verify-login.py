@@ -106,6 +106,17 @@ with sync_playwright() as p:
     load()
     check('one h1', pg.locator('h1').count() == 1)
     check('LRMC full name present', 'Legacy Rental Management Consortium' in pg.content())
+    # The lockup carries the name in the artwork, so the header block must not
+    # also set it in visible text — that would show the institution's name
+    # three times over. The footer's copyright line is a separate, legitimate
+    # use and is deliberately outside this check.
+    header_block = pg.eval_on_selector('main > div:first-child', 'el => el.innerText')
+    check('the header does not repeat the name the artwork already carries',
+          'Legacy Rental Management Consortium' not in header_block
+          or header_block.strip() == 'Legacy Rental Management Consortium')
+    # But assistive technology must still hear it exactly once.
+    check('a screen reader is still told whose page this is',
+          pg.locator('.lrmc-sr-only').count() >= 1)
     check('logo is decorative', pg.get_attribute('main img', 'alt') == '')
     # The sign-in page has room, so it shows the full institutional lockup.
     check('the sign-in page shows the full lockup',

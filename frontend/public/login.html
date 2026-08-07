@@ -45,6 +45,7 @@
   <meta name="description" content="Sign in to the Legacy Rental Management Consortium platform." />
 
   <link rel="icon" href="/assets/img/lrmc-favicon.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/assets/img/lrmc-apple-touch-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -83,13 +84,19 @@
 
   <main id="lrmc-main" class="w-full max-w-md">
 
-    <!-- LRMC mark. Decorative: the institution's name is written beneath it in
-         text, so a screen reader should not announce the brand twice. -->
+    <!--
+      The full institutional lockup, which already carries the name. Repeating
+      it as text beneath would put "Legacy Rental Management Consortium" on the
+      screen three times over — in the artwork, in an initialism, and in full.
+
+      The image stays decorative (`alt=""`) per the branding requirement, so
+      the name is given to assistive technology exactly once, by the visually
+      hidden line below. Without it a screen-reader user would meet a sign-in
+      page that never says whose it is.
+    -->
     <div class="flex flex-col items-center mb-8">
-      <img src="/assets/img/lrmc-logo.png" alt=""
-           class="w-24 h-24 mb-3 rounded-xl object-contain" />
-      <p class="text-xl font-bold text-blue-800 tracking-wide">LRMC</p>
-      <p class="text-sm text-slate-500 text-center mt-1">Legacy Rental Management Consortium</p>
+      <img src="/assets/img/lrmc-logo.png" alt="" class="w-64" />
+      <span class="lrmc-sr-only">Legacy Rental Management Consortium</span>
     </div>
 
     <div class="bg-white rounded-xl shadow-md p-6">
