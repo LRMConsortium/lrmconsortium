@@ -164,6 +164,22 @@ import {
 } from '../modules/marketplace/listingRules.js';
 import { CURRENCIES, CURRENCY_SYMBOLS, LAUNCH_CURRENCY } from '../config/currencies.js';
 import {
+  VIEWING_STATUSES, VIEWING_TRANSITIONS, canTransitionViewing, nextViewingStatuses,
+  isOpenViewing, slotProblem, describeSlotProblem, canRecordOutcome, mayAct,
+  MIN_NOTICE_HOURS, MAX_AHEAD_DAYS, VIEWING_OPENS_HOUR, VIEWING_CLOSES_HOUR,
+  MAX_OPEN_REQUESTS_PER_TENANT,
+} from '../modules/viewing/viewingRules.js';
+import {
+  ELIGIBILITY_FACTORS, FACTOR_WEIGHTS, FACTOR_LABELS, BLOCKING_FACTORS,
+  assessApplication, RECOMMEND_AT, REVIEW_AT, INCOME_MULTIPLE_STRONG,
+  type EligibilityInput,
+} from '../modules/application/eligibility.js';
+import {
+  APPLICATION_STATUSES, APPLICATION_TRANSITIONS, canTransitionApplication,
+  isOpenApplication, isDecided, requiresDecider, mayDecide, decisionProblems,
+  describeDecisionProblem, DECISIONS,
+} from '../modules/application/applicationLifecycle.js';
+import {
   EXTRA_LABELS,
   missingExtras,
   PASSWORD_MIN_LENGTH,
@@ -3888,6 +3904,294 @@ section('FAC: lockout override');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+section('Viewings: the diary');
+
+// A viewing is the first time LRMC asks a real person to be in a real place at
+// a real time. Nearly everything that goes wrong with one is a scheduling
+// mistake nobody caught.
+{
+  const NOW = Date.UTC(2026, 7, 10, 9, 0, 0);   // fixed: the rules take a clock
+  const H = 3_600_000;
+  const D = 86_400_000;
+
+  eq('six statuses, no more', VIEWING_STATUSES.length, 6);
+  check('every status has a transition list',
+    VIEWING_STATUSES.every((st) => Array.isArray(VIEWING_TRANSITIONS[st])));
+  check('and every destination is itself a status',
+    VIEWING_STATUSES.every((st) =>
+      VIEWING_TRANSITIONS[st].every((to) => (VIEWING_STATUSES as readonly string[]).includes(to))));
+
+  check('a request can be confirmed', canTransitionViewing('requested', 'confirmed'));
+  check('or declined', canTransitionViewing('requested', 'declined'));
+  check('or called off', canTransitionViewing('requested', 'cancelled'));
+
+  // Enforced by absence from the table, which is why the table is a table.
+  check('a declined viewing cannot be revived',
+    nextViewingStatuses('declined').length === 0);
+  check('a completed viewing cannot become a no-show',
+    !canTransitionViewing('completed', 'noShow'));
+  check('and a no-show cannot become completed',
+    !canTransitionViewing('noShow', 'completed'));
+  check('nothing goes back to requested',
+    VIEWING_STATUSES.every((st) => !canTransitionViewing(st, 'requested')));
+  check('a viewing cannot be completed without being confirmed first',
+    !canTransitionViewing('requested', 'completed'));
+
+  check('a request is open work', isOpenViewing('requested'));
+  check('so is a confirmed viewing', isOpenViewing('confirmed'));
+  check('a cancelled one is not', !isOpenViewing('cancelled'));
+  check('nor a completed one', !isOpenViewing('completed'));
+
+  // ── slots ──
+  eq('a good slot has nothing wrong with it',
+    slotProblem(NOW + 2 * D, NOW, 10), null);
+  eq('yesterday is in the past', slotProblem(NOW - D, NOW, 10), 'in-the-past');
+  eq('and so is a moment ago', slotProblem(NOW - 1, NOW, 10), 'in-the-past');
+  eq('twenty minutes is not notice', slotProblem(NOW + 20 * 60_000, NOW, 10), 'too-soon');
+  eq('exactly the minimum notice is', slotProblem(NOW + MIN_NOTICE_HOURS * H, NOW, 10), null);
+  eq('a year out is a guess', slotProblem(NOW + 400 * D, NOW, 10), 'too-far-ahead');
+  eq('the last bookable day is still bookable',
+    slotProblem(NOW + MAX_AHEAD_DAYS * D, NOW, 10), null);
+
+  // Three in the morning is a request nobody will honour.
+  eq('03:00 is outside viewing hours', slotProblem(NOW + 2 * D, NOW, 3), 'outside-viewing-hours');
+  eq('so is 22:00', slotProblem(NOW + 2 * D, NOW, 22), 'outside-viewing-hours');
+  eq('opening time is inside them', slotProblem(NOW + 2 * D, NOW, VIEWING_OPENS_HOUR), null);
+  // Closing is the last hour a viewing may *start* — a viewing at 18:00 has
+  // somebody at the property at seven.
+  eq('closing time is not',
+    slotProblem(NOW + 2 * D, NOW, VIEWING_CLOSES_HOUR), 'outside-viewing-hours');
+  eq('the hour before closing is',
+    slotProblem(NOW + 2 * D, NOW, VIEWING_CLOSES_HOUR - 1), null);
+
+  eq('a nonsense date is caught before anything else',
+    slotProblem(Number.NaN, NOW, 10), 'not-a-time');
+  eq('and a nonsense hour is caught too',
+    slotProblem(NOW + 2 * D, NOW, Number.NaN), 'not-a-time');
+
+  check('every slot problem has wording a tenant could read',
+    (['in-the-past', 'too-soon', 'too-far-ahead', 'outside-viewing-hours', 'not-a-time'] as const)
+      .every((pr) => describeSlotProblem(pr).length > 15 && !describeSlotProblem(pr).includes('_')));
+
+  // ── recording what happened ──
+  // A no-show recorded before the appointment is a prediction, and it lands on
+  // a tenant's record where it counts against them at application time.
+  check('an outcome cannot be recorded before the slot',
+    !canRecordOutcome(NOW + H, NOW));
+  check('but can be at the slot', canRecordOutcome(NOW, NOW));
+  check('and after it', canRecordOutcome(NOW - H, NOW));
+
+  // ── who may act ──
+  check('a tenant may call off their own viewing', mayAct('tenant', 'cancelled'));
+  check('a tenant may not confirm one', !mayAct('tenant', 'confirmed'));
+  check('nor mark themselves attended', !mayAct('tenant', 'completed'));
+  check('nor mark themselves a no-show', !mayAct('tenant', 'noShow'));
+  check('a coordinator confirms', mayAct('coordinator', 'confirmed'));
+  check('and records the outcome', mayAct('coordinator', 'noShow'));
+  // A landlord cancelling on a tenant's behalf would leave a record reading as
+  // though the tenant lost interest.
+  check('a landlord cannot cancel for the tenant', !mayAct('landlord', 'cancelled'));
+  check('but may decline a slot on their own property', mayAct('landlord', 'declined'));
+  check('a landlord does not record attendance', !mayAct('landlord', 'completed'));
+
+  check('the open-request cap is a small number', MAX_OPEN_REQUESTS_PER_TENANT <= 10);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+section('Applications: scoring, which is not deciding');
+
+{
+  const STRONG: EligibilityInput = {
+    identityVerified: true,
+    monthlyIncome: 40_000, monthlyRent: 12_000, employmentEvidenced: true,
+    referencesProvided: 2, referencesCleared: 2,
+    paymentsOnTime: 12, paymentsLate: 0, paymentsMissed: 0,
+    ususuMonths: 8,
+    openDisputes: 0, resolvedDisputes: 0,
+  };
+
+  eq('six factors', ELIGIBILITY_FACTORS.length, 6);
+  eq('weighted to a hundred',
+    ELIGIBILITY_FACTORS.reduce((acc, f) => acc + FACTOR_WEIGHTS[f], 0), 100);
+  check('every factor has wording that never names a column',
+    ELIGIBILITY_FACTORS.every((f) => FACTOR_LABELS[f] && !FACTOR_LABELS[f].includes('_')));
+
+  const strong = assessApplication(STRONG);
+  check('every factor is scored', strong.factors.length === ELIGIBILITY_FACTORS.length);
+  eq('a complete, clean applicant is recommended', strong.recommendation, 'recommend');
+  check('with a score above the bar', strong.score >= RECOMMEND_AT);
+  eq('nothing blocking', strong.blockedBy.length, 0);
+  eq('nothing missing', strong.missing.length, 0);
+  check('every factor carries a reason in words',
+    strong.factors.every((f) => f.reason.length > 8));
+  check('and no factor scores above its weight',
+    strong.factors.every((f) => f.points <= f.max && f.points >= 0));
+
+  // ── absent evidence is not bad evidence ──
+  // A tenant new to the country has no LRMC payment history. That is a reason
+  // to look at them, not a reason to refuse them.
+  const newcomer = assessApplication({
+    ...STRONG, paymentsOnTime: undefined, paymentsLate: undefined, paymentsMissed: undefined,
+  });
+  eq('an unknown factor is reported unknown, not failed',
+    newcomer.factors.find((f) => f.factor === 'paymentHistory')?.status, 'unknown');
+  eq('and it holds the application at review rather than declining it',
+    newcomer.recommendation, 'review');
+  check('with the gap named', newcomer.missing.includes('paymentHistory'));
+  check('and said in the summary', newcomer.summary.toLowerCase().includes('no evidence'));
+
+  // Not using a ride service is not a mark against a tenant.
+  const noUsusu = assessApplication({ ...STRONG, ususuMonths: undefined });
+  eq('no Ususu history is unknown, never a failure',
+    noUsusu.factors.find((f) => f.factor === 'ususuContributions')?.status, 'unknown');
+  check('and Ususu carries the least weight of the six',
+    ELIGIBILITY_FACTORS.every((f) => FACTOR_WEIGHTS.ususuContributions <= FACTOR_WEIGHTS[f]));
+
+  // ── the two blocking factors ──
+  eq('identity and disputes are the blocking pair', BLOCKING_FACTORS.length, 2);
+  const unidentified = assessApplication({ ...STRONG, identityVerified: false });
+  check('an unverified identity blocks', unidentified.blockedBy.includes('identity'));
+  check('no matter how good everything else is',
+    unidentified.recommendation !== 'recommend');
+  const disputed = assessApplication({ ...STRONG, openDisputes: 1 });
+  check('so does an open dispute', disputed.blockedBy.includes('disputes'));
+  check('and it too cannot be outscored', disputed.recommendation !== 'recommend');
+  check('the blocker is named in the summary',
+    disputed.summary.toLowerCase().includes('open disputes'));
+
+  // A block caps at review — never worse on its own. "We cannot yet identify
+  // this person" is a reason to look, not a reason to refuse.
+  eq('a block holds at review, it does not decline',
+    assessApplication({ ...STRONG, identityPending: true, identityVerified: undefined }).recommendation,
+    'review');
+
+  // ── income ──
+  const thin = assessApplication({ ...STRONG, monthlyIncome: 20_000 });     // 1.67x
+  eq('income that cannot sustain the rent fails that factor',
+    thin.factors.find((f) => f.factor === 'employment')?.status, 'fail');
+  const stretched = assessApplication({ ...STRONG, monthlyIncome: 30_000 }); // 2.5x
+  eq('income below the multiple LRMC looks for is a concern, not a failure',
+    stretched.factors.find((f) => f.factor === 'employment')?.status, 'concern');
+  const unevidenced = assessApplication({ ...STRONG, employmentEvidenced: false });
+  check('a declared income nobody checked scores less than an evidenced one',
+    (unevidenced.factors.find((f) => f.factor === 'employment')?.points ?? 0)
+    < (strong.factors.find((f) => f.factor === 'employment')?.points ?? 0));
+  eq('and the multiple LRMC looks for is stated once', INCOME_MULTIPLE_STRONG, 3);
+
+  // ── payment history ──
+  // A missed instalment is different in kind from a late one, and must not be
+  // averaged away by a long run of good months.
+  const missed = assessApplication({ ...STRONG, paymentsOnTime: 24, paymentsMissed: 1 });
+  eq('a missed instalment fails the factor even after two clean years',
+    missed.factors.find((f) => f.factor === 'paymentHistory')?.status, 'fail');
+  const late = assessApplication({ ...STRONG, paymentsOnTime: 9, paymentsLate: 3 });
+  eq('late payments are a concern rather than a failure',
+    late.factors.find((f) => f.factor === 'paymentHistory')?.status, 'concern');
+  check('and score less than a clean record',
+    (late.factors.find((f) => f.factor === 'paymentHistory')?.points ?? 0)
+    < (strong.factors.find((f) => f.factor === 'paymentHistory')?.points ?? 0));
+
+  // ── the floor ──
+  const nothing = assessApplication({});
+  eq('an empty application scores nothing', nothing.score, 0);
+  eq('and is not recommended', nothing.recommendation, 'decline');
+  eq('with every factor reported unknown', nothing.missing.length, ELIGIBILITY_FACTORS.length);
+  check('the review bar sits below the recommend bar', REVIEW_AT < RECOMMEND_AT);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+section('Applications: deciding, which needs a person');
+
+{
+  eq('seven statuses', APPLICATION_STATUSES.length, 7);
+  check('every destination is itself a status',
+    APPLICATION_STATUSES.every((st) =>
+      APPLICATION_TRANSITIONS[st].every((to) =>
+        (APPLICATION_STATUSES as readonly string[]).includes(to))));
+
+  // A lease commits a landlord's property to a tenant. It may only follow a
+  // decision somebody signed.
+  check('only an approved application can become a lease',
+    APPLICATION_STATUSES.every((st) =>
+      st === 'approved' || !canTransitionApplication(st, 'leaseIssued')));
+  check('a refusal is final — they apply again rather than have it reversed in place',
+    APPLICATION_TRANSITIONS.rejected.length === 0);
+  check('and an issued lease is not undone here',
+    APPLICATION_TRANSITIONS.leaseIssued.length === 0);
+  check('nothing is approved without being opened first',
+    !canTransitionApplication('submitted', 'approved'));
+  check('nor rejected without being opened first',
+    !canTransitionApplication('submitted', 'rejected'));
+  check('a withdrawal cannot be undone by LRMC',
+    APPLICATION_TRANSITIONS.withdrawn.length === 0);
+
+  check('submitted work is open', isOpenApplication('submitted'));
+  check('so is work waiting on the applicant', isOpenApplication('awaitingApplicant'));
+  check('an approval is not open work', !isOpenApplication('approved'));
+  check('an approval is a decision', isDecided('approved'));
+  check('so is a rejection', isDecided('rejected'));
+  check('a withdrawal is not a decision LRMC made', !isDecided('withdrawn'));
+
+  // ── who ──
+  check('only the applicant withdraws', mayDecide('applicant', 'withdrawn'));
+  check('LRMC does not withdraw on their behalf', !mayDecide('staff', 'withdrawn'));
+  check('a coordinator may approve', mayDecide('coordinator', 'approved'));
+  check('and reject', mayDecide('coordinator', 'rejected'));
+  // LRMC carries the tenancy, holds the deposit and answers for the decision.
+  check('a landlord does not approve their own applicant', !mayDecide('landlord', 'approved'));
+  check('nor reject one', !mayDecide('landlord', 'rejected'));
+  check('an applicant cannot approve themselves', !mayDecide('applicant', 'approved'));
+  check('only Back Office issues the lease', mayDecide('staff', 'leaseIssued'));
+  check('a coordinator does not', !mayDecide('coordinator', 'leaseIssued'));
+
+  // ── a decision must have an author ──
+  eq('approval and rejection are the two decisions', DECISIONS.length, 2);
+  check('an approval needs a decider', requiresDecider('approved'));
+  // Tempting to require a reason only for a refusal — but "who let this
+  // tenancy through" is asked more often than anyone expects.
+  check('and so does an approval, not only a refusal', requiresDecider('rejected'));
+  check('moving to review needs neither', !requiresDecider('underReview'));
+
+  eq('a signed, reasoned approval has no problems',
+    decisionProblems({
+      from: 'underReview', to: 'approved', actor: 'coordinator',
+      decidedBy: 'u-coord-1', reason: 'References cleared and income evidenced.',
+    }).length, 0);
+  check('an unsigned approval is refused',
+    decisionProblems({
+      from: 'underReview', to: 'approved', actor: 'coordinator', reason: 'Looks fine to me.',
+    }).includes('needs-a-decider'));
+  check('an approval with no reason is refused',
+    decisionProblems({
+      from: 'underReview', to: 'approved', actor: 'coordinator', decidedBy: 'u-coord-1',
+    }).includes('needs-a-reason'));
+  check('and a reason of three characters is not a reason',
+    decisionProblems({
+      from: 'underReview', to: 'approved', actor: 'coordinator',
+      decidedBy: 'u-coord-1', reason: ' ok ',
+    }).includes('needs-a-reason'));
+  check('a landlord approving is not their decision',
+    decisionProblems({
+      from: 'underReview', to: 'approved', actor: 'landlord',
+      decidedBy: 'u-ll-1', reason: 'I like them.',
+    }).includes('not-your-decision'));
+  check('approving straight from submitted is not a transition',
+    decisionProblems({
+      from: 'submitted', to: 'approved', actor: 'staff',
+      decidedBy: 'u-1', reason: 'Everything checks out.',
+    }).includes('not-a-transition'));
+
+  // Every problem at once, so a caller is told once what to fix rather than
+  // discovering it a refusal at a time.
+  eq('all four problems are reported together',
+    decisionProblems({ from: 'rejected', to: 'approved', actor: 'applicant' }).length, 4);
+
+  check('every decision problem has wording a person could act on',
+    (['not-a-transition', 'not-your-decision', 'needs-a-decider', 'needs-a-reason'] as const)
+      .every((pr) => describeDecisionProblem(pr).length > 20));
+}
+
 /**
  * The providers are the one asynchronous surface here. Wrapped in a function
  * rather than reached for with top-level await, which this project's module
