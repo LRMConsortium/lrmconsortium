@@ -350,203 +350,78 @@ document.querySelectorAll('.lrmc-year').forEach(function (el) {
   el.textContent = new Date().getFullYear();
 });
 
-/* Shared with the member-side page — see /assets/js/properties.js. */
-var PAGE_SIZE = 12;
-var state = { page: 1, total: 0, lastQuery: '' };
-
-/* ─────────────────────────────────────────────────────────────────────────
- * The URL is the search
- *
- * A tenant who finds a two-bedroom in Kanifing under D 15,000 should be able
- * to send that link to their partner. A search kept only in memory cannot be
- * shared, bookmarked, or survive a reload.
- * ──────────────────────────────────────────────────────────────────────── */
-
+/* The search engine lives in /assets/js/properties.js so the member-side page
+ * uses the same one. Two implementations would mean two stale-reply guards,
+ * two paging boundaries and two URL syncs — three of which would drift. */
 var FILTER_FIELDS = ['search', 'region', 'propertyType', 'minRent', 'maxRent',
                      'bedrooms', 'furnished'];
 
-function readFilters() {
-  var out = {};
-  FILTER_FIELDS.forEach(function (name) {
-    var el = document.getElementById('f-' + name);
-    if (el && el.value !== '') out[name] = el.value;
-  });
-  var ticked = [].slice.call(document.querySelectorAll('#amenity-options input:checked'))
-    .map(function (i) { return i.value; });
-  if (ticked.length) out.amenities = ticked.join(',');
-  return out;
-}
+/* Constructed on ready, not here. This inline script executes while the page
+ * is still parsing; the deferred modules it depends on have not run yet, so a
+ * `new LrmcSearch(...)` at this level throws before anything is wired. */
+var finder = null;
 
-function writeFilters(params) {
-  FILTER_FIELDS.forEach(function (name) {
-    var el = document.getElementById('f-' + name);
-    if (el) el.value = params.get(name) || '';
+function buildFinder() {
+  return new LrmcSearch({
+    fetch: function (q) { return Lrmc.properties.public(q); },
+    fields: FILTER_FIELDS,
+    amenityBox: 'amenity-options',
+    pageSize: 12,
+    onRender: function (rows) {
+      document.getElementById('results-grid').innerHTML =
+        rows.map(function (r) { return LrmcProperties.card(r, { action: false }); }).join('');
+    },
+    onState: onState,
   });
-  var wanted = (params.get('amenities') || '').split(',').filter(Boolean);
-  [].slice.call(document.querySelectorAll('#amenity-options input')).forEach(function (i) {
-    i.checked = wanted.indexOf(i.value) !== -1;
-  });
-  var page = parseInt(params.get('page') || '1', 10);
-  state.page = Number.isFinite(page) && page > 0 ? page : 1;
 }
-
-function syncUrl(filters) {
-  var params = new URLSearchParams(filters);
-  if (state.page > 1) params.set('page', String(state.page));
-  var qs = params.toString();
-  history.replaceState(null, '', qs ? '?' + qs : location.pathname);
-}
-
-/* ─────────────────────────────────────────────────────────────────────────
- * Searching
- * ──────────────────────────────────────────────────────────────────────── */
 
 function show(id, on) {
   var el = document.getElementById(id);
   if (el) el.hidden = !on;
 }
 
-function rentRangeProblem(filters) {
-  var lo = filters.minRent === undefined ? null : Number(filters.minRent);
-  var hi = filters.maxRent === undefined ? null : Number(filters.maxRent);
-  return lo !== null && hi !== null && hi < lo;
-}
-
-function search(opts) {
-  opts = opts || {};
-  if (opts.resetPage !== false) state.page = 1;
-
-  var filters = readFilters();
-
-  /* Caught here rather than sent: the API would return an empty set, and
-   * "nothing matched" is the wrong thing to tell somebody whose numbers are
-   * simply the wrong way round. */
-  var badRange = rentRangeProblem(filters);
+function onState(s) {
+  var badRange = s.phase === 'range-error';
   show('rent-range-error', badRange);
   document.getElementById('f-maxRent')
     .setAttribute('aria-invalid', badRange ? 'true' : 'false');
-  if (badRange) return Promise.resolve();
+  if (badRange) return;
 
-  syncUrl(filters);
-  renderActiveFilters(filters);
+  renderActiveFilters(s.filters);
 
-  show('results-loading', true);
-  show('results-grid', false);
-  show('results-empty', false);
-  show('results-error', false);
-  show('results-paging', false);
+  show('results-loading', s.phase === 'loading');
+  show('results-grid', s.phase === 'results');
+  show('results-empty', s.phase === 'empty');
+  show('results-error', s.phase === 'error');
+  show('results-paging', s.phase === 'results' && s.pages > 1);
 
-  var query = Object.assign({}, filters, { page: state.page, limit: PAGE_SIZE });
-  state.lastQuery = JSON.stringify(query);
+  var count = document.getElementById('results-count');
+  if (s.phase === 'empty') count.textContent = 'No homes matched.';
+  else if (s.phase === 'error') count.textContent = 'Listings could not be loaded.';
+  else if (s.phase === 'results') {
+    var word = s.total === 1 ? 'home' : 'homes';
+    count.textContent = s.total > s.shown
+      ? LrmcUI.number(s.total) + ' ' + word + ' found — showing ' + s.shown
+      : LrmcUI.number(s.total) + ' ' + word + ' found';
+  }
 
-  return Lrmc.properties.public(query)
-    .then(function (items) {
-      /* A late reply from a search the person has already moved on from must
-       * not overwrite the one they are looking at. */
-      if (JSON.stringify(query) !== state.lastQuery) return;
+  if (s.phase === 'results' && s.pages > 1) {
+    document.getElementById('page-status').textContent =
+      'Page ' + s.page + ' of ' + s.pages;
+    document.getElementById('page-prev').disabled = s.page <= 1;
+    document.getElementById('page-next').disabled = s.page >= s.pages;
+  }
 
-      show('results-loading', false);
-      var rows = Array.isArray(items) ? items : (items && items.data) || [];
-      var meta = (items && items.__meta) || (items && items.meta) || {};
-      state.total = typeof meta.total === 'number' ? meta.total : rows.length;
-
-      if (!rows.length) {
-        show('results-empty', true);
-        document.getElementById('results-count').textContent = 'No homes matched.';
-        return;
-      }
-
-      document.getElementById('results-grid').innerHTML =
-        rows.map(LrmcProperties.card).join('');
-      show('results-grid', true);
-      renderCount(rows.length);
-      renderPaging();
-      if (window.lucide) window.lucide.createIcons();
-    })
-    .catch(function () {
-      show('results-loading', false);
-      show('results-error', true);
-      document.getElementById('results-count').textContent = 'Listings could not be loaded.';
-      if (window.lucide) window.lucide.createIcons();
-    });
+  if (window.lucide) window.lucide.createIcons();
 }
 
-function renderCount(shown) {
-  var total = state.total;
-  var word = total === 1 ? 'home' : 'homes';
-  var text = total > shown
-    ? LrmcUI.number(total) + ' ' + word + ' found — showing ' + shown
-    : LrmcUI.number(total) + ' ' + word + ' found';
-  document.getElementById('results-count').textContent = text;
-}
-
-function renderPaging() {
-  var pages = Math.max(1, Math.ceil(state.total / PAGE_SIZE));
-  if (pages <= 1) { show('results-paging', false); return; }
-  show('results-paging', true);
-  document.getElementById('page-status').textContent =
-    'Page ' + state.page + ' of ' + pages;
-  document.getElementById('page-prev').disabled = state.page <= 1;
-  document.getElementById('page-next').disabled = state.page >= pages;
-}
-
-/* ─────────────────────────────────────────────────────────────────────────
- * Showing what is currently narrowing the list
- *
- * A filter set two screens ago and forgotten is the commonest reason somebody
- * concludes a site has no homes in it.
- * ──────────────────────────────────────────────────────────────────────── */
-
+/* A filter set two screens ago and forgotten is the commonest reason somebody
+ * concludes a site has no homes in it. */
 function renderActiveFilters(filters) {
-  var box = document.getElementById('active-filters');
-  var chips = [];
-
-  Object.keys(filters).forEach(function (key) {
-    if (key === 'amenities') {
-      filters.amenities.split(',').forEach(function (a) {
-        chips.push({ key: 'amenity:' + a, label: LrmcProperties.amenityLabel(a) });
-      });
-      return;
-    }
-    chips.push({ key: key, label: LrmcProperties.filterLabel(key, filters[key]) });
-  });
-
-  box.innerHTML = chips.map(function (c) {
-    return '<button type="button" class="lrmc-badge lrmc-badge-info" data-remove="' +
-      LrmcUI.esc(c.key) + '">' + LrmcUI.esc(c.label) +
-      ' <span aria-hidden="true">×</span>' +
-      '<span class="lrmc-sr-only">Remove this filter</span></button>';
-  }).join('');
-
+  var chips = LrmcSearch.chips(filters || {});
+  document.getElementById('active-filters').innerHTML = LrmcSearch.chipHtml(chips);
   document.getElementById('filters-clear').hidden = chips.length === 0;
 }
-
-function clearFilters() {
-  FILTER_FIELDS.forEach(function (name) {
-    var el = document.getElementById('f-' + name);
-    if (el) el.value = '';
-  });
-  [].slice.call(document.querySelectorAll('#amenity-options input')).forEach(function (i) {
-    i.checked = false;
-  });
-  search();
-}
-
-function removeFilter(key) {
-  if (key.indexOf('amenity:') === 0) {
-    var value = key.slice(8);
-    var box = document.querySelector('#amenity-options input[value="' + CSS.escape(value) + '"]');
-    if (box) box.checked = false;
-  } else {
-    var el = document.getElementById('f-' + key);
-    if (el) el.value = '';
-  }
-  search();
-}
-
-/* ─────────────────────────────────────────────────────────────────────────
- * Wiring
- * ──────────────────────────────────────────────────────────────────────── */
 
 function lrmcNav() {
   if (!window.LrmcAuth || !LrmcAuth.isSignedIn()) return;
@@ -564,59 +439,32 @@ document.addEventListener('DOMContentLoaded', function () {
   LrmcProperties.fillTypes(document.getElementById('f-propertyType'));
   LrmcProperties.fillAmenities(document.getElementById('amenity-options'));
 
-  writeFilters(new URLSearchParams(location.search));
+  finder = buildFinder();
+  finder.write(new URLSearchParams(location.search));
   lrmcNav();
 
-  var form = document.getElementById('property-filters');
+  finder.bind(document.getElementById('property-filters'));
 
-  /* Real form, real action — it narrows results without script. `search()`
-   * prevents the reload when the script is there. */
-  form.addEventListener('submit', function (evt) {
-    evt.preventDefault();
-    search();
-  });
-
-  /* Typing is not a decision; 300ms of quiet is. That applies to the rent
-   * boxes as much as to the search box — waiting for a blur means somebody
-   * types a ceiling, sees nothing happen, and concludes the filter is broken.
-   *
-   * Selects and checkboxes fire at once, because choosing one *is* the
-   * decision, and `change` on those does not repeat while a person thinks. */
-  var typingTimer = null;
-  form.addEventListener('input', function (evt) {
-    var el = evt.target;
-    if (!el || (el.tagName !== 'INPUT') || el.type === 'checkbox') return;
-    clearTimeout(typingTimer);
-    typingTimer = setTimeout(function () { search(); }, 300);
-  });
-  form.addEventListener('change', function (evt) {
-    var el = evt.target;
-    /* Already handled above, and `change` also fires on blur — searching
-     * twice for one edit doubles the load for nothing. */
-    if (el && el.tagName === 'INPUT' && el.type !== 'checkbox') return;
-    search();
-  });
-
-  document.getElementById('filters-clear').addEventListener('click', clearFilters);
-  document.getElementById('empty-clear').addEventListener('click', clearFilters);
+  document.getElementById('filters-clear').addEventListener('click', function () { finder.clear(); });
+  document.getElementById('empty-clear').addEventListener('click', function () { finder.clear(); });
   document.getElementById('results-retry').addEventListener('click', function () {
-    search({ resetPage: false });
+    finder.run({ resetPage: false });
   });
 
   document.getElementById('active-filters').addEventListener('click', function (evt) {
     var chip = evt.target.closest('[data-remove]');
-    if (chip) removeFilter(chip.getAttribute('data-remove'));
+    if (chip) finder.removeFilter(chip.getAttribute('data-remove'));
   });
 
   document.getElementById('page-prev').addEventListener('click', function () {
-    if (state.page > 1) { state.page -= 1; search({ resetPage: false }); window.scrollTo(0, 0); }
+    if (finder.page > 1) { finder.page -= 1; finder.run({ resetPage: false }); window.scrollTo(0, 0); }
   });
   document.getElementById('page-next').addEventListener('click', function () {
-    state.page += 1; search({ resetPage: false }); window.scrollTo(0, 0);
+    finder.page += 1; finder.run({ resetPage: false }); window.scrollTo(0, 0);
   });
 
   if (window.lucide) window.lucide.createIcons();
-  search({ resetPage: false });
+  finder.run({ resetPage: false });
 });
 </script>
 </body>
