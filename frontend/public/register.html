@@ -44,8 +44,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Register · Legacy Rental Management Consortium</title>
-  <meta name="description" content="Create an account on the Legacy Rental Management Consortium platform." />
+  <meta name="description" content="Create an LRMC account as a tenant, landlord, driver, vendor or merchant. Two steps, and only the questions your role needs." />
 
+  <link rel="canonical" href="https://lrmconsortium.com/public/register.html" />
   <link rel="icon" href="/assets/img/lrmc-favicon.png" type="image/png" />
   <link rel="apple-touch-icon" href="/assets/img/lrmc-apple-touch-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -114,7 +115,7 @@
         <li class="flex-1 h-px bg-slate-200" aria-hidden="true"></li>
         <li class="flex items-center gap-2" :aria-current="step === 2 ? 'step' : null">
           <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold"
-                :class="step === 2 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'">2</span>
+                :class="step === 2 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'">2</span>
           <span :class="step === 2 ? 'font-medium text-slate-900' : 'text-slate-500'">Your details</span>
         </li>
       </ol>
@@ -127,8 +128,13 @@
            on a phone is a scroll wheel; as cards they are scannable, each
            with a line saying what it is for.
       -->
+      <!-- One heading for the document, whose text follows the step. Two
+           <h1> elements — one per step, one of them hidden — read as two page
+           titles to anything navigating by heading. -->
+      <h1 class="text-xl font-semibold text-slate-900 mb-1"
+          x-text="step === 1 ? 'Create your LRMC account' : 'Your details'">Create your LRMC account</h1>
+
       <div x-show="step === 1">
-        <h1 class="text-xl font-semibold text-slate-900 mb-1">Create your LRMC account</h1>
         <p class="text-sm text-slate-600 mb-5">First, tell us how you will use the platform.</p>
 
         <fieldset>
@@ -160,13 +166,12 @@
       <form x-show="step === 2" x-cloak id="register-form" method="post"
             action="/api/v1/auth/register" class="space-y-4" @submit.prevent="submit()">
 
-        <div class="flex items-center justify-between">
-          <h1 class="text-xl font-semibold text-slate-900">Your details</h1>
+        <div class="flex items-center justify-end -mt-8">
           <button type="button" class="text-sm font-medium text-blue-600 hover:text-blue-700"
                   @click="back()">Change</button>
         </div>
 
-        <p class="text-sm text-slate-600 -mt-2">
+        <p class="text-sm text-slate-600">
           Registering as <span class="font-medium text-slate-900" x-text="roleLabel"></span>.
         </p>
 

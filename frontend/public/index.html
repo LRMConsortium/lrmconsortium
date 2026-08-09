@@ -95,24 +95,19 @@
   <div class="max-w-7xl mx-auto px-4 lg:px-6 h-16 flex items-center gap-4">
     <a href="/public/index.html" class="flex items-center gap-3 min-w-0">
       <img src="/assets/img/lrmc-mark.png" alt="" class="w-9 h-9 flex-shrink-0 object-contain" />
-      <!-- Blue, not gold. LRMC Gold measures 2.1:1 on white; a wordmark
-           nobody can read is not a wordmark. Gold does its work on the blue
-           band below, where it measures 4.9:1. -->
       <span class="text-sm font-extrabold text-blue-800 tracking-wide hidden sm:inline">LRMC</span>
       <span class="lrmc-sr-only">Legacy Rental Management Consortium — home</span>
     </a>
 
     <nav class="hidden md:flex items-center gap-1 ml-6 flex-1" aria-label="Main">
-      <a href="/public/index.html"   class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm" aria-current="page">Home</a>
-      <a href="/public/about.html"   class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">About</a>
-      <a href="/public/pricing.html" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Pricing</a>
-      <a href="/public/contact.html" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Contact</a>
+      <a href="/public/index.html"      class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm" aria-current="page">Home</a>
+      <a href="/public/properties.html" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Find a home</a>
+      <a href="/public/about.html"      class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">About</a>
+      <a href="/public/pricing.html"    class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Pricing</a>
+      <a href="/public/contact.html"    class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Contact</a>
     </nav>
 
     <div class="ml-auto flex items-center gap-2">
-      <!-- The signed-out pair is what ships in the markup, so a visitor with
-           no JavaScript sees a working door. `lrmcNav()` swaps it for a way
-           back to their portal if they already have a session. -->
       <span class="hidden sm:inline-flex"><a id="lrmc-nav-signin" href="/public/login.html"
          class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Sign in</a></span>
       <a id="lrmc-nav-cta" href="/public/register.html"
@@ -128,16 +123,15 @@
     </div>
   </div>
 
-  <!-- Without this the navigation is unreachable on a phone, which is the
-       device most of the launch market will arrive on. -->
   <nav id="lrmc-public-menu" class="md:hidden border-t border-slate-200 bg-white px-4 py-2"
        x-show="menu" x-cloak aria-label="Main">
-    <a href="/public/index.html"    class="lrmc-menu-item" aria-current="page">Home</a>
-    <a href="/public/about.html"    class="lrmc-menu-item">About</a>
-    <a href="/public/pricing.html"  class="lrmc-menu-item">Pricing</a>
-    <a href="/public/contact.html"  class="lrmc-menu-item">Contact</a>
-    <a href="/public/login.html"    class="lrmc-menu-item">Sign in</a>
-    <a href="/public/register.html" class="lrmc-menu-item">Get started</a>
+    <a href="/public/index.html"      class="lrmc-menu-item">Home</a>
+    <a href="/public/properties.html" class="lrmc-menu-item">Find a home</a>
+    <a href="/public/about.html"      class="lrmc-menu-item">About</a>
+    <a href="/public/pricing.html"    class="lrmc-menu-item">Pricing</a>
+    <a href="/public/contact.html"    class="lrmc-menu-item">Contact</a>
+    <a href="/public/login.html"      class="lrmc-menu-item">Sign in</a>
+    <a href="/public/register.html"   class="lrmc-menu-item">Get started</a>
   </nav>
 </header>
 
@@ -363,7 +357,6 @@
       <img src="/assets/img/lrmc-mark.png" alt="" class="w-8 h-8 object-contain" />
       <p class="text-sm font-bold text-blue-800">Legacy Rental Management Consortium</p>
     </div>
-
     <nav class="flex flex-wrap gap-x-6 gap-y-2 mb-6 text-sm" aria-label="Footer">
       <a href="/public/about.html"   class="text-slate-600 hover:text-blue-700">About</a>
       <a href="/public/pricing.html" class="text-slate-600 hover:text-blue-700">Pricing</a>
@@ -371,9 +364,6 @@
       <a href="/public/terms.html"   class="text-slate-600 hover:text-blue-700">Terms</a>
       <a href="/public/privacy.html" class="text-slate-600 hover:text-blue-700">Privacy</a>
     </nav>
-
-    <!-- The market LRMC serves, not a registered address. Both are facts, but
-         only one of them is settled — see `claude/frontend-build-status.md`. -->
     <p class="text-xs text-slate-500 max-w-md">
       Institutional property and mobility management. Serving The Gambia.
     </p>

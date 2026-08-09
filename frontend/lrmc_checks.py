@@ -53,3 +53,76 @@ def run_shared_checks(root: pathlib.Path, check):
     check('no page puts a display utility on an LRMC component class', not clashes)
     for path, component, display in clashes[:8]:
         print(f'        {path}: {" ".join(display)} on {" ".join(component)}')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dead links, as tracked debt rather than silence
+#
+# A link to a page that does not exist yet is normal in a half-built site. A
+# link to a page nobody ever intends to build is a typo, and the two look
+# identical until somebody clicks. Declaring the pending set separates them:
+# a link to something on this list is debt with a name, and a link to anything
+# else fails the suite.
+#
+# The list may only ever shrink. Adding to it should feel like a decision.
+# ─────────────────────────────────────────────────────────────────────────────
+PLANNED_PAGES = {
+    '/public/article.html',
+    '/public/reset.html',
+    '/members/index.html',
+    '/members/leases.html',
+    '/members/payments.html',
+    '/members/profile.html',
+    '/marketplace/orders.html',
+    '/marketplace/products.html',
+    '/marketplace/services.html',
+    '/marketplace/vendors.html',
+    '/marketplace/checkout.html',
+    '/hq/analytics.html',
+    '/hq/finance.html',
+    '/hq/governance.html',
+    '/hq/members.html',
+    '/hq/operations.html',
+    '/hq/settings.html',
+    '/hq/staff.html',
+}
+
+
+def _pages(root: pathlib.Path):
+    out = set()
+    for path in root.rglob('*.html'):
+        if SKIP_DIRS & set(path.parts):
+            continue
+        out.add('/' + str(path.relative_to(root)))
+    return out
+
+
+def link_report(root: pathlib.Path):
+    """(unknown, still_pending) — links to nothing planned, and planned pages
+    still unbuilt."""
+    have = _pages(root)
+    linked = {}
+    for path in sorted(root.rglob('*.html')):
+        if SKIP_DIRS & set(path.parts) or 'layouts' in path.parts or 'components' in path.parts:
+            continue
+        for href in re.findall(r'href="(/[^"#?]+\.html)', path.read_text()):
+            linked.setdefault(href, set()).add(str(path.relative_to(root)))
+
+    unknown = {k: v for k, v in linked.items() if k not in have and k not in PLANNED_PAGES}
+    pending = sorted(p for p in PLANNED_PAGES if p not in have)
+    return unknown, pending
+
+
+def check_links(root: pathlib.Path, check):
+    unknown, pending = link_report(root)
+    check('every internal link goes somewhere built or somewhere planned', not unknown)
+    for href, where in sorted(unknown.items())[:8]:
+        print(f'        {href} <- {", ".join(sorted(where))}')
+    # Not a failure. A number that should go down, printed so it cannot be
+    # forgotten about.
+    print(f'        ({len(pending)} planned pages still to build)')
+    # A page on the list that now exists should be taken off it.
+    stale = sorted(p for p in PLANNED_PAGES if p in _pages(root))
+    check('nothing on the planned list has quietly been built already', not stale)
+    for p in stale:
+        print(f'        {p} exists — remove it from PLANNED_PAGES')
