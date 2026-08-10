@@ -78,6 +78,8 @@ export interface IApplication extends TimestampShape {
     blockedBy: string[];
     missing: string[];
     summary: string;
+    /** The five evidence objects the score was computed from, as they stood. */
+    evidence?: Record<string, unknown>;
     takenAt: Date;
     takenBy?: Types.ObjectId;
   };
@@ -140,6 +142,10 @@ const applicationSchema = new Schema<IApplication>(
           blockedBy: { type: [String], default: [] },
           missing: { type: [String], default: [] },
           summary: { type: String, required: true },
+          /* Stored alongside the score so "why was this approved" can be
+           * answered with the evidence the decider saw, not with whatever the
+           * sources say today. */
+          evidence: { type: Schema.Types.Mixed },
           takenAt: { type: Date, required: true },
           takenBy: { type: Schema.Types.ObjectId, ref: 'User' },
         },

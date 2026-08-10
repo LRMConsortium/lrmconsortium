@@ -170,6 +170,17 @@ import {
   MAX_OPEN_REQUESTS_PER_TENANT,
 } from '../modules/viewing/viewingRules.js';
 import {
+  identityEvidenceFrom, referencesEvidenceFrom, disputesEvidenceFrom,
+  ususuEvidenceFrom, streakFrom, paymentsEvidenceFrom, LATE_AFTER_DAYS,
+} from '../modules/evidence/evidenceRules.js';
+import {
+  EVIDENCE_KEYS, emptyEvidence, withDefaults, groupHealthFrom,
+  paymentReliabilityFrom, GROUP_HEALTH_PENALTY_PER_MISS, MAX_DISPUTE_SEVERITY,
+} from '../config/evidence.js';
+import {
+  inputFromEvidence, assessEvidence,
+} from '../modules/application/eligibility.js';
+import {
   ELIGIBILITY_FACTORS, FACTOR_WEIGHTS, FACTOR_LABELS, BLOCKING_FACTORS,
   assessApplication, RECOMMEND_AT, REVIEW_AT, INCOME_MULTIPLE_STRONG,
   type EligibilityInput,
@@ -4005,9 +4016,9 @@ section('Applications: scoring, which is not deciding');
   const STRONG: EligibilityInput = {
     identityVerified: true,
     monthlyIncome: 40_000, monthlyRent: 12_000, employmentEvidenced: true,
-    referencesProvided: 2, referencesCleared: 2,
+    referenceRequested: true, referenceReceived: true, referenceScore: 90,
     paymentsOnTime: 12, paymentsLate: 0, paymentsMissed: 0,
-    ususuMonths: 8,
+    contributionsMade: 8, contributionsMissed: 0, streak: 8, groupHealth: 100,
     openDisputes: 0, resolvedDisputes: 0,
   };
 
@@ -4042,7 +4053,8 @@ section('Applications: scoring, which is not deciding');
   check('and said in the summary', newcomer.summary.toLowerCase().includes('no evidence'));
 
   // Not using a ride service is not a mark against a tenant.
-  const noUsusu = assessApplication({ ...STRONG, ususuMonths: undefined });
+  const noUsusu = assessApplication({ ...STRONG, contributionsMade: undefined,
+    contributionsMissed: undefined, streak: undefined, groupHealth: undefined });
   eq('no Ususu history is unknown, never a failure',
     noUsusu.factors.find((f) => f.factor === 'ususuContributions')?.status, 'unknown');
   check('and Ususu carries the least weight of the six',
@@ -4095,8 +4107,23 @@ section('Applications: scoring, which is not deciding');
   // ── the floor ──
   const nothing = assessApplication({});
   eq('an empty application scores nothing', nothing.score, 0);
-  eq('and is not recommended', nothing.recommendation, 'decline');
+  // Not `decline`. Refusing somebody LRMC has not looked at is refusing them
+  // for LRMC's own inaction, and it is the exact failure this engine exists to
+  // avoid. A person decides.
+  eq('and goes to a person rather than being refused', nothing.recommendation, 'review');
   eq('with every factor reported unknown', nothing.missing.length, ELIGIBILITY_FACTORS.length);
+
+  // A decline has to be earned by evidence LRMC actually holds.
+  const reallyBad = assessApplication({
+    identityVerified: true, monthlyIncome: 5_000, monthlyRent: 20_000,
+    employmentEvidenced: true, referenceRequested: true, referenceReceived: true,
+    referenceScore: 5, paymentsOnTime: 1, paymentsMissed: 11,
+    contributionsMade: 0, contributionsMissed: 12, groupHealth: 40,
+    openDisputes: 0, resolvedDisputes: 0,
+  });
+  eq('an applicant LRMC has fully checked and cannot support is declined',
+    reallyBad.recommendation, 'decline');
+  eq('and nothing was left unchecked to excuse it', reallyBad.missing.length, 0);
   check('the review bar sits below the recommend bar', REVIEW_AT < RECOMMEND_AT);
 }
 
@@ -4190,6 +4217,293 @@ section('Applications: deciding, which needs a person');
   check('every decision problem has wording a person could act on',
     (['not-a-transition', 'not-your-decision', 'needs-a-decider', 'needs-a-reason'] as const)
       .every((pr) => describeDecisionProblem(pr).length > 20));
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+section('Evidence: zero and unknown are different facts');
+
+// The whole engine turns on this distinction. `{ contributionsMade: 0,
+// hasRecord: true }` is a person with an Ususu account who has contributed
+// nothing. `{ contributionsMade: 0, hasRecord: false }` is a person who has
+// never heard of Ususu. Scoring the second as the first declines a tenant for
+// not using a ride service.
+{
+  eq('five kinds of evidence', EVIDENCE_KEYS.length, 5);
+
+  const empty = emptyEvidence();
+  check('every kind is always present, never null',
+    EVIDENCE_KEYS.every((k) => empty[k] !== null && typeof empty[k] === 'object'));
+  check('and every one says LRMC has not looked',
+    EVIDENCE_KEYS.every((k) => (empty[k] as { hasRecord: boolean }).hasRecord === false));
+  check('a partial bundle is filled in rather than left with holes',
+    EVIDENCE_KEYS.every((k) =>
+      withDefaults({ identityEvidence: { identityVerified: true, identityPending: false, hasRecord: true } })[k]
+        !== undefined));
+
+  // ── the bridge ──
+  const unlooked = inputFromEvidence(emptyEvidence());
+  eq('an unlooked-at bundle contributes nothing to the scorer',
+    Object.keys(unlooked).length, 0);
+  const scored = assessEvidence(emptyEvidence());
+  eq('so every factor reports unknown', scored.missing.length, ELIGIBILITY_FACTORS.length);
+  eq('and the application is held at review, not declined', scored.recommendation, 'review');
+
+  // A real zero is scoreable. `hasRecord: true` with nothing in it is a
+  // statement, and the scorer is allowed to act on it.
+  const looked = withDefaults({
+    ususuEvidence: { contributionsMade: 0, contributionsMissed: 9, streak: 0, groupHealth: 55, hasRecord: true },
+  });
+  const usususcore = assessEvidence(looked);
+  eq('a real record of missed contributions is scored, not ignored',
+    usususcore.factors.find((f) => f.factor === 'ususuContributions')?.status, 'fail');
+  check('while no record at all is not',
+    assessEvidence(emptyEvidence()).factors
+      .find((f) => f.factor === 'ususuContributions')?.status === 'unknown');
+
+  // ── group health ──
+  eq('no misses is full health', groupHealthFrom(0), 100);
+  eq('one miss costs the stated penalty', groupHealthFrom(1), 100 - GROUP_HEALTH_PENALTY_PER_MISS);
+  eq('ten misses halve it', groupHealthFrom(10), 50);
+  // `100 - misses * 5` goes negative at twenty-one, and a health of -15 flows
+  // into a percentage on a dashboard.
+  eq('twenty misses reaches zero', groupHealthFrom(20), 0);
+  eq('and it never goes below zero', groupHealthFrom(500), 0);
+  eq('a nonsense count is full health, not NaN', groupHealthFrom(Number.NaN), 100);
+
+  // ── payment reliability ──
+  eq('a clean record is a hundred per cent', paymentReliabilityFrom(12, 0), 100);
+  eq('half late is half', paymentReliabilityFrom(6, 6), 50);
+  // `onTime / (onTime + late)` divides by zero on somebody's first day, and
+  // NaN travels silently through a score and onto a screen.
+  eq('no history is zero, not NaN', paymentReliabilityFrom(0, 0), 0);
+  check('and it is a number', Number.isFinite(paymentReliabilityFrom(0, 0)));
+  // Somebody who paid three and skipped seven is not fully reliable.
+  eq('missed instalments count against it too', paymentReliabilityFrom(3, 0, 7), 30);
+  eq('and negatives cannot inflate it', paymentReliabilityFrom(5, -100), 100);
+
+  eq('dispute severity tops out where the schema says', MAX_DISPUTE_SEVERITY, 3);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+section('Scoring: the band is reachable, and reachable fairly');
+
+{
+  // The reason the weights are what they are. A verified tenant with a clean
+  // rent record, a good reference and no disputes must be recommendable
+  // whether or not they have ever used the ride service.
+  const withoutUsusu = withDefaults({
+    identityEvidence: { identityVerified: true, identityPending: false, hasRecord: true },
+    referencesEvidence: { referenceRequested: true, referenceReceived: true, referenceScore: 90, hasRecord: true },
+    disputesEvidence: { disputesOpen: 0, disputesResolved: 0, disputeSeverity: 0, hasRecord: true },
+    paymentsEvidence: { paymentsOnTime: 12, paymentsLate: 0, paymentsMissed: 0, paymentReliability: 100, hasRecord: true },
+    ususuEvidence: { contributionsMade: 0, contributionsMissed: 0, streak: 0, groupHealth: 100, hasRecord: false },
+  });
+  const noRide = assessEvidence(withoutUsusu, { monthlyIncome: 40_000, monthlyRent: 12_000, employmentEvidenced: true });
+  check('a tenant who has never used Ususu still scores well', noRide.score >= RECOMMEND_AT);
+  eq('but is held at review, because one source was never checked',
+    noRide.recommendation, 'review');
+  eq('and the only gap named is the one that is genuinely missing',
+    noRide.missing.join(','), 'ususuContributions');
+
+  // With every source checked, including an Ususu record that simply says
+  // "no account activity", the band is reachable.
+  const everything = withDefaults({
+    identityEvidence: { identityVerified: true, identityPending: false, hasRecord: true },
+    referencesEvidence: { referenceRequested: true, referenceReceived: true, referenceScore: 90, hasRecord: true },
+    disputesEvidence: { disputesOpen: 0, disputesResolved: 0, disputeSeverity: 0, hasRecord: true },
+    paymentsEvidence: { paymentsOnTime: 12, paymentsLate: 0, paymentsMissed: 0, paymentReliability: 100, hasRecord: true },
+    ususuEvidence: { contributionsMade: 9, contributionsMissed: 0, streak: 9, groupHealth: 100, hasRecord: true },
+  });
+  const full = assessEvidence(everything, { monthlyIncome: 40_000, monthlyRent: 12_000, employmentEvidenced: true });
+  eq('a fully-evidenced applicant is recommended', full.recommendation, 'recommend');
+  check('with a score at or above the bar', full.score >= RECOMMEND_AT);
+  eq('nothing missing', full.missing.length, 0);
+  eq('nothing blocking', full.blockedBy.length, 0);
+
+  // Ususu must never be the difference between recommended and refused.
+  const ususuAbsent = { ...everything, ususuEvidence: { ...everything.ususuEvidence, hasRecord: false } };
+  check('the whole Ususu factor is worth less than the gap to the bar',
+    FACTOR_WEIGHTS.ususuContributions < 100 - RECOMMEND_AT + FACTOR_WEIGHTS.ususuContributions);
+  check('so removing it cannot push a strong applicant into decline',
+    assessEvidence(ususuAbsent, { monthlyIncome: 40_000, monthlyRent: 12_000, employmentEvidenced: true })
+      .recommendation !== 'decline');
+
+  // Blocking still outranks the total, which is the point of blocking.
+  const unverified = { ...everything, identityEvidence: { identityVerified: false, identityPending: false, hasRecord: true } };
+  const u = assessEvidence(unverified, { monthlyIncome: 40_000, monthlyRent: 12_000, employmentEvidenced: true });
+  check('an unverified identity blocks however high the rest scores',
+    u.recommendation !== 'recommend' && u.blockedBy.includes('identity'));
+  const disputed = { ...everything, disputesEvidence: { disputesOpen: 1, disputesResolved: 0, disputeSeverity: 3, hasRecord: true } };
+  const dscore = assessEvidence(disputed, { monthlyIncome: 40_000, monthlyRent: 12_000, employmentEvidenced: true });
+  check('and so does an open dispute', dscore.recommendation !== 'recommend');
+  check('with its grade in the reason, so a coordinator knows what they are reading',
+    (dscore.factors.find((f) => f.factor === 'disputes')?.reason ?? '').includes('severe'));
+
+  // A reference LRMC never asked for is LRMC's omission.
+  const unasked = withDefaults({
+    referencesEvidence: { referenceRequested: false, referenceReceived: false, referenceScore: null, hasRecord: true },
+  });
+  eq('a reference nobody requested is unknown, not a failure',
+    assessEvidence(unasked).factors.find((f) => f.factor === 'references')?.status, 'unknown');
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+section('Evidence: turning records into facts');
+
+// This is the layer between a collection and the scorer, and every function in
+// it can be wrong in a way nobody notices — because the wrong answer is still
+// a plausible number.
+{
+  // ── identity ──
+  eq('no user row is no record', identityEvidenceFrom(null).hasRecord, false);
+  check('a verified user is verified',
+    identityEvidenceFrom({ isVerified: true }).identityVerified);
+  check('submitted-but-unreviewed is pending, not refused',
+    identityEvidenceFrom({ verificationStatus: 'pending' }).identityPending);
+  check('and in-review counts as pending too',
+    identityEvidenceFrom({ verificationStatus: 'inReview' }).identityPending);
+  check('never submitted is a real record of not verified',
+    identityEvidenceFrom({ verificationStatus: 'unsubmitted' }).hasRecord
+    && !identityEvidenceFrom({ verificationStatus: 'unsubmitted' }).identityVerified);
+  // A status this function has not been taught about means the code is behind
+  // the data. Answering "not verified" would refuse somebody over a
+  // deployment ordering problem.
+  eq('a status LRMC does not recognise is no record, not a failure',
+    identityEvidenceFrom({ verificationStatus: 'somethingNew' }).hasRecord, false);
+
+  // ── references ──
+  eq('no reference rows is no record', referencesEvidenceFrom([]).hasRecord, false);
+  const asked = referencesEvidenceFrom([{ status: 'requested' }]);
+  check('a request with no reply is recorded as requested', asked.referenceRequested);
+  check('and not as received', !asked.referenceReceived);
+  eq('with no score yet', asked.referenceScore, null);
+  // Averaging punishes an applicant for a referee who never answered, and
+  // silence says nothing about the person asked about.
+  eq('the best reply is taken, not the average',
+    referencesEvidenceFrom([
+      { status: 'received', score: 90 },
+      { status: 'declined' },
+      { status: 'requested' },
+    ]).referenceScore, 90);
+  eq('and two replies take the better one',
+    referencesEvidenceFrom([
+      { status: 'received', score: 40 }, { status: 'received', score: 85 },
+    ]).referenceScore, 85);
+
+  // ── disputes ──
+  eq('no dispute rows is no record', disputesEvidenceFrom([]).hasRecord, false);
+  const d = disputesEvidenceFrom([
+    { status: 'open', severity: 1 },
+    { status: 'open', severity: 1 },
+    { status: 'open', severity: 1 },
+    { status: 'resolved', severity: 3 },
+  ]);
+  eq('open disputes are counted', d.disputesOpen, 3);
+  eq('and resolved ones separately', d.disputesResolved, 1);
+  // Three minor disputes are not one severe dispute. Summing would make
+  // somebody with several small unresolved matters look dangerous.
+  eq('severity is the worst open one, not the sum', d.disputeSeverity, 1);
+  eq('a resolved severe one does not raise current severity', d.disputeSeverity, 1);
+  eq('the worst open one is what shows',
+    disputesEvidenceFrom([{ status: 'open', severity: 1 }, { status: 'open', severity: 3 }])
+      .disputeSeverity, 3);
+
+  // ── ususu ──
+  eq('an empty ledger is no record', ususuEvidenceFrom([]).hasRecord, false);
+  // Rows arrive oldest first. Counting forwards returns the first run somebody
+  // ever managed — six months two years ago, then nothing.
+  eq('the streak counts backwards from the most recent period',
+    streakFrom([
+      { kind: 'contribution', period: '2026-01' },
+      { kind: 'contribution', period: '2026-02' },
+      { kind: 'miss', period: '2026-03' },
+      { kind: 'contribution', period: '2026-04' },
+    ]), 1);
+  eq('an unbroken run is the whole run',
+    streakFrom([
+      { kind: 'contribution', period: '2026-01' },
+      { kind: 'contribution', period: '2026-02' },
+    ]), 2);
+  eq('a miss most recently is a streak of nothing',
+    streakFrom([{ kind: 'contribution', period: '2026-01' }, { kind: 'miss', period: '2026-02' }]), 0);
+  const u = ususuEvidenceFrom([
+    { kind: 'contribution', period: '2026-01' },
+    { kind: 'miss', period: '2026-02' },
+    { kind: 'contribution', period: '2026-03' },
+  ]);
+  eq('contributions are counted', u.contributionsMade, 2);
+  eq('and misses', u.contributionsMissed, 1);
+  eq('group health follows the misses', u.groupHealth, 95);
+  check('and a ledger that exists says so', u.hasRecord);
+
+  // ── payments ──
+  eq('no payment rows is no record', paymentsEvidenceFrom([]).hasRecord, false);
+  const DAY = 86_400_000;
+  const due = new Date('2026-06-01T00:00:00Z');
+  const onTime = new Date(due.getTime() + DAY);
+  const late = new Date(due.getTime() + (LATE_AFTER_DAYS + 2) * DAY);
+  const pay = paymentsEvidenceFrom([
+    { status: 'paid', dueDate: due, paidAt: onTime },
+    { status: 'paid', dueDate: due, paidAt: late },
+    { status: 'failed' },
+  ]);
+  eq('a payment inside the grace period is on time', pay.paymentsOnTime, 1);
+  eq('one outside it is late', pay.paymentsLate, 1);
+  eq('and a failure is missed', pay.paymentsMissed, 1);
+  eq('reliability is the share paid on time', pay.paymentReliability, 33);
+  // A gap in LRMC's own data is not the tenant's lateness.
+  eq('a payment with no due date on record cannot be late',
+    paymentsEvidenceFrom([{ status: 'paid', paidAt: onTime }]).paymentsLate, 0);
+  eq('and is counted on time instead',
+    paymentsEvidenceFrom([{ status: 'paid', paidAt: onTime }]).paymentsOnTime, 1);
+  // An instalment that is not yet due is not evidence of anything, and
+  // counting it as missed would make every tenant look worse on the first.
+  eq('a pending instalment is not counted as missed',
+    paymentsEvidenceFrom([
+      { status: 'paid', dueDate: due, paidAt: onTime }, { status: 'pending' },
+    ]).paymentsMissed, 0);
+  eq('nor does it drag reliability down',
+    paymentsEvidenceFrom([
+      { status: 'paid', dueDate: due, paidAt: onTime }, { status: 'pending' },
+    ]).paymentReliability, 100);
+  eq('and pending alone is still no record',
+    paymentsEvidenceFrom([{ status: 'pending' }]).hasRecord, false);
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+section('Contract: no name is defined twice');
+
+// A duplicate key in an object literal is not a runtime error — the later one
+// silently wins and the earlier definition is dead. Two modules both wanted
+// `ResolveDisputeRequest` (an order refund, and closing a dispute against a
+// person) and the published contract described one of them under the other's
+// name. Nothing at runtime could see it, so this reads the source.
+{
+  const schemaSrc = readFileSync(
+    resolve(process.cwd(), 'src/config/openapiSchemas.ts'), 'utf8');
+
+  const mapStart = schemaSrc.indexOf('REQUEST_SCHEMA_BY_NAME');
+  const registry = schemaSrc.slice(0, mapStart);
+  // Any value form: several schemas are `allOf(...)` rather than a literal.
+  const topLevel = [...registry.matchAll(/^  (\w+): [\{a]/gm)].map((m) => m[1]!);
+  const seenSchema = new Set<string>();
+  const dupSchema = topLevel.filter((k) => (seenSchema.has(k) ? true : (seenSchema.add(k), false)));
+  check('no component schema name is defined twice', dupSchema.length === 0,
+    dupSchema.join(', '));
+
+  const mapBlock = schemaSrc.slice(mapStart);
+  const mapKeys = [...mapBlock.matchAll(/^  (\w+): '/gm)].map((m) => m[1]!);
+  const seenMap = new Set<string>();
+  const dupMap = mapKeys.filter((k) => (seenMap.has(k) ? true : (seenMap.add(k), false)));
+  check('no request schema is mapped twice', dupMap.length === 0, dupMap.join(', '));
+
+  // Not checked here: that each component actually exists. `buildOpenApiDocument`
+  // already throws on an unknown schema name and reports dangling $refs, and a
+  // second regex-based version of that check was wrong twice before it was
+  // right once.
 }
 
 /**

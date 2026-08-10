@@ -203,6 +203,23 @@
       archive:function (id) { return del('/property/' + seg(id)); },
     },
 
+    /* The five things LRMC looks up about an applicant. Reading somebody
+     * else's is staff-only; the server narrows on the subject, not on what
+     * the caller asks for. */
+    evidence: {
+      requestReference: function (b) { return post('/references/request', b); },
+      respondToReference: function (b) { return post('/references/respond', b); },
+      referencesFor: function (id) { return get('/references/' + seg(id)); },
+
+      openDispute: function (b) { return post('/disputes/open', b); },
+      resolveDispute: function (id, b) { return post('/dispute/' + seg(id) + '/resolve', b); },
+      disputesFor: function (id) { return get('/disputes/' + seg(id)); },
+
+      ususuContribute: function (b) { return post('/ususu/contribute', b); },
+      ususuMiss: function (b) { return post('/ususu/miss', b); },
+      ususuFor: function (id) { return get('/ususu/' + seg(id)); },
+    },
+
     /* Asking to see a property. Every rule about *when* is server-side in
      * `viewingRules` — this is only the wire. */
     viewings: {

@@ -29,6 +29,8 @@
  * it with nothing installed.
  */
 
+import type { EvidenceBundle } from '../../config/evidence.js';
+
 export const ELIGIBILITY_FACTORS = [
   'identity',
   'employment',
@@ -53,9 +55,9 @@ export type EligibilityFactor = (typeof ELIGIBILITY_FACTORS)[number];
 export const FACTOR_WEIGHTS: Record<EligibilityFactor, number> = {
   identity: 25,
   paymentHistory: 25,
-  employment: 20,
-  disputes: 10,
-  references: 12,
+  disputes: 15,
+  references: 15,
+  employment: 12,
   ususuContributions: 8,
 };
 
@@ -126,22 +128,30 @@ export interface EligibilityInput {
   /** Has the income been evidenced — payslip, contract, bank statement? */
   employmentEvidenced?: boolean;
 
-  /** References supplied and checked. */
-  referencesProvided?: number;
-  referencesCleared?: number;
+  /** References — the shape `referencesEvidence` carries. */
+  referenceRequested?: boolean;
+  referenceReceived?: boolean;
+  /** 0–100, as scored by whoever answered. */
+  referenceScore?: number;
 
   /** Rent instalments LRMC has observed. */
   paymentsOnTime?: number;
   paymentsLate?: number;
   paymentsMissed?: number;
 
-  /** Consecutive months of Ususu contributions. */
-  ususuMonths?: number;
+  /** Ususu — the shape `ususuEvidence` carries. */
+  contributionsMade?: number;
+  contributionsMissed?: number;
+  streak?: number;
+  /** 0–100. */
+  groupHealth?: number;
 
   /** Disputes currently open against the applicant. */
   openDisputes?: number;
   /** Disputes resolved in the past, whatever the outcome. */
   resolvedDisputes?: number;
+  /** Worst open dispute, 0–3. A severe one is not three minor ones. */
+  disputeSeverity?: number;
 }
 
 /**
@@ -223,21 +233,29 @@ function scoreEmployment(input: EligibilityInput): FactorResult {
 }
 
 function scoreReferences(input: EligibilityInput): FactorResult {
-  const provided = input.referencesProvided;
-  if (typeof provided !== 'number') {
-    return result('references', 'unknown', 0, 'No references on record.');
+  if (input.referenceRequested === undefined) {
+    return result('references', 'unknown', 0, 'No reference on record.');
   }
-  if (provided === 0) {
-    return result('references', 'fail', 0, 'No references supplied.');
+  if (input.referenceRequested === false) {
+    // Not asked for is LRMC's omission, not the applicant's. It holds the
+    // application at review; it does not count against them.
+    return result('references', 'unknown', 0, 'No reference has been requested yet.');
   }
-  const cleared = typeof input.referencesCleared === 'number' ? input.referencesCleared : 0;
-  if (cleared === 0) {
-    return result('references', 'concern', 0.25, `${provided} supplied, none checked yet.`);
+  if (input.referenceReceived !== true) {
+    return result('references', 'concern', 0.25, 'Reference requested, no reply yet.');
   }
-  if (cleared >= 2) {
-    return result('references', 'pass', 1, `${cleared} references checked and cleared.`);
+  const score = typeof input.referenceScore === 'number' ? input.referenceScore : null;
+  if (score === null) {
+    return result('references', 'concern', 0.5, 'Reference received, unscored.');
   }
-  return result('references', 'concern', 0.6, 'One reference checked and cleared.');
+  const clamped = Math.max(0, Math.min(100, score));
+  if (clamped >= 70) {
+    return result('references', 'pass', clamped / 100, `Reference scored ${clamped} of 100.`);
+  }
+  if (clamped >= 40) {
+    return result('references', 'concern', clamped / 100, `Reference scored ${clamped} of 100.`);
+  }
+  return result('references', 'fail', clamped / 100, `Reference scored ${clamped} of 100.`);
 }
 
 function scorePaymentHistory(input: EligibilityInput): FactorResult {
@@ -279,23 +297,38 @@ function scorePaymentHistory(input: EligibilityInput): FactorResult {
 }
 
 function scoreUsusu(input: EligibilityInput): FactorResult {
-  const months = input.ususuMonths;
-  if (typeof months !== 'number') {
+  const made = input.contributionsMade;
+  if (typeof made !== 'number') {
     // Deliberately `unknown` rather than `fail`. Ususu is a ride service; not
     // using one is not a mark against a tenant, and treating it as one would
-    // make housing conditional on mobility.
-    return result('ususuContributions', 'unknown', 0, 'No Ususu contributions on record.');
+    // make housing conditional on mobility. It also carries the least weight
+    // of the six for the same reason.
+    return result('ususuContributions', 'unknown', 0, 'No Ususu record.');
   }
-  if (months >= 6) {
-    return result('ususuContributions', 'pass', 1, `${months} consecutive months of contributions.`);
+  const missed = input.contributionsMissed ?? 0;
+  const streak = input.streak ?? 0;
+  const health = typeof input.groupHealth === 'number' ? input.groupHealth : 100;
+
+  if (made === 0 && missed === 0) {
+    return result('ususuContributions', 'unknown', 0, 'Ususu account with no activity yet.');
   }
-  if (months >= 3) {
-    return result('ususuContributions', 'concern', 0.6, `${months} months of contributions.`);
+
+  const total = made + missed;
+  const kept = total > 0 ? made / total : 0;
+  // Group health and personal record both count; a person keeping up in a
+  // collapsing group is doing better than the group is.
+  const fraction = Math.max(0, Math.min(1, kept * 0.7 + (health / 100) * 0.3));
+
+  if (missed === 0 && made >= 6) {
+    return result('ususuContributions', 'pass', fraction,
+      `${made} contributions, none missed, streak of ${streak}.`);
   }
-  if (months > 0) {
-    return result('ususuContributions', 'concern', 0.3, `${months} months of contributions.`);
+  if (kept >= 0.8) {
+    return result('ususuContributions', 'concern', fraction,
+      `${made} contributions, ${missed} missed.`);
   }
-  return result('ususuContributions', 'unknown', 0, 'No Ususu contributions on record.');
+  return result('ususuContributions', 'fail', fraction,
+    `${missed} of ${total} contributions missed.`);
 }
 
 function scoreDisputes(input: EligibilityInput): FactorResult {
@@ -306,11 +339,16 @@ function scoreDisputes(input: EligibilityInput): FactorResult {
     return result('disputes', 'unknown', 0, 'Dispute history not checked.');
   }
   if (open > 0) {
+    const severity = Math.max(0, Math.min(3, input.disputeSeverity ?? 1));
+    // Severity is reported but does not soften the outcome: an open dispute
+    // blocks whatever its grade. It is here so a coordinator reading the
+    // reason knows whether they are looking at a late payment or an eviction.
+    const grade = ['', 'minor', 'serious', 'severe'][severity] || 'open';
     return result(
       'disputes',
       'fail',
       0,
-      `${open} open ${open === 1 ? 'dispute' : 'disputes'} must be resolved first.`,
+      `${open} open ${open === 1 ? 'dispute' : 'disputes'} (${grade}) must be resolved first.`,
     );
   }
   if (resolved > 2) {
@@ -328,8 +366,18 @@ const SCORERS: Record<EligibilityFactor, (input: EligibilityInput) => FactorResu
   disputes: scoreDisputes,
 };
 
-/** Score at or above which an unblocked, fully-evidenced application is recommended. */
-export const RECOMMEND_AT = 70;
+/**
+ * Score at or above which an unblocked, fully-evidenced application is
+ * recommended.
+ *
+ * Reachable without Ususu on purpose. Identity, payments, disputes,
+ * references and employment total 92 between them, so a tenant who has never
+ * used the ride service can still be recommended on the strength of the
+ * things that actually predict a tenancy. Weighting Ususu so heavily that its
+ * absence capped an applicant below this line would make a rideshare account
+ * a precondition for housing.
+ */
+export const RECOMMEND_AT = 75;
 /** Below this, the recommendation is to decline. A human may still say yes. */
 export const REVIEW_AT = 45;
 
@@ -348,9 +396,24 @@ export function assessApplication(input: EligibilityInput): Assessment {
     .filter((f) => BLOCKING_FACTORS.includes(f.factor) && f.status !== 'pass')
     .map((f) => f.factor);
 
+  /**
+   * The ceiling: what this application would score if every factor LRMC has
+   * not checked turned out perfectly.
+   *
+   * This is what makes a decline defensible. An applicant is refused only when
+   * **the evidence LRMC actually holds would still fail even if everything
+   * unknown came back clean** — never merely because LRMC has not looked. An
+   * application with nothing checked at all has a ceiling of 100 and is sent
+   * to a person, which is the honest answer to "we know nothing about them".
+   */
+  const unknownWeight = factors
+    .filter((f) => f.status === 'unknown')
+    .reduce((sum, f) => sum + f.max, 0);
+  const ceiling = score + unknownWeight;
+
   let recommendation: Recommendation;
   if (score >= RECOMMEND_AT) recommendation = 'recommend';
-  else if (score >= REVIEW_AT) recommendation = 'review';
+  else if (ceiling >= REVIEW_AT) recommendation = 'review';
   else recommendation = 'decline';
 
   // A blocking factor caps the outcome at `review` — never worse on its own,
@@ -389,4 +452,82 @@ function summarise(
   if (recommendation === 'recommend') return `Scores ${score} of 100 on every factor checked.`;
   if (recommendation === 'review') return `Scores ${score} of 100 — worth a look before deciding.`;
   return `Scores ${score} of 100, below what LRMC can support without a reason to.`;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * From gathered evidence to a score
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Turn an evidence bundle into scorer input.
+ *
+ * This is where `hasRecord` does its work, and the whole of it is one rule:
+ * **a source LRMC has never looked at contributes nothing to the input at
+ * all.** Its fields are left `undefined`, every scorer already reports
+ * `undefined` as `unknown`, and `assessApplication` already caps an
+ * application carrying any unknown at review rather than declining it.
+ *
+ * So the fairness property survives a change of plumbing: it is not
+ * re-implemented here, it falls out of leaving the field off.
+ *
+ * `stated` carries what the applicant themselves declared — income, and the
+ * rent being applied for. LRMC does not look those up; it is told them, and
+ * whether they are *evidenced* is a separate lookup.
+ */
+export function inputFromEvidence(
+  evidence: EvidenceBundle,
+  stated: { monthlyIncome?: number; monthlyRent?: number; employmentEvidenced?: boolean } = {},
+): EligibilityInput {
+  const input: EligibilityInput = {};
+
+  const id = evidence.identityEvidence;
+  if (id.hasRecord) {
+    input.identityVerified = id.identityVerified;
+    input.identityPending = id.identityPending;
+  }
+
+  const refs = evidence.referencesEvidence;
+  if (refs.hasRecord) {
+    input.referenceRequested = refs.referenceRequested;
+    input.referenceReceived = refs.referenceReceived;
+    if (refs.referenceScore !== null) input.referenceScore = refs.referenceScore;
+  }
+
+  const d = evidence.disputesEvidence;
+  if (d.hasRecord) {
+    input.openDisputes = d.disputesOpen;
+    input.resolvedDisputes = d.disputesResolved;
+    input.disputeSeverity = d.disputeSeverity;
+  }
+
+  const u = evidence.ususuEvidence;
+  if (u.hasRecord) {
+    input.contributionsMade = u.contributionsMade;
+    input.contributionsMissed = u.contributionsMissed;
+    input.streak = u.streak;
+    input.groupHealth = u.groupHealth;
+  }
+
+  const p = evidence.paymentsEvidence;
+  if (p.hasRecord) {
+    input.paymentsOnTime = p.paymentsOnTime;
+    input.paymentsLate = p.paymentsLate;
+    input.paymentsMissed = p.paymentsMissed;
+  }
+
+  if (typeof stated.monthlyIncome === 'number') input.monthlyIncome = stated.monthlyIncome;
+  if (typeof stated.monthlyRent === 'number') input.monthlyRent = stated.monthlyRent;
+  if (typeof stated.employmentEvidenced === 'boolean') {
+    input.employmentEvidenced = stated.employmentEvidenced;
+  }
+
+  return input;
+}
+
+/** Score a gathered bundle directly. */
+export function assessEvidence(
+  evidence: EvidenceBundle,
+  stated: { monthlyIncome?: number; monthlyRent?: number; employmentEvidenced?: boolean } = {},
+): Assessment {
+  return assessApplication(inputFromEvidence(evidence, stated));
 }

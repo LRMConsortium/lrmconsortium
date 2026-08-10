@@ -56,6 +56,7 @@ tags:
     description: 'Outbound transfer batches: built by Back Office from the ledger, released by the Founder.'
   - name: fac
     description: The Founder Authorisation Code — issuance, verification, lockout and the attempt ledger. Sits in front of Zone A.
+  - name: evidence
   - name: viewing
   - name: application
   - name: marketplace
@@ -4752,6 +4753,8 @@ components:
             type: string
         summary:
           type: string
+        evidence:
+          '$ref': '#/components/schemas/EvidenceBundle'
         takenAt:
           type: string
           format: date-time
@@ -4976,6 +4979,421 @@ components:
           maxLength: 600
       required:
         - outstandingRequest
+    IdentityEvidence:
+      type: object
+      properties:
+        identityVerified:
+          type: boolean
+        identityPending:
+          type: boolean
+          description: Documents submitted, not yet reviewed.
+        hasRecord:
+          type: boolean
+          description: False means LRMC has never checked, which is not a failure.
+      required:
+        - identityVerified
+        - identityPending
+        - hasRecord
+    ReferencesEvidence:
+      type: object
+      properties:
+        referenceRequested:
+          type: boolean
+        referenceReceived:
+          type: boolean
+        referenceScore:
+          type:
+            - integer
+            - 'null'
+          minimum: 0
+          maximum: 100
+        hasRecord:
+          type: boolean
+      required:
+        - referenceRequested
+        - referenceReceived
+        - referenceScore
+        - hasRecord
+    DisputesEvidence:
+      type: object
+      properties:
+        disputesOpen:
+          type: integer
+          minimum: 0
+        disputesResolved:
+          type: integer
+          minimum: 0
+        disputeSeverity:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: The worst open dispute, not the sum. Three minor ones are not one severe one.
+        hasRecord:
+          type: boolean
+      required:
+        - disputesOpen
+        - disputesResolved
+        - disputeSeverity
+        - hasRecord
+    UsusuEvidence:
+      type: object
+      properties:
+        contributionsMade:
+          type: integer
+          minimum: 0
+        contributionsMissed:
+          type: integer
+          minimum: 0
+        streak:
+          type: integer
+          minimum: 0
+          description: Counted backwards from the most recent period.
+        groupHealth:
+          type: integer
+          minimum: 0
+          maximum: 100
+        hasRecord:
+          type: boolean
+      required:
+        - contributionsMade
+        - contributionsMissed
+        - streak
+        - groupHealth
+        - hasRecord
+    PaymentsEvidence:
+      type: object
+      properties:
+        paymentsOnTime:
+          type: integer
+          minimum: 0
+        paymentsLate:
+          type: integer
+          minimum: 0
+        paymentsMissed:
+          type: integer
+          minimum: 0
+        paymentReliability:
+          type: integer
+          minimum: 0
+          maximum: 100
+        hasRecord:
+          type: boolean
+      required:
+        - paymentsOnTime
+        - paymentsLate
+        - paymentsMissed
+        - paymentReliability
+        - hasRecord
+    EvidenceBundle:
+      type: object
+      description: All five kinds, always present.
+      properties:
+        identityEvidence:
+          '$ref': '#/components/schemas/IdentityEvidence'
+        referencesEvidence:
+          '$ref': '#/components/schemas/ReferencesEvidence'
+        disputesEvidence:
+          '$ref': '#/components/schemas/DisputesEvidence'
+        ususuEvidence:
+          '$ref': '#/components/schemas/UsusuEvidence'
+        paymentsEvidence:
+          '$ref': '#/components/schemas/PaymentsEvidence'
+      required:
+        - identityEvidence
+        - referencesEvidence
+        - disputesEvidence
+        - ususuEvidence
+        - paymentsEvidence
+    Reference:
+      type: object
+      properties:
+        _id:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        subject:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        refereeName:
+          type: string
+          maxLength: 160
+        relationship:
+          type: string
+          maxLength: 120
+        status:
+          type: string
+          enum:
+            - requested
+            - received
+            - declined
+            - expired
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        comment:
+          type: string
+          maxLength: 2000
+        respondedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - subject
+        - refereeName
+        - status
+    Dispute:
+      type: object
+      properties:
+        _id:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        subject:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        raisedBy:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        kind:
+          type: string
+          enum:
+            - rent
+            - damage
+            - conduct
+            - marketplace
+            - ride
+            - other
+        severity:
+          type: integer
+          minimum: 1
+          maximum: 3
+        summary:
+          type: string
+          maxLength: 2000
+        status:
+          type: string
+          enum:
+            - open
+            - resolved
+            - withdrawn
+        resolution:
+          type: string
+          maxLength: 2000
+        resolvedBy:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        resolvedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - subject
+        - raisedBy
+        - kind
+        - severity
+        - summary
+        - status
+    UsusuEntry:
+      type: object
+      properties:
+        _id:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        subject:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        kind:
+          type: string
+          enum:
+            - contribution
+            - miss
+        amount:
+          type: number
+          minimum: 0
+        currency:
+          type: string
+        period:
+          type: string
+          pattern: ^\d{4}-(0[1-9]|1[0-2])$
+        note:
+          type: string
+          maxLength: 600
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - subject
+        - kind
+        - period
+    ReferenceEvidenceView:
+      type: object
+      properties:
+        subject:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        evidence:
+          '$ref': '#/components/schemas/ReferencesEvidence'
+        references:
+          type: array
+          items:
+            '$ref': '#/components/schemas/Reference'
+      required:
+        - subject
+        - evidence
+        - references
+    DisputeEvidenceView:
+      type: object
+      properties:
+        subject:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        evidence:
+          '$ref': '#/components/schemas/DisputesEvidence'
+        disputes:
+          type: array
+          items:
+            '$ref': '#/components/schemas/Dispute'
+      required:
+        - subject
+        - evidence
+        - disputes
+    UsusuEvidenceView:
+      type: object
+      properties:
+        subject:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        evidence:
+          '$ref': '#/components/schemas/UsusuEvidence'
+        entries:
+          type: array
+          items:
+            '$ref': '#/components/schemas/UsusuEntry'
+      required:
+        - subject
+        - evidence
+        - entries
+    RequestReferenceRequest:
+      type: object
+      properties:
+        subject:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        refereeName:
+          type: string
+          minLength: 2
+          maxLength: 160
+        refereeEmail:
+          type: string
+          format: email
+        refereePhone:
+          type: string
+          maxLength: 30
+        relationship:
+          type: string
+          maxLength: 120
+      required:
+        - subject
+        - refereeName
+    RespondToReferenceRequest:
+      type: object
+      properties:
+        reference:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        comment:
+          type: string
+          maxLength: 2000
+      required:
+        - reference
+        - score
+    OpenDisputeRequest:
+      type: object
+      properties:
+        subject:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        kind:
+          type: string
+          enum:
+            - rent
+            - damage
+            - conduct
+            - marketplace
+            - ride
+            - other
+        severity:
+          type: integer
+          minimum: 1
+          maximum: 3
+        summary:
+          type: string
+          minLength: 10
+          maxLength: 2000
+      required:
+        - subject
+        - kind
+        - severity
+        - summary
+    ResolveMemberDisputeRequest:
+      type: object
+      description: Closing a dispute raised against a person. Distinct from the marketplace `ResolveDisputeRequest`, which settles an order and carries a refund decision — two different acts that happened to want the same name.
+      properties:
+        resolution:
+          type: string
+          minLength: 4
+          maxLength: 2000
+      required:
+        - resolution
+    UsusuContributionRequest:
+      type: object
+      properties:
+        subject:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        period:
+          type: string
+          pattern: ^\d{4}-(0[1-9]|1[0-2])$
+        amount:
+          type: number
+          minimum: 0
+        currency:
+          type: string
+          maxLength: 8
+        note:
+          type: string
+          maxLength: 600
+      required:
+        - subject
+        - period
+    UsusuMissRequest:
+      type: object
+      properties:
+        subject:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        period:
+          type: string
+          pattern: ^\d{4}-(0[1-9]|1[0-2])$
+        note:
+          type: string
+          maxLength: 600
+      required:
+        - subject
+        - period
     Listing:
       type: object
       description: A product or a service offered by a merchant. Services carry no stock — a plumber does not run out of plumbing.
@@ -17401,6 +17819,632 @@ paths:
                 '$ref': '#/components/schemas/ErrorResponse'
         '422':
           description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/references/request':
+    post:
+      operationId: postReferencesRequest
+      summary: Ask somebody for a reference
+      tags:
+        - evidence
+      description: LRMC asks; the subject cannot request their own, because then they choose the referee.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+      x-permissions:
+        - reference:create
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/RequestReferenceRequest'
+      responses:
+        '201':
+          description: Ask somebody for a reference
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Reference'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/references/respond':
+    post:
+      operationId: postReferencesRespond
+      summary: Answer a reference request
+      tags:
+        - evidence
+      description: Nobody scores their own. A referee who will not score is a decline, not a zero.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+      x-permissions:
+        - reference:update
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/RespondToReferenceRequest'
+      responses:
+        '201':
+          description: Answer a reference request
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Reference'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/references/{subjectId}':
+    get:
+      operationId: getReferencesBySubjectId
+      summary: References about one person
+      tags:
+        - evidence
+      description: Your own, or anybody’s if you are staff. A landlord sees the assessment, not the referee comments behind it.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+        - tenant
+      x-permissions:
+        - reference:readOwn
+        - reference:read
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '200':
+          description: References about one person
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/ReferenceEvidenceView'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/disputes/open':
+    post:
+      operationId: postDisputesOpen
+      summary: Raise a dispute against somebody
+      tags:
+        - evidence
+      description: Severity 1–3, set when opened. An open dispute blocks a tenancy recommendation whatever its grade.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+      x-permissions:
+        - dispute:create
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/OpenDisputeRequest'
+      responses:
+        '201':
+          description: Raise a dispute against somebody
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Dispute'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/dispute/{disputeId}/resolve':
+    post:
+      operationId: postDisputeByDisputeIdResolve
+      summary: Close a dispute
+      tags:
+        - evidence
+      description: 'Not by its subject: an open dispute blocks them, and closing your own block is not a thing.'
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+      x-permissions:
+        - dispute:approve
+      x-ownership: scoped
+      x-audited: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: disputeId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/ResolveMemberDisputeRequest'
+      responses:
+        '201':
+          description: Close a dispute
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Dispute'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/disputes/{subjectId}':
+    get:
+      operationId: getDisputesBySubjectId
+      summary: Disputes about one person
+      tags:
+        - evidence
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+        - tenant
+      x-permissions:
+        - dispute:readOwn
+        - dispute:read
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '200':
+          description: Disputes about one person
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/DisputeEvidenceView'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/ususu/contribute':
+    post:
+      operationId: postUsusuContribute
+      summary: Record an Ususu contribution
+      tags:
+        - evidence
+      description: One line per person per period per kind. A month recorded twice would inflate a streak nobody earned.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+      x-permissions:
+        - ususuLedger:create
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/UsusuContributionRequest'
+      responses:
+        '201':
+          description: Record an Ususu contribution
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/UsusuEntry'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/ususu/miss':
+    post:
+      operationId: postUsusuMiss
+      summary: Record a missed Ususu contribution
+      tags:
+        - evidence
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+      x-permissions:
+        - ususuLedger:create
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/UsusuMissRequest'
+      responses:
+        '201':
+          description: Record a missed Ususu contribution
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/UsusuEntry'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/ususu/{subjectId}':
+    get:
+      operationId: getUsusuBySubjectId
+      summary: The Ususu ledger for one person
+      tags:
+        - evidence
+      description: Streak and group health are computed from the ledger on read, never stored — a running total is a number somebody can correct by hand.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+        - tenant
+      x-permissions:
+        - ususuLedger:readOwn
+        - ususuLedger:read
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '200':
+          description: The Ususu ledger for one person
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/UsusuEvidenceView'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
           content:
             'application/json':
               schema:

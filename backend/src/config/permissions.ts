@@ -29,6 +29,10 @@ export const RESOURCES = [
   'viewing',
   /** A tenancy application: scored by LRMC, decided by a person. */
   'application',
+  /** Evidence LRMC gathers about a person, never about itself. */
+  'reference',
+  'dispute',
+  'ususuLedger',
 
   // LRMC commercial clients
   'airbnbHostProfile',

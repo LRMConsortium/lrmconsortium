@@ -2049,6 +2049,7 @@ const RESOURCES: Record<string, JsonSchema> = {
       blockedBy: strArr(),
       missing: strArr(),
       summary: str(),
+      evidence: ref('EvidenceBundle'),
       takenAt: date(),
       takenBy: oid(),
     },
@@ -2167,6 +2168,216 @@ const RESOURCES: Record<string, JsonSchema> = {
     type: 'object',
     properties: { outstandingRequest: str({ minLength: 4, maxLength: 600 }) },
     required: ['outstandingRequest'],
+  },
+
+  // ── Evidence ──────────────────────────────────────────────────────────────
+  //
+  // Every one of these is always returned in full, never null. `hasRecord` is
+  // what separates "LRMC looked and found zero" from "LRMC has never looked" —
+  // the second is scored as unknown and holds an application at review, and
+  // without this field the two are indistinguishable.
+
+  IdentityEvidence: {
+    type: 'object',
+    properties: {
+      identityVerified: bool(),
+      identityPending: bool({ description: 'Documents submitted, not yet reviewed.' }),
+      hasRecord: bool({ description: 'False means LRMC has never checked, which is not a failure.' }),
+    },
+    required: ['identityVerified', 'identityPending', 'hasRecord'],
+  },
+
+  ReferencesEvidence: {
+    type: 'object',
+    properties: {
+      referenceRequested: bool(),
+      referenceReceived: bool(),
+      referenceScore: { type: ['integer', 'null'], minimum: 0, maximum: 100 },
+      hasRecord: bool(),
+    },
+    required: ['referenceRequested', 'referenceReceived', 'referenceScore', 'hasRecord'],
+  },
+
+  DisputesEvidence: {
+    type: 'object',
+    properties: {
+      disputesOpen: int({ minimum: 0 }),
+      disputesResolved: int({ minimum: 0 }),
+      disputeSeverity: int({
+        minimum: 0, maximum: 3,
+        description: 'The worst open dispute, not the sum. Three minor ones are not one severe one.',
+      }),
+      hasRecord: bool(),
+    },
+    required: ['disputesOpen', 'disputesResolved', 'disputeSeverity', 'hasRecord'],
+  },
+
+  UsusuEvidence: {
+    type: 'object',
+    properties: {
+      contributionsMade: int({ minimum: 0 }),
+      contributionsMissed: int({ minimum: 0 }),
+      streak: int({ minimum: 0, description: 'Counted backwards from the most recent period.' }),
+      groupHealth: int({ minimum: 0, maximum: 100 }),
+      hasRecord: bool(),
+    },
+    required: ['contributionsMade', 'contributionsMissed', 'streak', 'groupHealth', 'hasRecord'],
+  },
+
+  PaymentsEvidence: {
+    type: 'object',
+    properties: {
+      paymentsOnTime: int({ minimum: 0 }),
+      paymentsLate: int({ minimum: 0 }),
+      paymentsMissed: int({ minimum: 0 }),
+      paymentReliability: int({ minimum: 0, maximum: 100 }),
+      hasRecord: bool(),
+    },
+    required: ['paymentsOnTime', 'paymentsLate', 'paymentsMissed', 'paymentReliability', 'hasRecord'],
+  },
+
+  EvidenceBundle: {
+    type: 'object',
+    description: 'All five kinds, always present.',
+    properties: {
+      identityEvidence: ref('IdentityEvidence'),
+      referencesEvidence: ref('ReferencesEvidence'),
+      disputesEvidence: ref('DisputesEvidence'),
+      ususuEvidence: ref('UsusuEvidence'),
+      paymentsEvidence: ref('PaymentsEvidence'),
+    },
+    required: ['identityEvidence', 'referencesEvidence', 'disputesEvidence',
+               'ususuEvidence', 'paymentsEvidence'],
+  },
+
+  Reference: {
+    type: 'object',
+    properties: {
+      _id: oid(), subject: oid(),
+      refereeName: str({ maxLength: 160 }),
+      relationship: str({ maxLength: 120 }),
+      status: str({ enum: ['requested', 'received', 'declined', 'expired'] }),
+      score: int({ minimum: 0, maximum: 100 }),
+      comment: str({ maxLength: 2000 }),
+      respondedAt: date(), createdAt: date(), updatedAt: date(),
+    },
+    required: ['subject', 'refereeName', 'status'],
+  },
+
+  Dispute: {
+    type: 'object',
+    properties: {
+      _id: oid(), subject: oid(), raisedBy: oid(),
+      kind: str({ enum: ['rent', 'damage', 'conduct', 'marketplace', 'ride', 'other'] }),
+      severity: int({ minimum: 1, maximum: 3 }),
+      summary: str({ maxLength: 2000 }),
+      status: str({ enum: ['open', 'resolved', 'withdrawn'] }),
+      resolution: str({ maxLength: 2000 }),
+      resolvedBy: oid(), resolvedAt: date(), createdAt: date(), updatedAt: date(),
+    },
+    required: ['subject', 'raisedBy', 'kind', 'severity', 'summary', 'status'],
+  },
+
+  UsusuEntry: {
+    type: 'object',
+    properties: {
+      _id: oid(), subject: oid(),
+      kind: str({ enum: ['contribution', 'miss'] }),
+      amount: num({ minimum: 0 }),
+      currency: str(),
+      period: str({ pattern: '^\\d{4}-(0[1-9]|1[0-2])$' }),
+      note: str({ maxLength: 600 }),
+      createdAt: date(),
+    },
+    required: ['subject', 'kind', 'period'],
+  },
+
+  ReferenceEvidenceView: {
+    type: 'object',
+    properties: {
+      subject: oid(),
+      evidence: ref('ReferencesEvidence'),
+      references: arr(ref('Reference')),
+    },
+    required: ['subject', 'evidence', 'references'],
+  },
+
+  DisputeEvidenceView: {
+    type: 'object',
+    properties: {
+      subject: oid(),
+      evidence: ref('DisputesEvidence'),
+      disputes: arr(ref('Dispute')),
+    },
+    required: ['subject', 'evidence', 'disputes'],
+  },
+
+  UsusuEvidenceView: {
+    type: 'object',
+    properties: {
+      subject: oid(),
+      evidence: ref('UsusuEvidence'),
+      entries: arr(ref('UsusuEntry')),
+    },
+    required: ['subject', 'evidence', 'entries'],
+  },
+
+  RequestReferenceRequest: {
+    type: 'object',
+    properties: {
+      subject: oid(), refereeName: str({ minLength: 2, maxLength: 160 }),
+      refereeEmail: str({ format: 'email' }), refereePhone: str({ maxLength: 30 }),
+      relationship: str({ maxLength: 120 }),
+    },
+    required: ['subject', 'refereeName'],
+  },
+
+  RespondToReferenceRequest: {
+    type: 'object',
+    properties: {
+      reference: oid(),
+      score: int({ minimum: 0, maximum: 100 }),
+      comment: str({ maxLength: 2000 }),
+    },
+    required: ['reference', 'score'],
+  },
+
+  OpenDisputeRequest: {
+    type: 'object',
+    properties: {
+      subject: oid(),
+      kind: str({ enum: ['rent', 'damage', 'conduct', 'marketplace', 'ride', 'other'] }),
+      severity: int({ minimum: 1, maximum: 3 }),
+      summary: str({ minLength: 10, maxLength: 2000 }),
+    },
+    required: ['subject', 'kind', 'severity', 'summary'],
+  },
+
+  ResolveMemberDisputeRequest: {
+    type: 'object',
+    description:
+      'Closing a dispute raised against a person. Distinct from the marketplace `ResolveDisputeRequest`, which settles an order and carries a refund decision — two different acts that happened to want the same name.',
+    properties: { resolution: str({ minLength: 4, maxLength: 2000 }) },
+    required: ['resolution'],
+  },
+
+  UsusuContributionRequest: {
+    type: 'object',
+    properties: {
+      subject: oid(), period: str({ pattern: '^\\d{4}-(0[1-9]|1[0-2])$' }),
+      amount: num({ minimum: 0 }), currency: str({ maxLength: 8 }),
+      note: str({ maxLength: 600 }),
+    },
+    required: ['subject', 'period'],
+  },
+
+  UsusuMissRequest: {
+    type: 'object',
+    properties: {
+      subject: oid(), period: str({ pattern: '^\\d{4}-(0[1-9]|1[0-2])$' }),
+      note: str({ maxLength: 600 }),
+    },
+    required: ['subject', 'period'],
   },
 
   Listing: {
@@ -3723,5 +3934,11 @@ export const REQUEST_SCHEMA_BY_NAME: Record<string, string> = {
   updateApplicationSchema: 'CreateApplicationRequest',
   decideApplicationSchema: 'DecideApplicationRequest',
   requestFromApplicantSchema: 'RequestFromApplicantRequest',
+  requestReferenceSchema: 'RequestReferenceRequest',
+  respondToReferenceSchema: 'RespondToReferenceRequest',
+  openDisputeSchema: 'OpenDisputeRequest',
+  resolveMemberDisputeSchema: 'ResolveMemberDisputeRequest',
+  ususuContributionSchema: 'UsusuContributionRequest',
+  ususuMissSchema: 'UsusuMissRequest',
   trackTrafficSchema: 'TrafficEventRequest',
 };

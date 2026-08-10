@@ -17,6 +17,7 @@ import { coordinators } from './coordinators.js';
 import { customer } from './customer.js';
 import { documents } from './documents.js';
 import { drivers } from './drivers.js';
+import { evidence } from './evidence.js';
 import { fac } from './fac.js';
 import { founders } from './founders.js';
 import { governance } from './governance.js';
@@ -55,6 +56,7 @@ export { coordinators, META as coordinatorsMeta, type CoordinatorsApi } from './
 export { customer, META as customerMeta, type CustomerApi } from './customer.js';
 export { documents, META as documentsMeta, type DocumentsApi } from './documents.js';
 export { drivers, META as driversMeta, type DriversApi } from './drivers.js';
+export { evidence, META as evidenceMeta, type EvidenceApi } from './evidence.js';
 export { fac, META as facMeta, type FacApi } from './fac.js';
 export { founders, META as foundersMeta, type FoundersApi } from './founders.js';
 export { governance, META as governanceMeta, type GovernanceApi } from './governance.js';
@@ -100,6 +102,7 @@ export const api = {
   customer,
   documents,
   drivers,
+  evidence,
   fac,
   founders,
   governance,

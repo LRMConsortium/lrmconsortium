@@ -520,6 +520,9 @@ async function main(): Promise<void> {
     'merchant', 'customer', 'marketplace',
     // Lettings: asking to see a property, and asking to live in one
     'viewing', 'application',
+    // References, disputes and the Ususu ledger are one surface: they are the
+    // same shape of record and they are read together by the scoring engine.
+    'evidence',
   ];
   for (const name of EXPECTED_MODULES) {
     check(`module ${name} exists`, name in api, `missing from the api surface`);

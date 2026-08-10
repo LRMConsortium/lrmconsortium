@@ -252,6 +252,9 @@ const backOfficeStaff = define({
     'lease:read',
     all('viewing'),
     all('application'),
+    all('reference'),
+    all('dispute'),
+    all('ususuLedger'),
     'maintenanceRequest:read',
     'maintenanceRequest:assign',
     'maintenanceRequest:update',
@@ -335,6 +338,13 @@ const coordinator = define({
     'application:read',
     'application:update',
     'application:approve',
+    'reference:create',
+    'reference:read',
+    'reference:update',
+    'dispute:create',
+    'dispute:read',
+    'ususuLedger:create',
+    'ususuLedger:read',
     'rentPayment:read',
     'rentPayment:create',
     'lease:read',
@@ -416,6 +426,8 @@ const landlord = define({
     // `applicationLifecycle.mayDecide`.
     'viewing:readOwn',
     'application:readOwn',
+    // A landlord sees an applicant's *assessment*, which is the summary LRMC
+    // stands behind — not the referee comments and dispute detail behind it.
     'maintenanceRequest:readOwn',
     'maintenanceRequest:approve',
     'tenantProfile:readOwn',
@@ -467,6 +479,12 @@ const tenant = define({
     'application:create',
     'application:readOwn',
     'application:updateOwn',
+    // Read-only, and only their own. A person who could write their own
+    // reference or close their own dispute would be filling in their own
+    // assessment.
+    'reference:readOwn',
+    'dispute:readOwn',
+    'ususuLedger:readOwn',
     'property:readOwn',
     'lease:readOwn',
     'payment:readOwn',

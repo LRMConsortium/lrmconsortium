@@ -7,7 +7,7 @@
 
 All paths are relative to `API_PREFIX` (default `/api/v1`).
 
-**323 endpoints** — 141 from the generic profile surface across 16 collections, 182 hand-mounted.
+**332 endpoints** — 141 from the generic profile surface across 16 collections, 191 hand-mounted.
 
 ---
 
@@ -174,6 +174,31 @@ get the clauses below, OR-ed together.
 ---
 
 ## Endpoints by module
+
+### evidence
+
+| Method | Path | Zone | Permission (any of) | Own | Request | Roles |
+|---|---|---|---|---|---|---|
+| `POST` | `/api/v1/references/request` | D · Member | `reference:create` | — | body: `requestReferenceSchema` | FN BO CO |
+| `POST` | `/api/v1/references/respond` | D · Member | `reference:update` | — | body: `respondToReferenceSchema` | FN BO CO |
+| `GET` | `/api/v1/references/:subjectId` | D · Member | `reference:readOwn`<br>`reference:read` | scoped | — | FN BO CO TE |
+| `POST` | `/api/v1/disputes/open` | D · Member | `dispute:create` | — | body: `openDisputeSchema` | FN BO CO |
+| `POST` | `/api/v1/dispute/:disputeId/resolve` | D · Member | `dispute:approve` | scoped | body: `resolveMemberDisputeSchema` | FN BO |
+| `GET` | `/api/v1/disputes/:subjectId` | D · Member | `dispute:readOwn`<br>`dispute:read` | scoped | — | FN BO CO TE |
+| `POST` | `/api/v1/ususu/contribute` | D · Member | `ususuLedger:create` | — | body: `ususuContributionSchema` | FN BO CO |
+| `POST` | `/api/v1/ususu/miss` | D · Member | `ususuLedger:create` | — | body: `ususuMissSchema` | FN BO CO |
+| `GET` | `/api/v1/ususu/:subjectId` | D · Member | `ususuLedger:readOwn`<br>`ususuLedger:read` | scoped | — | FN BO CO TE |
+
+**Notes**
+
+- **`POST /api/v1/references/request`** — LRMC asks; the subject cannot request their own, because then they choose the referee.
+- **`POST /api/v1/references/respond`** — Nobody scores their own. A referee who will not score is a decline, not a zero.
+- **`GET /api/v1/references/:subjectId`** — Your own, or anybody’s if you are staff. A landlord sees the assessment, not the referee comments behind it.
+- **`POST /api/v1/disputes/open`** — Severity 1–3, set when opened. An open dispute blocks a tenancy recommendation whatever its grade.
+- **`POST /api/v1/dispute/:disputeId/resolve`** — Not by its subject: an open dispute blocks them, and closing your own block is not a thing.
+- **`POST /api/v1/ususu/contribute`** — One line per person per period per kind. A month recorded twice would inflate a streak nobody earned.
+- **`GET /api/v1/ususu/:subjectId`** — Streak and group health are computed from the ledger on read, never stored — a running total is a number somebody can correct by hand.
+
 
 ### viewing
 

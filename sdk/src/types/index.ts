@@ -339,6 +339,7 @@ export interface Assessment {
   blockedBy?: string[];
   missing?: string[];
   summary: string;
+  evidence?: EvidenceBundle;
   takenAt?: string;
   takenBy?: string;
 }
@@ -715,8 +716,37 @@ export interface DecideApplicationRequest {
   reason: string;
 }
 
+export interface Dispute {
+  _id?: string;
+  subject: string;
+  raisedBy: string;
+  kind: "rent" | "damage" | "conduct" | "marketplace" | "ride" | "other";
+  severity: number;
+  summary: string;
+  status: "open" | "resolved" | "withdrawn";
+  resolution?: string;
+  resolvedBy?: string;
+  resolvedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface DisputeEvidenceView {
+  subject: string;
+  evidence: DisputesEvidence;
+  disputes: Dispute[];
+}
+
 export interface DisputeOrderRequest {
   reason: string;
+}
+
+export interface DisputesEvidence {
+  disputesOpen: number;
+  disputesResolved: number;
+  /** The worst open dispute, not the sum. Three minor ones are not one severe one. */
+  disputeSeverity: number;
+  hasRecord: boolean;
 }
 
 export type Document = (LifecycleFields & {
@@ -1110,6 +1140,15 @@ export interface ErrorResponse {
       code?: string;
     }[];
   };
+}
+
+/** All five kinds, always present. */
+export interface EvidenceBundle {
+  identityEvidence: IdentityEvidence;
+  referencesEvidence: ReferencesEvidence;
+  disputesEvidence: DisputesEvidence;
+  ususuEvidence: UsusuEvidence;
+  paymentsEvidence: PaymentsEvidence;
 }
 
 /** Zone B, in one call. */
@@ -1547,6 +1586,14 @@ export type HotelInput = (ContactFields & LocationFields & LifecycleFieldsInput 
   serviceTier?: "basic" | "standard" | "premium";
   businessRegistrationNumber?: string;
 });
+
+export interface IdentityEvidence {
+  identityVerified: boolean;
+  /** Documents submitted, not yet reviewed. */
+  identityPending: boolean;
+  /** False means LRMC has never checked, which is not a failure. */
+  hasRecord: boolean;
+}
 
 /** National identity. Never returned by the API. */
 export interface IdentityFields {
@@ -2023,6 +2070,13 @@ export interface OpenApiDocument {
   components?: Record<string, unknown>;
 }
 
+export interface OpenDisputeRequest {
+  subject: string;
+  kind: "rent" | "damage" | "conduct" | "marketplace" | "ride" | "other";
+  severity: number;
+  summary: string;
+}
+
 /** Escrow order. LRMC holds the money from `paid` until `released`, `refunded` or `cancelled`. */
 export interface Order {
   _id?: string;
@@ -2146,6 +2200,14 @@ export type PaymentList = Payment[];
 
 /** Request variant of `PaymentList`. */
 export type PaymentListInput = PaymentInput[];
+
+export interface PaymentsEvidence {
+  paymentsOnTime: number;
+  paymentsLate: number;
+  paymentsMissed: number;
+  paymentReliability: number;
+  hasRecord: boolean;
+}
 
 export type PayoutBatch = (LifecycleFields & {
   _id?: string;
@@ -2429,6 +2491,32 @@ export interface RecordRentPaymentRequest {
   notes?: string;
 }
 
+export interface Reference {
+  _id?: string;
+  subject: string;
+  refereeName: string;
+  relationship?: string;
+  status: "requested" | "received" | "declined" | "expired";
+  score?: number;
+  comment?: string;
+  respondedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ReferenceEvidenceView {
+  subject: string;
+  evidence: ReferencesEvidence;
+  references: Reference[];
+}
+
+export interface ReferencesEvidence {
+  referenceRequested: boolean;
+  referenceReceived: boolean;
+  referenceScore: Record<string, unknown>;
+  hasRecord: boolean;
+}
+
 export interface RefreshRequest {
   refreshToken: string;
 }
@@ -2551,6 +2639,14 @@ export interface RequestInfoRequest {
   missingFields?: "holderName" | "counterpartyName" | "documentNumber" | "issuingAuthority" | "issuedOn" | "expiresOn" | "dateOfBirth" | "nationality" | "address" | "city" | "region" | "employerName" | "jobTitle" | "monthlyIncome" | "amount" | "currency" | "periodStart" | "periodEnd" | "relationship" | "outcome" | "notes"[];
 }
 
+export interface RequestReferenceRequest {
+  subject: string;
+  refereeName: string;
+  refereeEmail?: string;
+  refereePhone?: string;
+  relationship?: string;
+}
+
 /** The rider states where and when. Fare and driver are the server's to decide. */
 export interface RequestRideRequest {
   pickupAddress: string;
@@ -2582,6 +2678,11 @@ export interface ResolveDisputeRequest {
   outcome: "release" | "refund" | "cancel";
   ruling: string;
   refundAmount?: number;
+}
+
+/** Closing a dispute raised against a person. Distinct from the marketplace `ResolveDisputeRequest`, which settles an order and carries a refund decision — two different acts that happened to want the same name. */
+export interface ResolveMemberDisputeRequest {
+  resolution: string;
 }
 
 /** Founder debug: what a hypothetical role combination resolves to. */
@@ -2627,6 +2728,12 @@ export type ResortInput = (ContactFields & LocationFields & LifecycleFieldsInput
   serviceTier?: "basic" | "standard" | "premium";
   businessRegistrationNumber?: string;
 });
+
+export interface RespondToReferenceRequest {
+  reference: string;
+  score: number;
+  comment?: string;
+}
 
 export interface RevenueKpis {
   currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
@@ -3075,6 +3182,46 @@ export interface UserInput {
   status?: "pending" | "active" | "suspended" | "archived";
   locale?: string;
   timezone?: string;
+}
+
+export interface UsusuContributionRequest {
+  subject: string;
+  period: string;
+  amount?: number;
+  currency?: string;
+  note?: string;
+}
+
+export interface UsusuEntry {
+  _id?: string;
+  subject: string;
+  kind: "contribution" | "miss";
+  amount?: number;
+  currency?: string;
+  period: string;
+  note?: string;
+  createdAt?: string;
+}
+
+export interface UsusuEvidence {
+  contributionsMade: number;
+  contributionsMissed: number;
+  /** Counted backwards from the most recent period. */
+  streak: number;
+  groupHealth: number;
+  hasRecord: boolean;
+}
+
+export interface UsusuEvidenceView {
+  subject: string;
+  evidence: UsusuEvidence;
+  entries: UsusuEntry[];
+}
+
+export interface UsusuMissRequest {
+  subject: string;
+  period: string;
+  note?: string;
 }
 
 export type Vendor = (ContactFields & LocationFields & LifecycleFields & VerificationFields & IdentityFields & RatingFields & {

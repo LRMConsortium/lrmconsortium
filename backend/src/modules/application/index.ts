@@ -28,13 +28,19 @@ import { ApiError } from '../../shared/ApiError.js';
 import { asyncHandler, created, ok, paginated, pageMeta } from '../../shared/http.js';
 import { namedIdParam } from '../../shared/moduleFactory.js';
 import { Property } from '../property/property.model.js';
-import { Viewing } from '../viewing/viewing.model.js';
-import { Application, type IApplication } from './application.model.js';
+import { User } from '../../models/User.js';
+import { Payment } from '../payment/payment.model.js';
+import { Dispute, Reference, UsusuEntry } from '../evidence/evidence.model.js';
 import {
-  assessApplication,
-  type Assessment,
-  type EligibilityInput,
-} from './eligibility.js';
+  disputesEvidenceFrom,
+  identityEvidenceFrom,
+  paymentsEvidenceFrom,
+  referencesEvidenceFrom,
+  ususuEvidenceFrom,
+} from '../evidence/evidenceRules.js';
+import { withDefaults, type EvidenceBundle } from '../../config/evidence.js';
+import { Application, type IApplication } from './application.model.js';
+import { assessEvidence, type Assessment } from './eligibility.js';
 import {
   canTransitionApplication,
   decisionProblems,
@@ -79,64 +85,40 @@ function scopeFor(actor: { userId: string; roles: string[] }): Record<string, un
 /* ─────────────────────────────────────────────────────────────────────────────
  * Evidence
  *
- * Conservative on purpose. A field LRMC cannot establish is left out, so the
- * scorer reports it `unknown` and the application is held for review rather
- * than scored down. Passing `0` here would be the difference between "we have
- * not checked" and "we checked and it was nothing".
+ * Five lookups, one per source. Each returns a fully-populated object whose
+ * `hasRecord` says truthfully whether LRMC found anything — and a source that
+ * cannot be reached returns `hasRecord: false` rather than throwing, so one
+ * slow collection cannot stop an application being scored at all.
+ *
+ * `hasRecord: false` reaches the scorer as `unknown`, which holds the
+ * application at review. That is deliberate and it is the property the whole
+ * engine is built around: **LRMC not having looked is never counted against
+ * the person it did not look at.**
  * ────────────────────────────────────────────────────────────────────────── */
 
-interface EvidenceSources {
-  user?: { isVerified?: boolean; verificationStatus?: string } | null;
-  payments?: { onTime: number; late: number; missed: number } | null;
-  ususuMonths?: number | null;
-  disputes?: { open: number; resolved: number } | null;
-  references?: { provided: number; cleared: number } | null;
-  employmentEvidenced?: boolean | null;
-}
+async function gatherEvidence(applicant: unknown): Promise<EvidenceBundle> {
+  const subject = applicant;
 
-export function gatherEvidence(
-  application: Pick<IApplication, 'proposedRent'> & { monthlyIncome?: number },
-  askingRent: number | undefined,
-  sources: EvidenceSources,
-): EligibilityInput {
-  const input: EligibilityInput = {};
+  const [user, references, disputes, ususu, payments] = await Promise.all([
+    User.findById(subject as never).select('isVerified verificationStatus').lean().exec()
+      .catch(() => null),
+    Reference.find({ subject: subject as never, deletedAt: null }).select('status score').lean().exec()
+      .catch(() => null),
+    Dispute.find({ subject: subject as never, deletedAt: null }).select('status severity').lean().exec()
+      .catch(() => null),
+    UsusuEntry.find({ subject: subject as never, deletedAt: null }).sort('period').select('kind period').lean().exec()
+      .catch(() => null),
+    Payment.find({ payer: subject as never, deletedAt: null }).select('status dueDate paidAt').lean().exec()
+      .catch(() => null),
+  ]);
 
-  if (sources.user) {
-    if (sources.user.isVerified === true) input.identityVerified = true;
-    else if (sources.user.verificationStatus === 'pending') input.identityPending = true;
-    else if (sources.user.verificationStatus === 'unsubmitted') input.identityVerified = false;
-    // Anything else — a status we do not recognise — is left undefined, which
-    // reads as "not checked" rather than "failed".
-  }
-
-  const rent = application.proposedRent ?? askingRent;
-  if (typeof application.monthlyIncome === 'number' && typeof rent === 'number' && rent > 0) {
-    input.monthlyIncome = application.monthlyIncome;
-    input.monthlyRent = rent;
-    if (typeof sources.employmentEvidenced === 'boolean') {
-      input.employmentEvidenced = sources.employmentEvidenced;
-    }
-  }
-
-  if (sources.references) {
-    input.referencesProvided = sources.references.provided;
-    input.referencesCleared = sources.references.cleared;
-  }
-
-  if (sources.payments) {
-    input.paymentsOnTime = sources.payments.onTime;
-    input.paymentsLate = sources.payments.late;
-    input.paymentsMissed = sources.payments.missed;
-  }
-
-  if (typeof sources.ususuMonths === 'number') input.ususuMonths = sources.ususuMonths;
-
-  if (sources.disputes) {
-    input.openDisputes = sources.disputes.open;
-    input.resolvedDisputes = sources.disputes.resolved;
-  }
-
-  return input;
+  return withDefaults({
+    identityEvidence: identityEvidenceFrom(user as never),
+    referencesEvidence: references ? referencesEvidenceFrom(references as never) : undefined,
+    disputesEvidence: disputes ? disputesEvidenceFrom(disputes as never) : undefined,
+    ususuEvidence: ususu ? ususuEvidenceFrom(ususu as never) : undefined,
+    paymentsEvidence: payments ? paymentsEvidenceFrom(payments as never) : undefined,
+  });
 }
 
 /**
@@ -148,47 +130,27 @@ export function gatherEvidence(
  * would rewrite history every time somebody paid their rent.
  */
 async function takeAssessment(
-  doc: IApplication & { save: () => Promise<unknown> },
+  doc: IApplication & { save: () => Promise<unknown>; monthlyIncome?: number },
   takenBy?: string,
 ): Promise<Assessment> {
-  const property = await Property.findById(doc.property)
-    .select('rentAmount')
-    .lean()
-    .exec();
+  const property = await Property.findById(doc.property).select('rentAmount').lean().exec();
+  const evidence = await gatherEvidence(doc.applicant);
 
-  // Evidence LRMC can establish today. Sources it has no module for yet are
-  // left out rather than faked — `undefined` is the honest answer, and the
-  // scorer is built to say "unknown" rather than "fail".
-  const attended = await Viewing.countDocuments({
-    requestedBy: doc.applicant,
-    status: 'completed',
-    deletedAt: null,
-  }).exec();
+  const assessment = assessEvidence(evidence, {
+    monthlyIncome: doc.monthlyIncome,
+    monthlyRent: doc.proposedRent ?? property?.rentAmount,
+    // Whether a declared income has been evidenced is a document check LRMC
+    // does not have a module for yet. Left undefined rather than asserted
+    // either way — an unevidenced income scores lower, and claiming it was
+    // evidenced would be a lie in the applicant's favour.
+  });
 
-  const evidence = gatherEvidence(
-    doc as IApplication & { monthlyIncome?: number },
-    property?.rentAmount,
-    {
-      user: null,
-      payments: null,
-      ususuMonths: null,
-      disputes: null,
-      // Two cleared references is the bar; a completed viewing is not a
-      // reference, so this stays out of `references` entirely.
-      references: null,
-      employmentEvidenced: null,
-    },
-  );
-  void attended;
-
-  const assessment = assessApplication(evidence);
   doc.assessment = {
     ...assessment,
+    evidence: evidence as unknown as Record<string, unknown>,
     takenAt: new Date(),
-    takenBy: takenBy as unknown as IApplication['assessment'] extends undefined
-      ? never
-      : NonNullable<IApplication['assessment']>['takenBy'],
-  } as NonNullable<IApplication['assessment']>;
+    takenBy: takenBy as never,
+  } as unknown as NonNullable<IApplication['assessment']>;
   await doc.save();
   return assessment;
 }
