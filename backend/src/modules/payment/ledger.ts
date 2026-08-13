@@ -15,8 +15,13 @@ import { money } from '../lease/rentSchedule.js';
 
 export { money };
 
+/* Canonical in config/currencies.ts, beside the management fee, so the pricing
+ * page and the split arithmetic read one number. They disagreed for four weeks:
+ * this said 15 and the page said "to confirm". */
+import { RIDE_COMMISSION_PERCENT } from '../../config/currencies.js';
+
 /** Default platform commission on an Ususu fare, in percent. */
-export const DEFAULT_RIDE_COMMISSION_PERCENT = 15;
+export const DEFAULT_RIDE_COMMISSION_PERCENT = RIDE_COMMISSION_PERCENT;
 
 /** Kinds that move money *to* a member. These are what a payout batch settles. */
 export const PAYOUT_KINDS = ['driverPayout', 'landlordPayout', 'refund'] as const;

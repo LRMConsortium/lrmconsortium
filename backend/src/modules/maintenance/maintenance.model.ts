@@ -8,18 +8,10 @@ import {
   type TimestampShape,
 } from '../../shared/schemaFragments.js';
 
-export const MAINTENANCE_STATUSES = [
-  'open',
-  'triaged',
-  'assigned',
-  'quoted',
-  'approved',
-  'inProgress',
-  'onHold',
-  'completed',
-  'verified',
-  'cancelled',
-] as const;
+/* Canonical in config/lifecycles.ts — see the note there. Re-exported so the
+ * schema below and its callers still read naturally. */
+import { MAINTENANCE_STATUSES } from '../../config/lifecycles.js';
+export { MAINTENANCE_STATUSES };
 
 export const MAINTENANCE_PRIORITIES = ['low', 'normal', 'high', 'emergency'] as const;
 

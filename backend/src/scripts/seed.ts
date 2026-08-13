@@ -10,6 +10,7 @@
  */
 
 import { connectDatabase, disconnectDatabase } from '../config/database.js';
+import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { DEFAULT_AD_POLICY } from '../modules/advertising/adPolicy.model.js';
 import {
@@ -35,8 +36,34 @@ import {
 } from '../models/index.js';
 import type { Role } from '../config/roles.js';
 
-const DEFAULT_PASSWORD = process.env.SEED_PASSWORD ?? 'ChangeMe123!';
-const REGION = 'Greater Accra';
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Two refusals, before anything is read or written.
+ *
+ * This script creates a founder account and one active, pre-verified account
+ * per role, all sharing one password — and it connects to `env.MONGO_URI`,
+ * which on a deployed box is production. It had no environment guard and its
+ * password fell back to a literal committed to this repository and printed to
+ * the console on completion.
+ *
+ * One command run in the wrong shell on deployment day therefore handed the
+ * platform to anybody who had read the source. Both doors are shut here rather
+ * than inside `seed()`, so importing this module cannot arm them either.
+ * ══════════════════════════════════════════════════════════════════════════ */
+if (env.isProduction) {
+  throw new Error(
+    'seed.ts must never run against production. It creates a founder account with a shared password.',
+  );
+}
+
+const DEFAULT_PASSWORD = process.env.SEED_PASSWORD;
+if (!DEFAULT_PASSWORD) {
+  throw new Error(
+    'SEED_PASSWORD is required. There is deliberately no default: the previous one was a literal '
+    + 'in this file, which meant every seeded environment shared a password published in the repo.',
+  );
+}
+
+const REGION = 'Banjul';
 
 interface AccountSpec {
   fullName: string;
@@ -251,7 +278,7 @@ async function seed(): Promise<void> {
     {
       fullName: 'Nana Asante',
       phone: '+447700900001',
-      nationality: 'Ghanaian',
+      nationality: 'Gambian',
       residenceCountry: 'United Kingdom',
       region: REGION,
       city: 'Accra',

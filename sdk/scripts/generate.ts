@@ -357,6 +357,67 @@ function camel(input: string): string {
  * short override table where the derived name would be obtuse.
  */
 const NAME_OVERRIDES: Record<string, string> = {
+  /* The member-portal maintenance surface.
+   *
+   * Without these the deduper reaches for `list2`, `update2` and `summary` —
+   * names that are unambiguous to a compiler and meaningless to a person. A
+   * caller writing `api.maintenanceRequests.list2()` has no way to know whether
+   * they picked the right one, and the collision that produced the digit is
+   * invisible from the call site. Named for what they actually do instead. */
+  'POST /maintenance/request': 'request',
+  'POST /maintenance/update': 'updateStatus',
+  'GET /maintenance/{userId}/list': 'listForUser',
+  'GET /maintenance/{userId}/summary': 'summaryForUser',
+  /* Security. `POST /security/errors` and `GET /security/errors` collide on
+   * `errors`; naming them for what they do is clearer than `errors2` anyway. */
+  'POST /security/errors': 'capture',
+  'GET /security/errors': 'recent',
+  'GET /security/anomalies': 'anomalies',
+  /* Marketplace orders.
+   *
+   * `get` was `GET /orders` — a *list* called `get` — and `get2` was the single
+   * order. Both predate the deduped-name guard, which only ran over modules
+   * with an expected-method list and so never saw them. */
+  'GET /orders': 'listOrders',
+  /* `post` — the HTTP verb as a method name, which tells a caller nothing
+   * about what it creates. */
+  'POST /orders': 'placeOrder',
+  'GET /order/{orderId}': 'readOrder',
+  /* Ususu groups.
+   *
+   * The deduper reaches for `get`, `get2`, `group` and `groupUser` here —
+   * names that are unambiguous to a compiler and meaningless to a person.
+   * `evidence.group(id)` reads as "make a group"; `evidence.get2(id)` tells a
+   * caller nothing about which of two endpoints they picked. */
+  'POST /ususu/group/create': 'createGroup',
+  'POST /ususu/group/add-member': 'groupAddMember',
+  'POST /ususu/group/remove-member': 'groupRemoveMember',
+  'POST /ususu/group/contribute': 'groupContribute',
+  'POST /ususu/group/miss': 'groupMiss',
+  'GET /ususu/group/{groupId}': 'readGroup',
+  'GET /ususu/group/{groupId}/summary': 'groupSummary',
+  'GET /ususu/group/user/{userId}': 'groupsForUser',
+  /* The per-person evidence readers, which collided with each other. */
+  'GET /references/{userId}': 'referencesFor',
+  'GET /disputes/{subjectId}': 'disputesFor',
+  'GET /ususu/{subjectId}': 'ususuFor',
+  /* Leases: the member-portal surface.
+   *
+   * `create2` is what the deduper reaches for, because `POST /leases` already
+   * took `create` — and `api.leases.create2()` tells a caller nothing about
+   * which of the two they picked. `user` and `property` are worse: they read
+   * as nouns, so `leases.user(id)` looks like it returns a user. */
+  'POST /leases/create': 'draftForMember',
+  'POST /leases/activate': 'activate',
+  'POST /leases/complete': 'complete',
+  'POST /leases/terminate': 'terminate',
+  'GET /leases/{userId}/…': 'unused',
+  'GET /leases/user/{userId}': 'listForUser',
+  'GET /leases/property/{propertyId}': 'listForProperty',
+  /* Payments: one person's ledger, and the ledger's single write route. */
+  'GET /payments/{userId}/history': 'history',
+  'GET /payments/{userId}/summary': 'summary',
+  'POST /payments/record': 'record',
   'GET /drivers/verification-queue': 'verificationQueue',
   'PATCH /driver/me/online': 'setOnline',
   'PATCH /coordinator/{coordinatorId}/assign-properties': 'assignProperties',

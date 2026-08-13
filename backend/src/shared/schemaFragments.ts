@@ -1,13 +1,15 @@
 import { Schema, type SchemaDefinition, type Types } from 'mongoose';
+import { LAUNCH_COUNTRY } from '../config/currencies.js';
+import { EMAIL_REGEX, PHONE_REGEX } from '../config/contact.js';
 
 /**
  * Reusable field groups. Every profile in the platform shares the same contact
  * and identity shape, so validation, indexing and redaction stay consistent.
  */
 
-export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-/** E.164-ish; permissive enough for Ghana (+233), Nigeria (+234), diaspora. */
-export const PHONE_REGEX = /^\+?[0-9]{7,15}$/;
+/* Canonical in config/contact.ts, which has no Mongoose and so can be asserted
+ * without a database. Re-exported because every schema below reaches for them. */
+export { EMAIL_REGEX, PHONE_REGEX } from '../config/contact.js';
 
 export const VERIFICATION_STATUSES = [
   'unsubmitted',
@@ -78,7 +80,11 @@ export const identityFields: SchemaDefinition = {
 
 export const locationFields: SchemaDefinition = {
   nationality: { type: String, trim: true },
-  residenceCountry: { type: String, trim: true, default: 'Ghana' },
+  /* Defaults to where LRMC actually is. This said `'Ghana'` for four weeks
+   * while the launch currency said GMD, so every profile registered through the
+   * form recorded a Gambian tenant as resident in Ghana. Imported rather than
+   * written, so the two cannot part company again. */
+  residenceCountry: { type: String, trim: true, default: LAUNCH_COUNTRY },
   address: { type: String, trim: true },
   city: { type: String, trim: true },
   region: { type: String, trim: true, index: true },

@@ -56,7 +56,9 @@ tags:
     description: 'Outbound transfer batches: built by Back Office from the ledger, released by the Founder.'
   - name: fac
     description: The Founder Authorisation Code — issuance, verification, lockout and the attempt ledger. Sits in front of Zone A.
+  - name: stats
   - name: evidence
+  - name: security
   - name: viewing
   - name: application
   - name: marketplace
@@ -2405,7 +2407,7 @@ components:
                 - active
                 - inArrears
                 - expiring
-                - ended
+                - completed
                 - terminated
           required:
             - property
@@ -3010,6 +3012,120 @@ components:
       type: array
       items:
         '$ref': '#/components/schemas/Payment'
+    PaymentSummary:
+      type: object
+      properties:
+        total:
+          type: integer
+          minimum: 0
+        settled:
+          type: integer
+          minimum: 0
+        onTime:
+          type: integer
+          minimum: 0
+        late:
+          type: integer
+          minimum: 0
+        failed:
+          type: integer
+          minimum: 0
+        awaiting:
+          type: integer
+          minimum: 0
+          description: Raised, not yet settled. Excluded from every rate.
+        onTimeRate:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+          maximum: 100
+          description: (onTime / (onTime + late)) * 100. NULL when nothing has settled — never 0, which would tell somebody on their first day that none of their payments were on time. Not the same as `paymentReliability` in an assessment, which counts missed instalments too.
+        settledByCurrency:
+          type: array
+          description: One entry per currency, deliberately not summed. There is no exchange rate on this platform, so a single total would not be an amount of anything.
+          items:
+            type: object
+            properties:
+              currency:
+                type: string
+                enum:
+                  - GMD
+                  - GHS
+                  - USD
+                  - EUR
+                  - GBP
+                  - NGN
+                  - XOF
+              amount:
+                type: number
+                minimum: 0
+              payments:
+                type: integer
+                minimum: 0
+            required:
+              - currency
+              - amount
+              - payments
+        scope:
+          type: string
+          enum:
+            - all
+            - recordedByMe
+          description: Whose rows these totals cover.
+        partial:
+          type: boolean
+          description: True when the totals cover only part of the person's history — a coordinator seeing their own receipts. Say so on screen; a partial total read as a whole one is worse than no total.
+      required:
+        - total
+        - settled
+        - onTime
+        - late
+        - onTimeRate
+        - settledByCurrency
+        - scope
+        - partial
+    MaintenanceSummary:
+      type: object
+      properties:
+        total:
+          type: integer
+          minimum: 0
+        open:
+          type: integer
+          minimum: 0
+        inProgress:
+          type: integer
+          minimum: 0
+        completed:
+          type: integer
+          minimum: 0
+        stalled:
+          type: integer
+          minimum: 0
+          description: On hold or cancelled. Reported so the parts sum to the total.
+        unclassified:
+          type: integer
+          minimum: 0
+          description: A status no bucket claims. Should always be 0; visible so it cannot hide.
+        needsEscalation:
+          type: integer
+          minimum: 0
+          description: Computed on every read from the current state, never stored. An unassigned emergency, a breached SLA, or a job parked past 72 hours.
+        averageResolutionHours:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+          description: NULL over nothing resolved — never 0, which would read as an instant turnaround.
+      required:
+        - total
+        - open
+        - inProgress
+        - completed
+        - stalled
+        - needsEscalation
+        - averageResolutionHours
     PushTokenRegistration:
       type: object
       description: A registered device. The token itself is never returned — it is a capability to reach someone's phone.
@@ -3402,7 +3518,7 @@ components:
             - active
             - inArrears
             - expiring
-            - ended
+            - completed
             - terminated
         escalation:
           type: string
@@ -3456,7 +3572,7 @@ components:
             - active
             - inArrears
             - expiring
-            - ended
+            - completed
             - terminated
         escalation:
           type: string
@@ -4979,6 +5095,188 @@ components:
           maxLength: 600
       required:
         - outstandingRequest
+    PropertyStats:
+      type: object
+      properties:
+        totalProperties:
+          type: integer
+          minimum: 0
+        occupied:
+          type: integer
+          minimum: 0
+        vacant:
+          type: integer
+          minimum: 0
+        unavailable:
+          type: integer
+          minimum: 0
+          description: Under maintenance or off-market.
+        unclassified:
+          type: integer
+          minimum: 0
+          description: A status no bucket claims. Should be zero.
+        occupancyRate:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+          maximum: 100
+          description: Of lettable properties. Null when there are none.
+      required:
+        - totalProperties
+        - occupied
+        - vacant
+        - occupancyRate
+    PaymentStats:
+      type: object
+      properties:
+        totalPayments:
+          type: integer
+          minimum: 0
+        settled:
+          type: integer
+          minimum: 0
+        onTime:
+          type: integer
+          minimum: 0
+        late:
+          type: integer
+          minimum: 0
+        awaiting:
+          type: integer
+          minimum: 0
+        failed:
+          type: integer
+          minimum: 0
+        reliability:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+          maximum: 100
+          description: Of settled instalments. Null when none have settled.
+        collectionWindowDays:
+          type: integer
+          minimum: 1
+          description: The period `collected` covers. Label the figure from this rather than assuming 30.
+        collected:
+          type: array
+          description: 'Money settled inside the window, grouped by currency and deliberately NOT summed into one figure: the ledger carries several currencies and there is no exchange rate on this platform. An empty array means nothing settled in the window.'
+          items:
+            type: object
+            properties:
+              currency:
+                type: string
+                enum:
+                  - GMD
+                  - GHS
+                  - USD
+                  - EUR
+                  - GBP
+                  - NGN
+                  - XOF
+              amount:
+                type: number
+                minimum: 0
+              payments:
+                type: integer
+                minimum: 0
+            required:
+              - currency
+              - amount
+              - payments
+      required:
+        - totalPayments
+        - onTime
+        - late
+        - reliability
+        - collected
+        - collectionWindowDays
+    MaintenanceStats:
+      type: object
+      properties:
+        totalRequests:
+          type: integer
+          minimum: 0
+        openRequests:
+          type: integer
+          minimum: 0
+        inProgress:
+          type: integer
+          minimum: 0
+        completed:
+          type: integer
+          minimum: 0
+        stalled:
+          type: integer
+          minimum: 0
+          description: On hold or cancelled.
+        unclassified:
+          type: integer
+          minimum: 0
+      required:
+        - totalRequests
+        - openRequests
+        - inProgress
+        - completed
+    ApplicationStats:
+      type: object
+      properties:
+        totalApplications:
+          type: integer
+          minimum: 0
+        underReview:
+          type: integer
+          minimum: 0
+        approved:
+          type: integer
+          minimum: 0
+        declined:
+          type: integer
+          minimum: 0
+        withdrawn:
+          type: integer
+          minimum: 0
+        unclassified:
+          type: integer
+          minimum: 0
+      required:
+        - totalApplications
+        - underReview
+        - approved
+        - declined
+    UsusuStats:
+      type: object
+      properties:
+        totalGroups:
+          type: integer
+          minimum: 0
+          description: Savings circles this caller can see. NOT every circle on the platform — a coordinator sees only the ones they steward or belong to.
+        activeGroups:
+          type: integer
+          minimum: 0
+          description: Forming, active or paused.
+        totalMembers:
+          type: integer
+          minimum: 0
+          description: People with a ledger, not groups — there is no group entity.
+        avgGroupHealth:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+          maximum: 100
+        totalContributions:
+          type: integer
+          minimum: 0
+        totalMisses:
+          type: integer
+          minimum: 0
+      required:
+        - totalMembers
+        - avgGroupHealth
+        - totalContributions
+        - totalMisses
     IdentityEvidence:
       type: object
       properties:
@@ -7897,6 +8195,604 @@ components:
           minLength: 10
       required:
         - refreshToken
+    RecordPaymentRequest:
+      type: object
+      properties:
+        payer:
+          type: string
+          pattern: ^[a-f\d]{24}$
+          description: The member the money came from, as a USER id. The server joins to their profile.
+        subject:
+          type: string
+          pattern: ^[a-f\d]{24}$
+          description: The lease the money is against, where there is one.
+        subjectKind:
+          type: string
+          enum:
+            - Lease
+            - MaintenanceRequest
+        kind:
+          type: string
+          enum:
+            - rent
+            - deposit
+          description: Only these two. A payout recorded by hand would mark money as sent that was never sent.
+        method:
+          type: string
+          enum:
+            - cash
+            - mobileMoney
+            - bankTransfer
+          default: cash
+        amount:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 500000
+        currency:
+          type: string
+          enum:
+            - GMD
+            - GHS
+            - USD
+            - EUR
+            - GBP
+            - NGN
+            - XOF
+        paidAt:
+          type: string
+          format: date-time
+          description: When the money changed hands, which is not when it was typed in. A future date is refused.
+        notes:
+          type: string
+          maxLength: 2000
+      required:
+        - payer
+        - kind
+        - amount
+    MemberCreateLeaseRequest:
+      type: object
+      properties:
+        property:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        tenant:
+          type: string
+          pattern: ^[a-f\d]{24}$
+          description: The tenant, as a USER id. The server joins to their profile.
+        monthlyRent:
+          type: number
+          exclusiveMinimum: 0
+        currency:
+          type: string
+          enum:
+            - GMD
+            - GHS
+            - USD
+            - EUR
+            - GBP
+            - NGN
+            - XOF
+        leaseStart:
+          type: string
+          format: date-time
+        leaseEnd:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: OPTIONAL. Absent or null means a month-to-month tenancy, which is ordinary in The Gambia. A required end date would force whoever writes the lease to invent one that then looks like a commitment.
+        paymentDayOfMonth:
+          type: integer
+          minimum: 1
+          maximum: 31
+        securityDeposit:
+          type: number
+          minimum: 0
+      required:
+        - property
+        - tenant
+        - monthlyRent
+        - leaseStart
+    LeaseActionRequest:
+      type: object
+      properties:
+        lease:
+          type: string
+          pattern: ^[a-f\d]{24}$
+      required:
+        - lease
+    LeaseTerminateRequest:
+      type: object
+      properties:
+        lease:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        reason:
+          type: string
+          minLength: 4
+          maxLength: 600
+          description: Required. The tenant is told, and a terminated lease with no stated reason is a fact about somebody's housing that nobody has to defend.
+      required:
+        - lease
+        - reason
+    ErrorReportRequest:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+            - uncaught
+            - unhandledRejection
+            - frameworkMissing
+            - networkFailure
+            - deadPath
+            - assetFailure
+          description: '`deadPath` is the one nothing throws for: a control that should do something and does not. It is the most valuable kind here — a member meeting it has no vocabulary to report it.'
+        message:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        source:
+          type: string
+          maxLength: 600
+          description: The script. Code, not data.
+        line:
+          type: integer
+          minimum: 0
+        column:
+          type: integer
+          minimum: 0
+        stack:
+          type: string
+          maxLength: 4000
+          description: Truncated and redacted before storage.
+        url:
+          type: string
+          maxLength: 2000
+          description: Reduced to a path template server-side. Never stored raw — a query string is where a name goes.
+        control:
+          type: string
+          maxLength: 200
+          description: Which control, for a dead path.
+      required:
+        - kind
+        - message
+    ErrorReceipt:
+      type: object
+      properties:
+        received:
+          type: boolean
+      required:
+        - received
+    ErrorReport:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        kind:
+          type: string
+        severity:
+          type: string
+          enum:
+            - noise
+            - degraded
+            - blocking
+        message:
+          type: string
+        path:
+          type: string
+          description: A path template, never a real URL.
+        source:
+          type: string
+        line:
+          type: integer
+        stack:
+          type: string
+        control:
+          type: string
+        reportedBy:
+          type: string
+          pattern: ^[a-f\d]{24}$
+          description: Null for a fault reported before sign-in.
+        summary:
+          type: string
+          description: Plain English, computed on read. Never a stack — a coordinator is being asked whether a member is stuck, not to debug.
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          description: 90 days. A retention decision, not a storage one.
+      required:
+        - id
+        - kind
+        - severity
+        - message
+        - path
+    ErrorReportList:
+      type: array
+      items:
+        '$ref': '#/components/schemas/ErrorReport'
+    AnomalyFeed:
+      type: object
+      properties:
+        findings:
+          type: array
+          items:
+            type: object
+            properties:
+              signal:
+                type: string
+              action:
+                type: string
+                enum:
+                  - watch
+                  - escalate
+                description: The ceiling is `escalate`. Nothing here blocks or locks.
+              count:
+                type: integer
+                minimum: 0
+              windowMinutes:
+                type: integer
+                minimum: 1
+              subject:
+                type: string
+                pattern: ^[a-f\d]{24}$
+              address:
+                type: string
+              summary:
+                type: string
+            required:
+              - signal
+              - action
+              - count
+              - summary
+        note:
+          type: string
+          description: Says that counts are per process, so a reader knows why they look low.
+        reportsPerBrowserPerWindow:
+          type: integer
+          minimum: 1
+      required:
+        - findings
+    UsusuGroup:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        name:
+          type: string
+          maxLength: 160
+        createdBy:
+          type: string
+          pattern: ^[a-f\d]{24}$
+          description: The coordinator who runs it. Holds the register, not the money.
+        members:
+          type: array
+          items:
+            type: string
+            pattern: ^[a-f\d]{24}$
+        status:
+          type: string
+          enum:
+            - forming
+            - active
+            - paused
+            - closed
+        contributionAmount:
+          type: number
+          minimum: 0
+        currency:
+          type: string
+          enum:
+            - GMD
+            - GHS
+            - USD
+            - EUR
+            - GBP
+            - NGN
+            - XOF
+        region:
+          type: string
+        note:
+          type: string
+          maxLength: 600
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - createdBy
+        - members
+        - status
+    UsusuGroupList:
+      type: array
+      items:
+        '$ref': '#/components/schemas/UsusuGroup'
+    UsusuGroupSummary:
+      type: object
+      properties:
+        group:
+          '$ref': '#/components/schemas/UsusuGroup'
+        memberCount:
+          type: integer
+          minimum: 0
+        contributions:
+          type: integer
+          minimum: 0
+        misses:
+          type: integer
+          minimum: 0
+        groupHealth:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+          maximum: 100
+          description: 100 minus five per miss, floored at zero. NULL when nobody has contributed yet — a circle formed on Tuesday is not in perfect health and is not in bad health.
+        streaks:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+          description: Consecutive contributions per member, counted BACKWARDS from the latest period. A member in the circle with no entries gets a real 0.
+        contributedByCurrency:
+          type: array
+          description: One entry per currency, never summed. There is no exchange rate on this platform.
+          items:
+            type: object
+            properties:
+              currency:
+                type: string
+                enum:
+                  - GMD
+                  - GHS
+                  - USD
+                  - EUR
+                  - GBP
+                  - NGN
+                  - XOF
+              amount:
+                type: number
+                minimum: 0
+              entries:
+                type: integer
+                minimum: 0
+            required:
+              - currency
+              - amount
+              - entries
+        hasActivity:
+          type: boolean
+          description: Whether anything has been recorded at all.
+        entries:
+          type: array
+          description: Oldest first, so a page renders the history in the order it happened.
+          items:
+            type: object
+            properties:
+              member:
+                type: string
+                pattern: ^[a-f\d]{24}$
+              kind:
+                type: string
+                enum:
+                  - contribution
+                  - miss
+              period:
+                type: string
+                pattern: ^\d{4}-(0[1-9]|1[0-2])$
+              amount:
+                type: number
+                minimum: 0
+              currency:
+                type: string
+                enum:
+                  - GMD
+                  - GHS
+                  - USD
+                  - EUR
+                  - GBP
+                  - NGN
+                  - XOF
+            required:
+              - member
+              - kind
+              - period
+      required:
+        - memberCount
+        - contributions
+        - misses
+        - groupHealth
+        - streaks
+        - hasActivity
+    CreateUsusuGroupRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 160
+        members:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            pattern: ^[a-f\d]{24}$
+        contributionAmount:
+          type: number
+          minimum: 0
+        currency:
+          type: string
+          enum:
+            - GMD
+            - GHS
+            - USD
+            - EUR
+            - GBP
+            - NGN
+            - XOF
+        region:
+          type: string
+          maxLength: 120
+        note:
+          type: string
+          maxLength: 600
+      required:
+        - name
+    UsusuGroupMemberRequest:
+      type: object
+      properties:
+        group:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        member:
+          type: string
+          pattern: ^[a-f\d]{24}$
+      required:
+        - group
+        - member
+    UsusuGroupContributionRequest:
+      type: object
+      properties:
+        group:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        member:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        period:
+          type: string
+          pattern: ^\d{4}-(0[1-9]|1[0-2])$
+          description: YYYY-MM. What a streak is counted over and what makes a duplicate detectable.
+        amount:
+          type: number
+          minimum: 0
+        currency:
+          type: string
+          enum:
+            - GMD
+            - GHS
+            - USD
+            - EUR
+            - GBP
+            - NGN
+            - XOF
+        note:
+          type: string
+          maxLength: 600
+      required:
+        - group
+        - member
+        - period
+        - amount
+    UsusuGroupMissRequest:
+      type: object
+      properties:
+        group:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        member:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        period:
+          type: string
+          pattern: ^\d{4}-(0[1-9]|1[0-2])$
+        note:
+          type: string
+          maxLength: 600
+      required:
+        - group
+        - member
+        - period
+    RaiseMaintenanceRequest:
+      type: object
+      properties:
+        property:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        title:
+          type: string
+          minLength: 3
+          maxLength: 240
+        description:
+          type: string
+          maxLength: 5000
+        serviceType:
+          type: string
+        priority:
+          type: string
+          enum:
+            - low
+            - normal
+            - high
+            - emergency
+          description: How urgent the person reporting it thinks it is. Triage may change it.
+        photosBefore:
+          type: array
+          maxItems: 8
+          items:
+            type: string
+          description: Storage keys, never URLs. An address a client supplies is an address a client controls.
+      required:
+        - property
+        - title
+        - serviceType
+    UpdateMaintenanceStatusRequest:
+      type: object
+      properties:
+        request:
+          type: string
+          pattern: ^[a-f\d]{24}$
+        status:
+          type: string
+          enum:
+            - open
+            - triaged
+            - assigned
+            - quoted
+            - approved
+            - inProgress
+            - onHold
+            - completed
+            - verified
+            - cancelled
+        note:
+          type: string
+          maxLength: 1000
+          description: REQUIRED when cancelling or parking a request, and when sending one back from completed. Whoever raised it is told what happened, and a bare status change reads as an accident.
+      required:
+        - request
+        - status
+    LogoutRequest:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+          minLength: 10
+          description: 'The session''s refresh token. Send it: revoking it is what makes signing out mean anything server-side. Omitted, the reply says nothing was revoked.'
+    SignOutOutcome:
+      type: object
+      properties:
+        signedOut:
+          type: boolean
+          description: Always true. The local session ends regardless of what could be revoked.
+        refreshRevoked:
+          type: boolean
+          description: Whether a refresh token was presented and is now denied. False means any refresh token for this session remains valid until it expires.
+        note:
+          type: string
+          description: Present when nothing was revoked, explaining why.
+      required:
+        - signedOut
+        - refreshRevoked
     ChangePasswordRequest:
       type: object
       properties:
@@ -9172,6 +10068,90 @@ paths:
                 '$ref': '#/components/schemas/ErrorResponse'
         '429':
           description: Rate limit exceeded.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/auth/logout':
+    post:
+      operationId: postAuthLogout
+      summary: End this session, revoking its refresh token
+      tags:
+        - auth
+      description: 'Send the refresh token in the body: it carries a session id and revoking that id ends this device''s session without touching any other. The access token is a stateless JWT and is NOT revoked — it expires on its own schedule (JWT_EXPIRES_IN), so signing out stops new access tokens being minted but does not kill one already issued. For a credential believed stolen, change the password. The reply says which of the two happened rather than implying more than was done; a sign-out with no token presented still succeeds, because the person asked to leave.'
+      x-zone: null
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - coordinator
+        - vendor
+        - landlord
+        - tenant
+        - airbnbHost
+        - hotelManager
+        - resortManager
+        - rentalCarCompany
+        - driver
+        - rider
+        - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
+        - publicUser
+      x-permissions: []
+      x-ownership: self
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/LogoutRequest'
+      responses:
+        '201':
+          description: End this session, revoking its refresh token
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/SignOutOutcome'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: The required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
           content:
             'application/json':
               schema:
@@ -12851,6 +13831,527 @@ paths:
             'application/json':
               schema:
                 '$ref': '#/components/schemas/ErrorResponse'
+  '/leases/create':
+    post:
+      operationId: postLeasesCreate
+      summary: Draw up a tenancy from inside the portal
+      tags:
+        - lease
+      description: 'Always lands in `draft`; a create that could go straight to `active` would skip the one moment either party gets to look at it. The landlord is taken from the property, never from the body — a body that could name the landlord would let somebody draw up a lease over a building they have nothing to do with. `leaseEnd` is OPTIONAL: month-to-month is ordinary in The Gambia, and a required end date forces whoever writes the lease to invent one that then looks like a commitment. Nobody may name themselves as the tenant, and a landlord cannot be their own tenant — the same principle as nobody producing evidence about themselves.'
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+        - landlord
+      x-permissions:
+        - lease:create
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/MemberCreateLeaseRequest'
+      responses:
+        '201':
+          description: Draw up a tenancy from inside the portal
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Lease'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/leases/activate':
+    post:
+      operationId: postLeasesActivate
+      summary: Put a drafted tenancy into force
+      tags:
+        - lease
+      description: 'The landlord''s act: it is their property and their commitment. A coordinator is refused with a message saying so rather than a bare 403. The actor''s party is resolved from the loaded lease, never from anything the caller asserted.'
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+        - landlord
+      x-permissions:
+        - lease:update
+        - lease:updateOwn
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/LeaseActionRequest'
+      responses:
+        '201':
+          description: Put a drafted tenancy into force
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Lease'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/leases/complete':
+    post:
+      operationId: postLeasesComplete
+      summary: Close a tenancy that ran its term
+      tags:
+        - lease
+      description: 'Terminal. A renewal is a NEW lease, not a resurrection of this one — reopening would silently rewrite the tenancy length that feeds an applicant''s stability score. Stamps `closedAt`, which is when the tenancy actually stopped, as distinct from `leaseEnd`, which is when the term was meant to run out. A tenancy in arrears is still completable: refusing to close a lease because the tenant owes money would trap both parties in it.'
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+        - landlord
+      x-permissions:
+        - lease:update
+        - lease:updateOwn
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/LeaseActionRequest'
+      responses:
+        '201':
+          description: Close a tenancy that ran its term
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Lease'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/leases/terminate':
+    post:
+      operationId: postLeasesTerminate
+      summary: End a tenancy early, with a reason
+      tags:
+        - lease
+      description: 'A COORDINATOR''S ACT, NOT A LANDLORD''S. Ending a tenancy early is eviction by another name, and LRMC carries the tenancy, holds the deposit and answers for the outcome — the same principle as a landlord not approving their own applicant. A landlord attempting it is told to ask their coordinator rather than given a bare refusal. A reason is required by both the schema and the lifecycle rules: a terminated lease with no stated reason is a fact about somebody''s housing that nobody has to defend.'
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+        - landlord
+      x-permissions:
+        - lease:update
+        - lease:updateOwn
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/LeaseTerminateRequest'
+      responses:
+        '201':
+          description: End a tenancy early, with a reason
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Lease'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/leases/user/{userId}':
+    get:
+      operationId: getLeasesUserByUserId
+      summary: One person's tenancies, as tenant or as landlord
+      tags:
+        - lease
+      description: Both sides at once, because the same account can be a tenant of one property and the landlord of another and that is one screen. A person always sees their own; coordinators and staff see anyone's; everybody else is REFUSED rather than answered with an empty list — "you may not see this" and "there is nothing here" are different facts.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - coordinator
+        - landlord
+        - tenant
+      x-permissions:
+        - lease:read
+        - lease:readOwn
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sort
+          in: query
+          schema:
+            type: string
+          description: Mongoose sort, e.g. `-createdAt`.
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 120
+        - name: includeDeleted
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: verificationStatus
+          in: query
+          schema:
+            type: string
+        - name: region
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: One person's tenancies, as tenant or as landlord
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/LeaseList'
+                  meta:
+                    '$ref': '#/components/schemas/PageMeta'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/leases/property/{propertyId}':
+    get:
+      operationId: getLeasesPropertyByPropertyId
+      summary: A property's succession of tenancies
+      tags:
+        - lease
+      description: The landlord who owns it, coordinators and staff. A tenant may read their own lease at /leases/user/:userId but NOT the succession of everybody who lived there before them — that is the previous tenants' business, not the current one's.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - coordinator
+        - landlord
+        - tenant
+      x-permissions:
+        - lease:read
+        - lease:readOwn
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sort
+          in: query
+          schema:
+            type: string
+          description: Mongoose sort, e.g. `-createdAt`.
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 120
+        - name: includeDeleted
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: verificationStatus
+          in: query
+          schema:
+            type: string
+        - name: region
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A property's succession of tenancies
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/LeaseList'
+                  meta:
+                    '$ref': '#/components/schemas/PageMeta'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
   '/lease/{leaseId}':
     get:
       operationId: getLeaseByLeaseId
@@ -13758,6 +15259,348 @@ paths:
                 '$ref': '#/components/schemas/ErrorResponse'
         '422':
           description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/maintenance/request':
+    post:
+      operationId: postMaintenanceRequest
+      summary: Raise a work order from inside a tenancy
+      tags:
+        - maintenance
+      description: 'Accepts only what a person standing in front of a broken thing can supply — where, what, how bad. The SLA clock is derived from the priority and the property''s standing coordinator is attached, so the request has an owner from the first second rather than waiting for triage to notice it. `slaHours`, `assignedVendor` and every cost field are refused by the strict schema rather than silently dropped: a field ignored and a field honoured look identical from a client. Photographs are storage keys, never URLs.'
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - coordinator
+        - tenant
+        - airbnbHost
+        - hotelManager
+        - resortManager
+        - rentalCarCompany
+      x-permissions:
+        - maintenanceRequest:create
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/RaiseMaintenanceRequest'
+      responses:
+        '201':
+          description: Raise a work order from inside a tenancy
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/MaintenanceRequest'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/maintenance/update':
+    post:
+      operationId: postMaintenanceUpdate
+      summary: Move a request along the lifecycle
+      tags:
+        - maintenance
+      description: 'The request id is in the body rather than the path, which is a departure from this platform''s convention and costs a readable audit trail — every update shares one route, so a reader of the log must open the entry to see which request moved. PATCH /maintenance-request/:requestId is the better route for anything programmatic. Safety does not depend on the route shape: the actor''s party (raiser, vendor, staff) is resolved from the loaded row, never from anything the caller asserted. A vendor may start, pause and finish; only LRMC may cancel or verify; and the vendor who did the work can never be the one who verifies it. Cancelling or parking a request requires a reason, because whoever raised it is told what happened.'
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+        - vendor
+      x-permissions:
+        - maintenanceRequest:update
+        - maintenanceRequest:updateOwn
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/UpdateMaintenanceStatusRequest'
+      responses:
+        '201':
+          description: Move a request along the lifecycle
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/MaintenanceRequest'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/maintenance/{userId}/list':
+    get:
+      operationId: getMaintenanceByUserIdList
+      summary: One person's work orders
+      tags:
+        - maintenance
+      description: 'Covers three relationships at once: raised by them, assigned to them as a vendor, and against a property they own. A landlord''s maintenance is the maintenance on their buildings, which is a different question from what they personally reported, so ownership is resolved through the property collection rather than assumed. Reading somebody else''s needs a staff role and is refused rather than answered empty.'
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - coordinator
+        - vendor
+        - landlord
+        - tenant
+        - airbnbHost
+        - hotelManager
+        - resortManager
+        - rentalCarCompany
+      x-permissions:
+        - maintenanceRequest:read
+        - maintenanceRequest:readOwn
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sort
+          in: query
+          schema:
+            type: string
+          description: Mongoose sort, e.g. `-createdAt`.
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 120
+        - name: includeDeleted
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: verificationStatus
+          in: query
+          schema:
+            type: string
+        - name: region
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: One person's work orders
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/MaintenanceRequestList'
+                  meta:
+                    '$ref': '#/components/schemas/PageMeta'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/maintenance/{userId}/summary':
+    get:
+      operationId: getMaintenanceByUserIdSummary
+      summary: Counts by stage, escalations, and average turnaround
+      tags:
+        - maintenance
+      description: 'Uses the same buckets as /stats/maintenance, so a tile and a summary can never disagree about what "open" means. `stalled` is reported rather than hidden so the parts sum to the total. `needsEscalation` is computed from the current state on every read and never stored — a request does not become escalated, it becomes somebody''s, and a stored flag would go stale the moment a vendor picked the job up. `averageResolutionHours` is null over nothing resolved, never 0: a landlord whose first request is still open has not achieved a nought-hour turnaround.'
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - coordinator
+        - vendor
+        - landlord
+        - tenant
+        - airbnbHost
+        - hotelManager
+        - resortManager
+        - rentalCarCompany
+      x-permissions:
+        - maintenanceRequest:read
+        - maintenanceRequest:readOwn
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '200':
+          description: Counts by stage, escalations, and average turnaround
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/MaintenanceSummary'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
           content:
             'application/json':
               schema:
@@ -15465,6 +17308,283 @@ paths:
                 '$ref': '#/components/schemas/ErrorResponse'
         '404':
           description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/payments/{userId}/history':
+    get:
+      operationId: getPaymentsByUserIdHistory
+      summary: One person's ledger, narrowed to what the caller may see
+      tags:
+        - payment
+      description: 'A person always sees their own. Back Office, HQ and the founder see anyone''s. A COORDINATOR SEES ONLY THE RECEIPTS THEY WROTE THEMSELVES — recording a payment and reading a year of somebody''s finances are different powers, and holding the first does not grant the second. Anyone else is refused rather than answered with an empty list: "you may not see this" and "there is nothing here" are different facts.'
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - coordinator
+        - vendor
+        - landlord
+        - tenant
+        - airbnbHost
+        - hotelManager
+        - resortManager
+        - rentalCarCompany
+        - driver
+        - rider
+        - advertiser
+        - merchant
+        - customer
+      x-permissions:
+        - payment:readOwn
+        - payment:read
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sort
+          in: query
+          schema:
+            type: string
+          description: Mongoose sort, e.g. `-createdAt`.
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 120
+        - name: includeDeleted
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: verificationStatus
+          in: query
+          schema:
+            type: string
+        - name: region
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: One person's ledger, narrowed to what the caller may see
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/PaymentList'
+                  meta:
+                    '$ref': '#/components/schemas/PageMeta'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/payments/{userId}/summary':
+    get:
+      operationId: getPaymentsByUserIdSummary
+      summary: On-time record and settled totals for one person
+      tags:
+        - payment
+      description: Computed over the whole history, never a page. `onTimeRate` is (onTime / (onTime + late)) * 100 and is NULL when nothing has settled — never 0, which would tell somebody on their first day that none of their payments were on time. NOTE this is not the same figure as `paymentReliability` in an application assessment, which also counts missed instalments in the denominator; the two are labelled differently on purpose and must not be reconciled by relabelling one. `scope` and `partial` say whose rows the totals cover, so a coordinator reading their own receipts does not mistake them for the whole.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - coordinator
+        - vendor
+        - landlord
+        - tenant
+        - airbnbHost
+        - hotelManager
+        - resortManager
+        - rentalCarCompany
+        - driver
+        - rider
+        - advertiser
+        - merchant
+        - customer
+      x-permissions:
+        - payment:readOwn
+        - payment:read
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '200':
+          description: On-time record and settled totals for one person
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/PaymentSummary'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/payments/record':
+    post:
+      operationId: postPaymentsRecord
+      summary: Write down money that changed hands in person
+      tags:
+        - payment
+      description: 'The ledger is otherwise written only by the flows that cause it. This exists because The Gambia runs on cash and mobile money, and refusing to record a cash rent payment would leave a tenant who has paid on time for two years with `hasRecord: false` in their evidence — pushing the informal economy out of the scoring engine entirely. Fenced accordingly: ONLY rent and deposits (never a payout, which would mark money as sent that was never sent); NOBODY may record a payment they are party to as payer or payee; `recordedBy` comes from the token and can not be supplied; `status` is always succeeded and can not be supplied; the reference is derived from payer, subject, kind, amount and day so a double tap on a bad connection collides instead of doubling a tenant''s rent — the collision is returned as a 409 for a person to resolve, never swallowed.'
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - coordinator
+      x-permissions:
+        - payment:record
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/RecordPaymentRequest'
+      responses:
+        '201':
+          description: Write down money that changed hands in person
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/Payment'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
           content:
             'application/json':
               schema:
@@ -17829,6 +19949,334 @@ paths:
             'application/json':
               schema:
                 '$ref': '#/components/schemas/ErrorResponse'
+  '/stats/properties':
+    get:
+      operationId: getStatsProperties
+      summary: Portfolio counts, computed by the database
+      tags:
+        - stats
+      description: 'Scoped to the caller from the token, never from a parameter: a landlord gets their own portfolio, a coordinator their region, Back Office everything. Occupancy is of lettable properties — an off-market unit is not a vacancy.'
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - coordinator
+        - vendor
+        - landlord
+        - tenant
+        - airbnbHost
+        - hotelManager
+        - resortManager
+      x-permissions:
+        - analytics:read
+        - property:readOwn
+        - property:read
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Portfolio counts, computed by the database
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/PropertyStats'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/stats/payments':
+    get:
+      operationId: getStatsPayments
+      summary: Payment counts and reliability
+      tags:
+        - stats
+      description: Reliability is of *settled* instalments; dividing by every row would drag it down each time one fell due. `succeeded` is the ledger’s word for settled — `paid` belongs to the marketplace order lifecycle.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - coordinator
+        - vendor
+        - landlord
+        - tenant
+        - airbnbHost
+        - hotelManager
+        - resortManager
+        - rentalCarCompany
+        - driver
+        - rider
+        - advertiser
+        - merchant
+        - customer
+      x-permissions:
+        - analytics:read
+        - payment:readOwn
+        - payment:read
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Payment counts and reliability
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/PaymentStats'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/stats/maintenance':
+    get:
+      operationId: getStatsMaintenance
+      summary: Maintenance counts by stage
+      tags:
+        - stats
+      description: Ten statuses into four buckets, and `stalled` is reported rather than hidden so the buckets sum to the total.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - coordinator
+        - vendor
+        - landlord
+        - tenant
+        - airbnbHost
+        - hotelManager
+        - resortManager
+        - rentalCarCompany
+      x-permissions:
+        - analytics:read
+        - maintenanceRequest:readOwn
+        - maintenanceRequest:read
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Maintenance counts by stage
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/MaintenanceStats'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/stats/applications':
+    get:
+      operationId: getStatsApplications
+      summary: Tenancy application counts by stage
+      tags:
+        - stats
+      description: A landlord sees applications on their own properties.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - coordinator
+        - landlord
+        - tenant
+      x-permissions:
+        - analytics:read
+        - application:readOwn
+        - application:read
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Tenancy application counts by stage
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/ApplicationStats'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/stats/ususu':
+    get:
+      operationId: getStatsUsusu
+      summary: Ususu ledger totals and average group health
+      tags:
+        - stats
+      description: 'Reports `totalMembers`, not `totalGroups`: the ledger records contributions per person and there is no group entity to count.'
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - coordinator
+        - tenant
+      x-permissions:
+        - analytics:read
+        - ususuLedger:readOwn
+        - ususuLedger:read
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Ususu ledger totals and average group health
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/UsusuStats'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
   '/references/request':
     post:
       operationId: postReferencesRequest
@@ -18222,6 +20670,789 @@ paths:
                     const: true
                   data:
                     '$ref': '#/components/schemas/DisputeEvidenceView'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/security/errors':
+    post:
+      operationId: postSecurityErrors
+      summary: A browser reporting that something went wrong
+      tags:
+        - security
+      description: 'UNAUTHENTICATED ON PURPOSE. The most valuable report is the one from a page that broke before the member could sign in, and requiring a token would discard exactly those. NOTHING ON THIS ROUTE CAN ACT AGAINST A MEMBER — no block, no lock, no throttle that removes the application. Past a per-browser storage bound the report is dropped and the session is entirely unaffected; the reply is still 201, because telling a client it is being dropped invites a retry and a page in a render loop needs no encouragement. The reply carries nothing about the outcome: an intake that echoed its own grading would be a way to discover the thresholds. `severity` is derived from `kind` and cannot be supplied — a client that could set it could page a coordinator at will. URLs are reduced to path templates and every free-text field is redacted before storage, because an error log that quietly becomes a second copy of the tenant database is what every naive implementation produces.'
+      x-zone: PUBLIC_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - coordinator
+        - vendor
+        - landlord
+        - tenant
+        - airbnbHost
+        - hotelManager
+        - resortManager
+        - rentalCarCompany
+        - driver
+        - rider
+        - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
+        - publicUser
+      x-permissions: []
+      x-ownership: none
+      security:
+        - 
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/ErrorReportRequest'
+      responses:
+        '201':
+          description: A browser reporting that something went wrong
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/ErrorReceipt'
+                required:
+                  - success
+                  - data
+        '403':
+          description: Authenticated, but not permitted on this surface.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+    get:
+      operationId: getSecurityErrors
+      summary: What is breaking for members lately
+      tags:
+        - security
+      description: 'Append-only: there is no update route and no delete route, because an error log somebody can edit is one nobody can rely on and the first thing anybody wants to do with an embarrassing entry is tidy it away. Rows expire after 90 days by TTL index — a retention decision, not a storage one, since these carry fragments of what members were doing. Each row carries a plain-English summary computed on read rather than stored, so a change to the wording reaches old rows.'
+      x-zone: BACK_OFFICE
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+      x-permissions:
+        - auditLog:read
+        - analytics:read
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: What is breaking for members lately
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/ErrorReportList'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone BACK_OFFICE is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/security/anomalies':
+    get:
+      operationId: getSecurityAnomalies
+      summary: The anomaly feed
+      tags:
+        - security
+      description: 'Read-only, and the only way to see the pipeline. Counts are held IN MEMORY PER PROCESS: with two C4 servers a threshold is effectively halved per node, so the signals are conservative — the failure direction is a missed alert, never a false one. That is said in the reply itself so a reader comparing against a log knows why the numbers are low rather than concluding the pipeline is broken. The ceiling is `escalate`; nothing here locks, blocks or throttles anybody.'
+      x-zone: BACK_OFFICE
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+      x-permissions:
+        - auditLog:read
+        - analytics:read
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The anomaly feed
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/AnomalyFeed'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone BACK_OFFICE is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/ususu/group/create':
+    post:
+      operationId: postUsusuGroupCreate
+      summary: Open a rotating savings circle
+      tags:
+        - evidence
+      description: 'Coordinators and LRMC only — an ordinary member cannot open a circle on the platform. Always lands in `forming`; a circle created already `active` would be a claim that people have agreed to put money in. The steward is added to their own register from the first second, so "who is in this" and "who is answerable for this" cannot drift apart. `status`, `groupHealth` and any streak are refused by the strict schema: all three are derived from the ledger and none is stored.'
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+      x-permissions:
+        - ususuLedger:create
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/CreateUsusuGroupRequest'
+      responses:
+        '201':
+          description: Open a rotating savings circle
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/UsusuGroup'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/ususu/group/add-member':
+    post:
+      operationId: postUsusuGroupAddMember
+      summary: Add somebody to a circle
+      tags:
+        - evidence
+      description: 'The steward who runs the circle, or LRMC. Not an ordinary member: a circle where anybody can add anybody is one where a disagreement is settled by whoever reaches their phone first. A closed circle refuses — its register is history, and adding somebody to a finished round would credit them with contributions they never made.'
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+      x-permissions:
+        - ususuLedger:create
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/UsusuGroupMemberRequest'
+      responses:
+        '201':
+          description: Add somebody to a circle
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/UsusuGroup'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/ususu/group/remove-member':
+    post:
+      operationId: postUsusuGroupRemoveMember
+      summary: Remove somebody from a circle
+      tags:
+        - evidence
+      description: REMOVING A MEMBER NEVER DELETES THEIR CONTRIBUTIONS. Somebody who paid into a circle for a year and then left has a year of evidence; the register changes and the append-only ledger does not. The steward cannot be removed from their own circle — close it instead, because there is no succession and a circle with no keeper is a register nobody can manage.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+      x-permissions:
+        - ususuLedger:create
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/UsusuGroupMemberRequest'
+      responses:
+        '201':
+          description: Remove somebody from a circle
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/UsusuGroup'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/ususu/group/contribute':
+    post:
+      operationId: postUsusuGroupContribute
+      summary: Record a contribution to a circle
+      tags:
+        - evidence
+      description: 'NOBODY RECORDS THEIR OWN CONTRIBUTION. Same rule as every other kind of evidence: a contribution somebody wrote down about themselves is a claim, not a record, and it is the one claim nobody else can check. Without it the fastest route to a high Ususu score is to open a circle and pay yourself on paper. `period` is required and shaped YYYY-MM — it is what a streak is counted over and what makes a duplicate detectable. A second entry for the same member, circle and period is a 409 for a person to resolve, never silently accepted. Recording the first contribution moves a `forming` circle to `active`.'
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+      x-permissions:
+        - ususuLedger:create
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/UsusuGroupContributionRequest'
+      responses:
+        '201':
+          description: Record a contribution to a circle
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/UsusuEntry'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/ususu/group/miss':
+    post:
+      operationId: postUsusuGroupMiss
+      summary: Record a missed contribution
+      tags:
+        - evidence
+      description: Resets that member's streak, because a streak is consecutive contributions counting back from the latest period and a miss ends the run. Costs the circle 5 points of group health. Same self-recording rule as a contribution — and it matters more here, because a member who could record their own misses could also decline to.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - backOfficeStaff
+        - coordinator
+      x-permissions:
+        - ususuLedger:create
+      x-ownership: none
+      x-audited: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              '$ref': '#/components/schemas/UsusuGroupMissRequest'
+      responses:
+        '201':
+          description: Record a missed contribution
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/UsusuEntry'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '422':
+          description: Request validation failed.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/ususu/group/user/{userId}':
+    get:
+      operationId: getUsusuGroupUserByUserId
+      summary: The circles one person is in
+      tags:
+        - evidence
+      description: A person reads their own; Back Office, HQ and the founder read anyone's. A COORDINATOR READS NOBODY ELSE'S — this is narrower than a coordinator's reach anywhere else on the platform, deliberately. A savings circle is a private financial arrangement between named people, and stewarding one in Serrekunda is no reason to read the register of one in Basse.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - coordinator
+        - vendor
+        - landlord
+        - tenant
+        - airbnbHost
+        - hotelManager
+        - resortManager
+        - rentalCarCompany
+        - driver
+        - rider
+        - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
+      x-permissions: []
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '200':
+          description: The circles one person is in
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/UsusuGroupList'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/ususu/group/{groupId}':
+    get:
+      operationId: getUsusuGroupByGroupId
+      summary: One circle's register
+      tags:
+        - evidence
+      description: The steward, the members, and LRMC. Anybody else is refused rather than answered with an empty object.
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - coordinator
+        - vendor
+        - landlord
+        - tenant
+        - airbnbHost
+        - hotelManager
+        - resortManager
+        - rentalCarCompany
+        - driver
+        - rider
+        - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
+      x-permissions: []
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '200':
+          description: One circle's register
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/UsusuGroup'
+                required:
+                  - success
+                  - data
+        '401':
+          description: Missing, expired or invalid access token.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '403':
+          description: Zone MEMBER_PORTAL is restricted for this role, or the required permission is not held.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/ususu/group/{groupId}/summary':
+    get:
+      operationId: getUsusuGroupByGroupIdSummary
+      summary: A circle's health, streaks and contribution history
+      tags:
+        - evidence
+      description: 'Computed over the whole ledger, never a page — a group health over twenty rows reads as a group health over a history. `groupHealth` is 100 minus five per miss, floored at zero, and is NULL when nobody has contributed yet: a circle formed on Tuesday is not in perfect health and is not in bad health, it has no health to report. Streaks are counted BACKWARDS from the latest period; counting forwards returns the length of somebody''s first good run, so a member who missed once in month seven and has paid for two years since would be reported with a streak of six. Money is grouped by currency and never summed.'
+      x-zone: MEMBER_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - coordinator
+        - vendor
+        - landlord
+        - tenant
+        - airbnbHost
+        - hotelManager
+        - resortManager
+        - rentalCarCompany
+        - driver
+        - rider
+        - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
+      x-permissions: []
+      x-ownership: scoped
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-f\d]{24}$
+          description: Mongo ObjectId.
+      responses:
+        '200':
+          description: A circle's health, streaks and contribution history
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/UsusuGroupSummary'
                 required:
                   - success
                   - data
@@ -19851,6 +23082,7 @@ paths:
       x-roles:
         - founder
         - backOfficeStaff
+        - coordinator
         - landlord
       x-permissions:
         - lease:create

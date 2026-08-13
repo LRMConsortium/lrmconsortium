@@ -164,14 +164,31 @@
     },
 
     signOut: function () {
-      /* Clear locally first. If the network call fails the person is still
-       * signed out on this device, which is the outcome they asked for. */
+      /* Read the tokens BEFORE clearing them.
+       *
+       * This used to clear first and then call `logout()` with no body, on the
+       * reasoning that a failed network call should still leave the person
+       * signed out locally — which is right, and is still how it works below.
+       * But it meant the server was never told *which* session had ended, and
+       * for a while it meant nothing at all: there was no `/auth/logout` route,
+       * the 404 was swallowed by this very `.catch`, and the thirty-day refresh
+       * token stayed valid for anybody holding a copy long after the person
+       * believed they had signed out.
+       *
+       * The refresh token is the thing worth revoking, so it has to survive
+       * long enough to be sent. The access token authenticates the request. */
+      var refresh = memory.refresh || load(REFRESH_KEY);
+      var revoke = global.Lrmc.auth.logout(refresh ? { refreshToken: refresh } : {})
+        .catch(function () { /* best effort — see below */ });
+
+      /* Cleared regardless of what the server says. The person asked to leave;
+       * a network failure must not keep them signed in on this device. */
       memory = { token: null, refresh: null, actor: null };
       store(TOKEN_KEY, null);
       store(REFRESH_KEY, null);
       store(ACTOR_KEY, null);
 
-      return global.Lrmc.auth.logout().catch(function () { /* best effort */ });
+      return revoke;
     },
 
     /** Send an unauthenticated visitor to sign in, remembering where. */

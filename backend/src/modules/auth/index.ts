@@ -24,6 +24,7 @@ import {
   assignRoleSchema,
   changePasswordSchema,
   loginSchema,
+  logoutSchema,
   refreshSchema,
   registerSchema,
 } from './auth.validation.js';
@@ -57,6 +58,33 @@ router.post(
   asyncHandler(async (req, res) => {
     const { refreshToken } = req.body as { refreshToken: string };
     return ok(res, await authService.refresh(refreshToken));
+  }),
+);
+
+/**
+ * Sign out.
+ *
+ * This route was missing. The frontend called it on every sign-out, swallowed
+ * the 404, and cleared local storage — so signing out looked like it worked
+ * while the thirty-day refresh token stayed valid for anybody holding a copy.
+ * `revocation.ts` has the full account.
+ *
+ * `authenticate`, not `authRateLimit`: a person may only end a session they can
+ * prove they hold, and the act is recorded against them. Rate-limiting the way
+ * out of the building is the wrong place for a queue.
+ */
+router.post(
+  '/logout',
+  authenticate,
+  auditTrail('auth'),
+  validate({ body: logoutSchema }),
+  asyncHandler(async (req, res) => {
+    const { refreshToken } = req.body as { refreshToken?: string };
+    const actor = req.actor!;
+    return ok(res, await authService.signOut(
+      { userId: actor.userId, roles: actor.roles as string[] },
+      refreshToken,
+    ));
   }),
 );
 

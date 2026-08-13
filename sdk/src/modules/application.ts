@@ -24,7 +24,7 @@ export const META = {
   assess: { operationId: 'postApplicationByApplicationIdAssess', method: 'POST' as const, pathTemplate: '/application/{applicationId}/assess', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","coordinator"] as Role[], permissions: ["application:update"], ownership: 'scoped' as const, auth: 'required' as const },
   create: { operationId: 'postApplications', method: 'POST' as const, pathTemplate: '/applications', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","tenant"] as Role[], permissions: ["application:create"], ownership: 'none' as const, auth: 'required' as const },
   getById: { operationId: 'getApplicationByApplicationId', method: 'GET' as const, pathTemplate: '/application/{applicationId}', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","coordinator","landlord","tenant"] as Role[], permissions: ["application:readOwn","application:read"], ownership: 'scoped' as const, auth: 'required' as const },
-  lease: { operationId: 'postApplicationByApplicationIdLease', method: 'POST' as const, pathTemplate: '/application/{applicationId}/lease', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","landlord"] as Role[], permissions: ["lease:create"], ownership: 'scoped' as const, auth: 'required' as const },
+  lease: { operationId: 'postApplicationByApplicationIdLease', method: 'POST' as const, pathTemplate: '/application/{applicationId}/lease', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","coordinator","landlord"] as Role[], permissions: ["lease:create"], ownership: 'scoped' as const, auth: 'required' as const },
   list: { operationId: 'getApplications', method: 'GET' as const, pathTemplate: '/applications', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","coordinator","landlord","tenant"] as Role[], permissions: ["application:readOwn","application:read"], ownership: 'scoped' as const, auth: 'required' as const },
   reject: { operationId: 'postApplicationByApplicationIdReject', method: 'POST' as const, pathTemplate: '/application/{applicationId}/reject', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","coordinator"] as Role[], permissions: ["application:approve"], ownership: 'scoped' as const, auth: 'required' as const },
   requestInformation: { operationId: 'postApplicationByApplicationIdRequestInformation', method: 'POST' as const, pathTemplate: '/application/{applicationId}/request-information', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","coordinator"] as Role[], permissions: ["application:update"], ownership: 'scoped' as const, auth: 'required' as const },
@@ -99,7 +99,7 @@ export const application = {
    *
    * `POST /application/{applicationId}/lease`
    * Zone: MEMBER_PORTAL
-   * Roles: founder, backOfficeStaff, landlord
+   * Roles: founder, backOfficeStaff, coordinator, landlord
    * Permission: lease:create
    * Ownership: scoped
    */

@@ -139,17 +139,30 @@ check('and no chrome to drift',
       all('<header' not in sources[s] for s in ('login', 'register')))
 
 print('— placeholders are visible and counted —')
-placeholders = {s: v.count('data-needs-confirming') for s, v in sources.items()}
+# Comments stripped first. Each page's header comment explains its own rules,
+# and the pricing page's says in so many words that its two rental figures were
+# `data-needs-confirming` badges until LRMC decided them. Counting the word
+# anywhere would score that explanation as an unconfirmed value — and the
+# obvious way to make the count right again would be to delete the explanation.
+# Same reason `stage()` in verify-member-portal.py matches CDN scripts by `src`
+# rather than by name.
+markup = {s: re.sub(r'<!--[\s\S]*?-->', '', v) for s, v in sources.items()}
+placeholders = {s: v.count('data-needs-confirming') for s, v in markup.items()}
 total = sum(placeholders.values())
 # A placeholder that is not obviously a placeholder becomes the published
 # answer. Each is a badge on the page, not a comment in the source.
 check('every unconfirmed value is marked in the markup', total > 0)
 print('        ' + ', '.join(f'{s}: {n}' for s, n in placeholders.items() if n))
-check('no page silently invents a figure LRMC has not given us',
-      'management fee to confirm' in sources['pricing'])
-
 print('— published figures match the code —')
 math = (BACKEND / 'src/modules/marketplace/orderMath.ts').read_text()
+# The two rental figures. They were badges until LRMC decided them, and a
+# decided figure is only safe if it is the same figure the ledger charges — a
+# page saying 10% while `ledger.ts` takes 12% is not a typo, it is LRMC taking
+# money it did not say it would take. Read from the code, both directions
+# asserted, so neither the page nor the constant can move alone.
+currencies = (BACKEND / 'src/config/currencies.ts').read_text()
+mgmt = re.search(r'MANAGEMENT_FEE_PERCENT\s*=\s*(\d+)', currencies).group(1)
+ride = re.search(r'RIDE_COMMISSION_PERCENT\s*=\s*(\d+)', currencies).group(1)
 commission = re.search(r'DEFAULT_MARKETPLACE_COMMISSION_PERCENT = (\d+)', math).group(1)
 release = re.search(r'AUTO_RELEASE_DAYS = (\d+)', math).group(1)
 cancel = re.search(r'FREE_CANCELLATION_HOURS = (\d+)', math).group(1)
@@ -162,6 +175,15 @@ check(f'the escrow window is the {release} days the code waits',
       re.search(r'data-auto-release>(.*?)</dd>', pricing, re.S).group(1).find(release + ' days') != -1)
 check(f'and free cancellation is the {cancel} hours the code allows',
       re.search(r'data-free-cancellation>(.*?)</dd>', pricing, re.S).group(1).find(cancel + ' hours') != -1)
+check(f'the published management fee is the {mgmt}% the ledger takes',
+      (re.search(r'data-management-fee>(\d+)%', pricing) or [None, None])[1] == mgmt)
+check(f'and the Ususu share is the {ride}% of each fare the ledger takes',
+      (re.search(r'data-ride-commission>(\d+)%', pricing) or [None, None])[1] == ride)
+# Neither may quietly go back to being a promise. A badge here would mean the
+# builder was re-run against an older `currencies.ts` and the published fee had
+# reverted to "to confirm" without anyone editing the page.
+check('and neither rental figure has reverted to a placeholder',
+      'data-needs-confirming' not in markup['pricing'])
 
 print('— rules that apply to every LRMC page —')
 run_shared_checks(ROOT, check)

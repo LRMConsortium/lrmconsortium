@@ -47,6 +47,8 @@ import { publicPortalModule } from '../modules/publicPortal/index.js';
 import { viewingModule } from '../modules/viewing/index.js';
 import { applicationModule } from '../modules/application/index.js';
 import { evidenceModule } from '../modules/evidence/index.js';
+import { statsModule } from '../modules/stats/index.js';
+import { securityModule } from '../modules/security/index.js';
 
 /**
  * Single mount point for the whole API.
@@ -111,6 +113,8 @@ export const MODULES = [
   viewingModule,
   applicationModule,
   evidenceModule,
+  statsModule,
+  securityModule,
 ] as const;
 
 export function buildApiRouter(): Router {

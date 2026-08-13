@@ -26,7 +26,7 @@
    * Formatted by hand rather than through `Intl.NumberFormat(..., {style:
    * 'currency'})`, and deliberately. Intl renders GMD as "GMD 1,000.00" or
    * "D1,000.00" depending on the browser and the locale data installed — so a
-   * clerk in Banjul and an executive in Accra would see the same figure
+   * clerk in Serrekunda and an executive in Banjul would see the same figure
    * written two different ways, on the same platform, on the same day. The
    * grouping still comes from Intl, which knows where the commas go; only the
    * symbol and the spacing are ours.

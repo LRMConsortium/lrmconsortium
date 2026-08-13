@@ -62,7 +62,7 @@ export const REPORTING_FREQUENCY = ['daily', 'weekly', 'monthly', 'quarterly'];
 // below reference the same lists from several places, and a copy that drifts is
 // a contract that lies.
 export const LEASE_STATUS = [
-  'draft', 'pendingSignature', 'active', 'inArrears', 'expiring', 'ended', 'terminated',
+  'draft', 'pendingSignature', 'active', 'inArrears', 'expiring', 'completed', 'terminated',
 ];
 export const ARREARS_ESCALATION = [
   'none', 'reminder', 'firstNotice', 'finalNotice', 'legalReferral',
@@ -1064,7 +1064,7 @@ const RESOURCES: Record<string, JsonSchema> = {
       daysRemaining: int({ readOnly: true, nullable: true }),
       isInArrears: { ...bool(), readOnly: true },
       status: str({
-        enum: ['draft', 'pendingSignature', 'active', 'inArrears', 'expiring', 'ended', 'terminated'],
+        enum: ['draft', 'pendingSignature', 'active', 'inArrears', 'expiring', 'completed', 'terminated'],
       }),
     },
     required: ['property', 'tenant', 'landlord', 'leaseStart', 'leaseEnd', 'monthlyRent'],
@@ -1293,6 +1293,76 @@ const RESOURCES: Record<string, JsonSchema> = {
   }),
 
   PaymentList: arr(ref('Payment')),
+
+  /**
+   * One person's payment record, summarised.
+   *
+   * `onTimeRate` is nullable and that is load-bearing — see the endpoint's own
+   * notes, and `paymentRules.ts` for why this figure differs from the
+   * `paymentReliability` an assessment shows.
+   */
+  PaymentSummary: {
+    type: 'object',
+    properties: {
+      total: int({ minimum: 0 }),
+      settled: int({ minimum: 0 }),
+      onTime: int({ minimum: 0 }),
+      late: int({ minimum: 0 }),
+      failed: int({ minimum: 0 }),
+      awaiting: int({ minimum: 0, description: 'Raised, not yet settled. Excluded from every rate.' }),
+      onTimeRate: {
+        type: ['number', 'null'], minimum: 0, maximum: 100,
+        description:
+          '(onTime / (onTime + late)) * 100. NULL when nothing has settled — never 0, which would tell somebody on their first day that none of their payments were on time. Not the same as `paymentReliability` in an assessment, which counts missed instalments too.',
+      },
+      settledByCurrency: {
+        type: 'array',
+        description:
+          'One entry per currency, deliberately not summed. There is no exchange rate on this platform, so a single total would not be an amount of anything.',
+        items: {
+          type: 'object',
+          properties: {
+            currency: str({ enum: CURRENCY }),
+            amount: { type: 'number', minimum: 0 },
+            payments: int({ minimum: 0 }),
+          },
+          required: ['currency', 'amount', 'payments'],
+        },
+      },
+      scope: str({
+        enum: ['all', 'recordedByMe'],
+        description: 'Whose rows these totals cover.',
+      }),
+      partial: bool({
+        description:
+          'True when the totals cover only part of the person\'s history — a coordinator seeing their own receipts. Say so on screen; a partial total read as a whole one is worse than no total.',
+      }),
+    },
+    required: ['total', 'settled', 'onTime', 'late', 'onTimeRate', 'settledByCurrency', 'scope', 'partial'],
+  },
+
+  /** One person's maintenance, summarised. Same buckets as `/stats/maintenance`. */
+  MaintenanceSummary: {
+    type: 'object',
+    properties: {
+      total: int({ minimum: 0 }),
+      open: int({ minimum: 0 }),
+      inProgress: int({ minimum: 0 }),
+      completed: int({ minimum: 0 }),
+      stalled: int({ minimum: 0, description: 'On hold or cancelled. Reported so the parts sum to the total.' }),
+      unclassified: int({ minimum: 0, description: 'A status no bucket claims. Should always be 0; visible so it cannot hide.' }),
+      needsEscalation: int({
+        minimum: 0,
+        description:
+          'Computed on every read from the current state, never stored. An unassigned emergency, a breached SLA, or a job parked past 72 hours.',
+      }),
+      averageResolutionHours: {
+        type: ['number', 'null'], minimum: 0,
+        description: 'NULL over nothing resolved — never 0, which would read as an instant turnaround.',
+      },
+    },
+    required: ['total', 'open', 'inProgress', 'completed', 'stalled', 'needsEscalation', 'averageResolutionHours'],
+  },
 
   // ── Notifications ────────────────────────────────────────────────────────
 
@@ -2176,6 +2246,98 @@ const RESOURCES: Record<string, JsonSchema> = {
   // what separates "LRMC looked and found zero" from "LRMC has never looked" —
   // the second is scored as unknown and holds an application at review, and
   // without this field the two are indistinguishable.
+
+  // ── Aggregate statistics ──────────────────────────────────────────────────
+  //
+  // Every rate is nullable on purpose. `(part / 0) * 100` is NaN, and a tile
+  // reading "NaN%" is worse than one reading "—". `null` means there was
+  // nothing to measure, which is a different fact from zero.
+
+  PropertyStats: {
+    type: 'object',
+    properties: {
+      totalProperties: int({ minimum: 0 }),
+      occupied: int({ minimum: 0 }),
+      vacant: int({ minimum: 0 }),
+      unavailable: int({ minimum: 0, description: 'Under maintenance or off-market.' }),
+      unclassified: int({ minimum: 0, description: 'A status no bucket claims. Should be zero.' }),
+      occupancyRate: { type: ['number', 'null'], minimum: 0, maximum: 100,
+        description: 'Of lettable properties. Null when there are none.' },
+    },
+    required: ['totalProperties', 'occupied', 'vacant', 'occupancyRate'],
+  },
+
+  PaymentStats: {
+    type: 'object',
+    properties: {
+      totalPayments: int({ minimum: 0 }),
+      settled: int({ minimum: 0 }),
+      onTime: int({ minimum: 0 }),
+      late: int({ minimum: 0 }),
+      awaiting: int({ minimum: 0 }),
+      failed: int({ minimum: 0 }),
+      reliability: { type: ['number', 'null'], minimum: 0, maximum: 100,
+        description: 'Of settled instalments. Null when none have settled.' },
+      collectionWindowDays: int({ minimum: 1,
+        description: 'The period `collected` covers. Label the figure from this rather than assuming 30.' }),
+      collected: {
+        type: 'array',
+        description:
+          'Money settled inside the window, grouped by currency and deliberately NOT summed into one figure: the ledger carries several currencies and there is no exchange rate on this platform. An empty array means nothing settled in the window.',
+        items: {
+          type: 'object',
+          properties: {
+            currency: str({ enum: CURRENCY }),
+            amount: { type: 'number', minimum: 0 },
+            payments: int({ minimum: 0 }),
+          },
+          required: ['currency', 'amount', 'payments'],
+        },
+      },
+    },
+    required: ['totalPayments', 'onTime', 'late', 'reliability', 'collected', 'collectionWindowDays'],
+  },
+
+  MaintenanceStats: {
+    type: 'object',
+    properties: {
+      totalRequests: int({ minimum: 0 }),
+      openRequests: int({ minimum: 0 }),
+      inProgress: int({ minimum: 0 }),
+      completed: int({ minimum: 0 }),
+      stalled: int({ minimum: 0, description: 'On hold or cancelled.' }),
+      unclassified: int({ minimum: 0 }),
+    },
+    required: ['totalRequests', 'openRequests', 'inProgress', 'completed'],
+  },
+
+  ApplicationStats: {
+    type: 'object',
+    properties: {
+      totalApplications: int({ minimum: 0 }),
+      underReview: int({ minimum: 0 }),
+      approved: int({ minimum: 0 }),
+      declined: int({ minimum: 0 }),
+      withdrawn: int({ minimum: 0 }),
+      unclassified: int({ minimum: 0 }),
+    },
+    required: ['totalApplications', 'underReview', 'approved', 'declined'],
+  },
+
+  UsusuStats: {
+    type: 'object',
+    properties: {
+      totalGroups: int({ minimum: 0,
+        description: 'Savings circles this caller can see. NOT every circle on the platform — a coordinator sees only the ones they steward or belong to.' }),
+      activeGroups: int({ minimum: 0, description: 'Forming, active or paused.' }),
+      totalMembers: int({ minimum: 0,
+        description: 'People with a ledger, not groups — there is no group entity.' }),
+      avgGroupHealth: { type: ['number', 'null'], minimum: 0, maximum: 100 },
+      totalContributions: int({ minimum: 0 }),
+      totalMisses: int({ minimum: 0 }),
+    },
+    required: ['totalMembers', 'avgGroupHealth', 'totalContributions', 'totalMisses'],
+  },
 
   IdentityEvidence: {
     type: 'object',
@@ -3318,6 +3480,353 @@ const RESOURCES: Record<string, JsonSchema> = {
     required: ['refreshToken'],
   },
 
+  /**
+   * Writing down money that changed hands in a room.
+   *
+   * Note what is absent and cannot be supplied: `status` (always succeeded),
+   * `recordedBy` (from the token), `reference` (derived, for idempotency),
+   * `platformFee` and `netAmount` (derived by the model). The schema is strict,
+   * so sending one is a refusal rather than a silent drop.
+   */
+  RecordPaymentRequest: {
+    type: 'object',
+    properties: {
+      payer: oid('The member the money came from, as a USER id. The server joins to their profile.'),
+      subject: oid('The lease the money is against, where there is one.'),
+      subjectKind: str({ enum: ['Lease', 'MaintenanceRequest'] }),
+      kind: str({
+        enum: ['rent', 'deposit'],
+        description: 'Only these two. A payout recorded by hand would mark money as sent that was never sent.',
+      }),
+      method: str({ enum: ['cash', 'mobileMoney', 'bankTransfer'], default: 'cash' }),
+      amount: { type: 'number', exclusiveMinimum: 0, maximum: 500000 },
+      currency: str({ enum: CURRENCY }),
+      paidAt: str({ format: 'date-time', description: 'When the money changed hands, which is not when it was typed in. A future date is refused.' }),
+      notes: str({ maxLength: 2000 }),
+    },
+    required: ['payer', 'kind', 'amount'],
+  },
+
+  /**
+   * Drawing up a tenancy from inside the portal.
+   *
+   * `landlord`, `status`, `totalPaid`, `arrearsAmount` and `reference` are all
+   * absent and cannot be supplied — the schema is strict, so sending one is a
+   * refusal rather than a silent drop.
+   */
+  MemberCreateLeaseRequest: {
+    type: 'object',
+    properties: {
+      property: oid(),
+      tenant: oid('The tenant, as a USER id. The server joins to their profile.'),
+      monthlyRent: { type: 'number', exclusiveMinimum: 0 },
+      currency: str({ enum: CURRENCY }),
+      leaseStart: str({ format: 'date-time' }),
+      leaseEnd: {
+        type: ['string', 'null'], format: 'date-time',
+        description:
+          'OPTIONAL. Absent or null means a month-to-month tenancy, which is ordinary in The Gambia. A required end date would force whoever writes the lease to invent one that then looks like a commitment.',
+      },
+      paymentDayOfMonth: int({ minimum: 1, maximum: 31 }),
+      securityDeposit: { type: 'number', minimum: 0 },
+    },
+    required: ['property', 'tenant', 'monthlyRent', 'leaseStart'],
+  },
+
+  /** Activating or completing. The id, and nothing else to get wrong. */
+  LeaseActionRequest: {
+    type: 'object',
+    properties: { lease: oid() },
+    required: ['lease'],
+  },
+
+  /** Ending a tenancy early. The reason is not optional. */
+  LeaseTerminateRequest: {
+    type: 'object',
+    properties: {
+      lease: oid(),
+      reason: str({
+        minLength: 4, maxLength: 600,
+        description:
+          'Required. The tenant is told, and a terminated lease with no stated reason is a fact about somebody\'s housing that nobody has to defend.',
+      }),
+    },
+    required: ['lease', 'reason'],
+  },
+
+  /* ── Security ──────────────────────────────────────────────────────────── */
+
+  /** What a browser sends. See the endpoint's notes for what it may not send. */
+  ErrorReportRequest: {
+    type: 'object',
+    properties: {
+      kind: str({
+        enum: ['uncaught', 'unhandledRejection', 'frameworkMissing',
+               'networkFailure', 'deadPath', 'assetFailure'],
+        description:
+          '`deadPath` is the one nothing throws for: a control that should do something and does not. It is the most valuable kind here — a member meeting it has no vocabulary to report it.',
+      }),
+      message: str({ minLength: 1, maxLength: 1000 }),
+      source: str({ maxLength: 600, description: 'The script. Code, not data.' }),
+      line: int({ minimum: 0 }),
+      column: int({ minimum: 0 }),
+      stack: str({ maxLength: 4000, description: 'Truncated and redacted before storage.' }),
+      url: str({ maxLength: 2000, description: 'Reduced to a path template server-side. Never stored raw — a query string is where a name goes.' }),
+      control: str({ maxLength: 200, description: 'Which control, for a dead path.' }),
+    },
+    required: ['kind', 'message'],
+  },
+
+  /** Deliberately empty of information. See the endpoint's notes. */
+  ErrorReceipt: {
+    type: 'object',
+    properties: { received: bool() },
+    required: ['received'],
+  },
+
+  ErrorReport: {
+    type: 'object',
+    properties: {
+      id: oid(),
+      kind: str(),
+      severity: str({ enum: ['noise', 'degraded', 'blocking'] }),
+      message: str(),
+      path: str({ description: 'A path template, never a real URL.' }),
+      source: str(),
+      line: int(),
+      stack: str(),
+      control: str(),
+      reportedBy: oid('Null for a fault reported before sign-in.'),
+      summary: str({ description: 'Plain English, computed on read. Never a stack — a coordinator is being asked whether a member is stuck, not to debug.' }),
+      createdAt: str({ format: 'date-time' }),
+      expiresAt: str({ format: 'date-time', description: '90 days. A retention decision, not a storage one.' }),
+    },
+    required: ['id', 'kind', 'severity', 'message', 'path'],
+  },
+
+  ErrorReportList: arr(ref('ErrorReport')),
+
+  AnomalyFeed: {
+    type: 'object',
+    properties: {
+      findings: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            signal: str(),
+            action: str({ enum: ['watch', 'escalate'], description: 'The ceiling is `escalate`. Nothing here blocks or locks.' }),
+            count: int({ minimum: 0 }),
+            windowMinutes: int({ minimum: 1 }),
+            subject: oid(),
+            address: str(),
+            summary: str(),
+          },
+          required: ['signal', 'action', 'count', 'summary'],
+        },
+      },
+      note: str({ description: 'Says that counts are per process, so a reader knows why they look low.' }),
+      reportsPerBrowserPerWindow: int({ minimum: 1 }),
+    },
+    required: ['findings'],
+  },
+
+  /* ── Ususu groups ──────────────────────────────────────────────────────── */
+
+  UsusuGroup: {
+    type: 'object',
+    properties: {
+      id: oid(),
+      name: str({ maxLength: 160 }),
+      createdBy: oid('The coordinator who runs it. Holds the register, not the money.'),
+      members: { type: 'array', items: oid() },
+      status: str({ enum: ['forming', 'active', 'paused', 'closed'] }),
+      contributionAmount: { type: 'number', minimum: 0 },
+      currency: str({ enum: CURRENCY }),
+      region: str(),
+      note: str({ maxLength: 600 }),
+      createdAt: str({ format: 'date-time' }),
+      updatedAt: str({ format: 'date-time' }),
+    },
+    required: ['id', 'name', 'createdBy', 'members', 'status'],
+  },
+
+  UsusuGroupList: arr(ref('UsusuGroup')),
+
+  /**
+   * A circle's ledger, summarised.
+   *
+   * `groupHealth` and `streaks` are computed on every read and never stored —
+   * a stored streak is a number somebody can correct by hand, and it goes stale
+   * the moment a contribution is recorded out of order.
+   */
+  UsusuGroupSummary: {
+    type: 'object',
+    properties: {
+      group: ref('UsusuGroup'),
+      memberCount: int({ minimum: 0 }),
+      contributions: int({ minimum: 0 }),
+      misses: int({ minimum: 0 }),
+      groupHealth: {
+        type: ['number', 'null'], minimum: 0, maximum: 100,
+        description:
+          '100 minus five per miss, floored at zero. NULL when nobody has contributed yet — a circle formed on Tuesday is not in perfect health and is not in bad health.',
+      },
+      streaks: {
+        type: 'object',
+        additionalProperties: int({ minimum: 0 }),
+        description:
+          'Consecutive contributions per member, counted BACKWARDS from the latest period. A member in the circle with no entries gets a real 0.',
+      },
+      contributedByCurrency: {
+        type: 'array',
+        description: 'One entry per currency, never summed. There is no exchange rate on this platform.',
+        items: {
+          type: 'object',
+          properties: {
+            currency: str({ enum: CURRENCY }),
+            amount: { type: 'number', minimum: 0 },
+            entries: int({ minimum: 0 }),
+          },
+          required: ['currency', 'amount', 'entries'],
+        },
+      },
+      hasActivity: bool({ description: 'Whether anything has been recorded at all.' }),
+      entries: {
+        type: 'array',
+        description: 'Oldest first, so a page renders the history in the order it happened.',
+        items: {
+          type: 'object',
+          properties: {
+            member: oid(),
+            kind: str({ enum: ['contribution', 'miss'] }),
+            period: str({ pattern: '^\\d{4}-(0[1-9]|1[0-2])$' }),
+            amount: { type: 'number', minimum: 0 },
+            currency: str({ enum: CURRENCY }),
+          },
+          required: ['member', 'kind', 'period'],
+        },
+      },
+    },
+    required: ['memberCount', 'contributions', 'misses', 'groupHealth', 'streaks', 'hasActivity'],
+  },
+
+  CreateUsusuGroupRequest: {
+    type: 'object',
+    properties: {
+      name: str({ minLength: 2, maxLength: 160 }),
+      members: { type: 'array', maxItems: 50, items: oid() },
+      contributionAmount: { type: 'number', minimum: 0 },
+      currency: str({ enum: CURRENCY }),
+      region: str({ maxLength: 120 }),
+      note: str({ maxLength: 600 }),
+    },
+    required: ['name'],
+  },
+
+  UsusuGroupMemberRequest: {
+    type: 'object',
+    properties: { group: oid(), member: oid() },
+    required: ['group', 'member'],
+  },
+
+  UsusuGroupContributionRequest: {
+    type: 'object',
+    properties: {
+      group: oid(),
+      member: oid(),
+      period: str({
+        pattern: '^\\d{4}-(0[1-9]|1[0-2])$',
+        description: 'YYYY-MM. What a streak is counted over and what makes a duplicate detectable.',
+      }),
+      amount: { type: 'number', minimum: 0 },
+      currency: str({ enum: CURRENCY }),
+      note: str({ maxLength: 600 }),
+    },
+    required: ['group', 'member', 'period', 'amount'],
+  },
+
+  UsusuGroupMissRequest: {
+    type: 'object',
+    properties: {
+      group: oid(),
+      member: oid(),
+      period: str({ pattern: '^\\d{4}-(0[1-9]|1[0-2])$' }),
+      note: str({ maxLength: 600 }),
+    },
+    required: ['group', 'member', 'period'],
+  },
+
+  /** Raising a work order from inside a tenancy. */
+  RaiseMaintenanceRequest: {
+    type: 'object',
+    properties: {
+      property: oid(),
+      title: str({ minLength: 3, maxLength: 240 }),
+      description: str({ maxLength: 5000 }),
+      serviceType: str(),
+      priority: str({
+        enum: ['low', 'normal', 'high', 'emergency'],
+        description: 'How urgent the person reporting it thinks it is. Triage may change it.',
+      }),
+      photosBefore: {
+        type: 'array', maxItems: 8, items: str(),
+        description: 'Storage keys, never URLs. An address a client supplies is an address a client controls.',
+      },
+    },
+    required: ['property', 'title', 'serviceType'],
+  },
+
+  /** Moving a request along. `note` is required for some targets, not all. */
+  UpdateMaintenanceStatusRequest: {
+    type: 'object',
+    properties: {
+      request: oid(),
+      status: str({
+        enum: ['open', 'triaged', 'assigned', 'quoted', 'approved', 'inProgress',
+               'onHold', 'completed', 'verified', 'cancelled'],
+      }),
+      note: str({
+        maxLength: 1000,
+        description:
+          'REQUIRED when cancelling or parking a request, and when sending one back from completed. Whoever raised it is told what happened, and a bare status change reads as an accident.',
+      }),
+    },
+    required: ['request', 'status'],
+  },
+
+  /**
+   * Signing out. `refreshToken` is optional on purpose — see the note on the
+   * endpoint. A sign-out with nothing to revoke still succeeds.
+   */
+  LogoutRequest: {
+    type: 'object',
+    properties: {
+      refreshToken: str({
+        minLength: 10,
+        description:
+          'The session\'s refresh token. Send it: revoking it is what makes signing out mean anything server-side. Omitted, the reply says nothing was revoked.',
+      }),
+    },
+  },
+
+  SignOutOutcome: {
+    type: 'object',
+    properties: {
+      signedOut: bool({
+        description: 'Always true. The local session ends regardless of what could be revoked.',
+      }),
+      refreshRevoked: bool({
+        description:
+          'Whether a refresh token was presented and is now denied. False means any refresh token for this session remains valid until it expires.',
+      }),
+      note: str({
+        description: 'Present when nothing was revoked, explaining why.',
+      }),
+    },
+    required: ['signedOut', 'refreshRevoked'],
+  },
+
   ChangePasswordRequest: {
     type: 'object',
     properties: {
@@ -3918,6 +4427,18 @@ export const REQUEST_SCHEMA_BY_NAME: Record<string, string> = {
   facResetRequestSchema: 'FacResetRequestBody',
   updateCommercialClientSchema: 'CommercialClient',
   refreshSchema: 'RefreshRequest',
+  recordPaymentSchema: 'RecordPaymentRequest',
+  memberCreateLeaseSchema: 'MemberCreateLeaseRequest',
+  createUsusuGroupSchema: 'CreateUsusuGroupRequest',
+  errorReportSchema: 'ErrorReportRequest',
+  groupMemberSchema: 'UsusuGroupMemberRequest',
+  groupContributionSchema: 'UsusuGroupContributionRequest',
+  groupMissSchema: 'UsusuGroupMissRequest',
+  leaseActionSchema: 'LeaseActionRequest',
+  leaseTerminateSchema: 'LeaseTerminateRequest',
+  raiseMaintenanceSchema: 'RaiseMaintenanceRequest',
+  updateMaintenanceStatusSchema: 'UpdateMaintenanceStatusRequest',
+  logoutSchema: 'LogoutRequest',
   changePasswordSchema: 'ChangePasswordRequest',
   assignRoleSchema: 'AssignRolesRequest',
   assignPropertiesSchema: 'AssignPropertiesRequest',

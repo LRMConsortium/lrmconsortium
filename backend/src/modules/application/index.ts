@@ -30,6 +30,8 @@ import { namedIdParam } from '../../shared/moduleFactory.js';
 import { Property } from '../property/property.model.js';
 import { User } from '../../models/User.js';
 import { Payment } from '../payment/payment.model.js';
+import { Lease } from '../lease/lease.model.js';
+import { tenancyEvidenceFrom } from '../lease/leaseLifecycle.js';
 import { Dispute, Reference, UsusuEntry } from '../evidence/evidence.model.js';
 import {
   disputesEvidenceFrom,
@@ -99,7 +101,7 @@ function scopeFor(actor: { userId: string; roles: string[] }): Record<string, un
 async function gatherEvidence(applicant: unknown): Promise<EvidenceBundle> {
   const subject = applicant;
 
-  const [user, references, disputes, ususu, payments] = await Promise.all([
+  const [user, references, disputes, ususu, payments, leases] = await Promise.all([
     User.findById(subject as never).select('isVerified verificationStatus').lean().exec()
       .catch(() => null),
     Reference.find({ subject: subject as never, deletedAt: null }).select('status score').lean().exec()
@@ -110,6 +112,12 @@ async function gatherEvidence(applicant: unknown): Promise<EvidenceBundle> {
       .catch(() => null),
     Payment.find({ payer: subject as never, deletedAt: null }).select('status dueDate paidAt').lean().exec()
       .catch(() => null),
+    /* Tenancy history. `tenant` is the profile the lease points at, and the
+     * applicant is already a profile id here — the same id the other four
+     * gatherers use, so this needs no extra join. */
+    Lease.find({ tenant: subject as never, deletedAt: null })
+      .select('status leaseStart leaseEnd closedAt').lean().exec()
+      .catch(() => null),
   ]);
 
   return withDefaults({
@@ -118,6 +126,11 @@ async function gatherEvidence(applicant: unknown): Promise<EvidenceBundle> {
     disputesEvidence: disputes ? disputesEvidenceFrom(disputes as never) : undefined,
     ususuEvidence: ususu ? ususuEvidenceFrom(ususu as never) : undefined,
     paymentsEvidence: payments ? paymentsEvidenceFrom(payments as never) : undefined,
+    /* `undefined` on a failed lookup, not an empty array. A collection that
+     * could not be reached must reach the scorer as `hasRecord: false` — the
+     * whole point of this function — and `tenancyEvidenceFrom([])` would say
+     * "we looked and found nothing", which is a different and worse claim. */
+    tenancyEvidence: leases ? tenancyEvidenceFrom(leases as never) : undefined,
   });
 }
 

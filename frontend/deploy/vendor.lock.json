@@ -1,0 +1,56 @@
+{
+  "_readme": [
+    "Versions and integrity hashes for the third-party assets LRMC serves itself.",
+    "",
+    "`sha384` is null until `scripts/fetch-vendor-assets.sh` has been run on a",
+    "machine with network access. It is null here rather than absent, and rather",
+    "than a made-up value, because this repository was built in a sandbox with no",
+    "route to unpkg or the npm registry — and a hash invented to make an assertion",
+    "pass is worse than an assertion that says it has not run yet.",
+    "",
+    "`vendor.assertions.ts` reads this file. With a null hash it reports the asset",
+    "as PENDING and the suite says so out loud; with a hash it verifies the bytes",
+    "on disk against it and fails on any mismatch. A tampered or truncated asset",
+    "is the failure that matters, and it is silent without this.",
+    "",
+    "To fill it in:  ./scripts/fetch-vendor-assets.sh"
+  ],
+  "assets": [
+    {
+      "file": "alpine.min.js",
+      "package": "alpinejs",
+      "version": "3.14.1",
+      "url": "https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js",
+      "sha384": null,
+      "bytes": null,
+      "why": "Drives every page's chrome. The pages fall back to the CDN and then to boot.js, but serving it from the same origin removes one DNS lookup, one TLS handshake and one point of failure per page load — which on Gambian mobile data is the difference between a working page and a rail that covers the screen."
+    },
+    {
+      "file": "htmx.min.js",
+      "package": "htmx.org",
+      "version": "1.9.12",
+      "url": "https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js",
+      "sha384": null,
+      "bytes": null,
+      "why": "Panel loading on the HQ and member pages."
+    },
+    {
+      "file": "lucide.min.js",
+      "package": "lucide",
+      "version": "0.446.0",
+      "url": "https://unpkg.com/lucide@0.446.0/dist/umd/lucide.js",
+      "sha384": null,
+      "bytes": null,
+      "why": "Icons. Pinned to a version rather than `latest`, because `latest` in a script is a build that changes under you."
+    },
+    {
+      "file": "tailwind.css",
+      "package": "tailwindcss",
+      "version": "3.4.13",
+      "url": "built",
+      "sha384": null,
+      "bytes": null,
+      "why": "COMPILED, not downloaded. The pages currently load cdn.tailwindcss.com, which ships a JIT compiler to every visitor and generates styles in the browser — around 400KB of JavaScript to produce a few kilobytes of CSS. `bundle.production.sh` runs the real CLI over the page templates and emits only the classes actually used. This is the single largest saving available on a slow connection."
+    }
+  ]
+}

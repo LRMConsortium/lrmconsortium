@@ -9,11 +9,21 @@ import { AdvertiserProfile } from '../advertising/advertiser.model.js';
 import { DriverProfile } from '../driver/driver.model.js';
 import { HotelProfile } from '../hotel/hotel.model.js';
 import { LandlordProfile } from '../landlord/landlord.model.js';
+import { CustomerProfile, MerchantProfile } from '../marketplace/marketplace.model.js';
 import { RentalCarCompanyProfile } from '../rentalCarCompany/rentalCarCompany.model.js';
 import { ResortProfile } from '../resort/resort.model.js';
 import { RiderProfile } from '../rider/rider.model.js';
 import { TenantProfile } from '../tenant/tenant.model.js';
 import { VendorProfile } from '../vendor/vendor.model.js';
+import { RevokedToken } from './revokedToken.model.js';
+import {
+  isRevoked,
+  mayRevoke,
+  revocationExpiry,
+  signOutOutcome,
+  type RevocationReason,
+  type SignOutOutcome,
+} from './revocation.js';
 
 const MAX_FAILED_ATTEMPTS = 8;
 const LOCK_MINUTES = 15;
@@ -177,6 +187,45 @@ const PROFILE_FACTORIES: Partial<Record<Role, ProfileFactory>> = {
       verificationStatus: 'pending',
     }),
   },
+  /* ── Marketplace ──
+   * Both were in `SELF_REGISTERABLE_ROLES` with no factory here, so signing up
+   * as a merchant created a User and no MerchantProfile. Every route that asks
+   * "which merchant is this?" got null, and `/marketplace/overview` read that
+   * as "no scope" and answered with every order on the platform.
+   *
+   * An account and the profile that scopes it must not be able to exist apart.
+   * Both arrive unverified, which is what `listingRules.canPublish` refuses on
+   * — the open door leads to a room they cannot trade in until somebody checks
+   * them, which is the arrangement the registration config already describes. */
+  merchant: {
+    model: MerchantProfile as unknown as Model<Record<string, unknown>>,
+    modelName: 'MerchantProfile',
+    build: (i, userId) => ({
+      tradingName: i.businessName ?? i.fullName,
+      category: 'other',
+      email: i.email,
+      phone: i.phone,
+      WhatsApp: i.WhatsApp,
+      region: i.region,
+      user: userId,
+      status: 'draft',
+      verificationStatus: 'pending',
+    }),
+  },
+  customer: {
+    model: CustomerProfile as unknown as Model<Record<string, unknown>>,
+    modelName: 'CustomerProfile',
+    build: (i, userId) => ({
+      accountName: i.businessName ?? i.fullName,
+      email: i.email,
+      phone: i.phone,
+      WhatsApp: i.WhatsApp,
+      region: i.region,
+      user: userId,
+      status: 'draft',
+      verificationStatus: 'pending',
+    }),
+  },
   rentalCarCompany: {
     model: RentalCarCompanyProfile as unknown as Model<Record<string, unknown>>,
     modelName: 'RentalCarCompanyProfile',
@@ -325,12 +374,70 @@ export async function login(email: string, password: string): Promise<AuthResult
 }
 
 export async function refresh(refreshToken: string): Promise<AuthResult> {
-  const { sub } = verifyRefreshToken(refreshToken);
+  const { sub, jti, exp } = verifyRefreshToken(refreshToken);
+
+  /* A valid signature is not enough. This is the read that makes signing out
+   * mean something: the token below verified correctly and is still within its
+   * thirty days, and it is refused anyway because somebody signed out. */
+  if (jti) {
+    const denied = await RevokedToken.findOne({ jti }).lean().exec();
+    if (isRevoked(denied)) {
+      logger.warn('Refresh refused: token was revoked', { userId: sub, jti });
+      /* Deliberately the same wording as an expired or forged token. Telling a
+       * holder that their token was specifically *revoked* confirms both that
+       * the account exists and that somebody noticed — useful to nobody except
+       * whoever is holding a token they should not have. */
+      throw ApiError.unauthenticated('Invalid or expired refresh token');
+    }
+  }
+
   const user = await User.findOne({ _id: sub, deletedAt: null }).exec();
   if (!user) throw ApiError.unauthenticated('Account no longer exists');
   if (user.status === 'suspended' || user.status === 'archived') {
     throw ApiError.forbidden(`Account is ${user.status}`);
   }
+
+  /* ── Rotation: the presented token dies here ─────────────────────────────
+   * This read the denylist and never wrote to it. The token below stayed valid
+   * for its full thirty days and could be redeemed without limit, while every
+   * redemption minted an additional independent thirty-day token beside it.
+   *
+   * What that cost: sign-out revokes exactly the one `jti` the member presents.
+   * Any session that had refreshed even once therefore could not be ended at
+   * all — the older tokens were never presented and never denied. A stolen
+   * refresh token was a permanent account, and the person it was stolen from
+   * had no way to close it.
+   *
+   * Revoked *before* the replacement is issued, so a failure here means the
+   * caller keeps a working token rather than losing both.
+   *
+   * Not yet done: reuse detection. Presenting an already-revoked token is
+   * refused above and logged, but it does not invalidate the family it came
+   * from — and a second presentation is the signal that a token was copied.
+   * That needs a family id on the claims; it is tracked, not silently absent. */
+  const expiresAt = revocationExpiry(exp);
+  if (jti && expiresAt) {
+    await RevokedToken.updateOne(
+      { jti },
+      {
+        $setOnInsert: {
+          jti,
+          userId: sub,
+          reason: 'rotated' as RevocationReason,
+          revokedBy: sub,
+          expiresAt,
+        },
+      },
+      { upsert: true },
+    ).exec();
+  } else {
+    /* Signed before `jti` existed, or with no expiry to hang the TTL on. There
+     * is nothing to deny and nothing to clean up, so the old token keeps
+     * working until it expires. Logged rather than passed over, because it
+     * means one refresh token on this platform is not single-use. */
+    logger.warn('Refresh could not rotate: token predates session ids', { userId: sub });
+  }
+
   const profileId = user.profileIdFor(user.primaryRole);
   return tokensFor(user, profileId ? String(profileId) : undefined);
 }
@@ -371,5 +478,78 @@ export async function assignRoles(
   return user;
 }
 
-export const authService = { register, login, refresh, changePassword, assignRoles };
+/**
+ * Sign out.
+ *
+ * See `revocation.ts` for why this exists and what it can and cannot do. The
+ * short version: the refresh token stops working now, the access token expires
+ * on its own schedule, and the reply says which of those happened rather than
+ * implying more than was done.
+ *
+ * Never throws for a token it cannot revoke. A person pressing sign-out has
+ * asked to leave; refusing them because the token they presented was already
+ * expired would strand them on a page they are trying to get off, and the
+ * outcome they wanted — no session on this device — happens in the browser
+ * regardless.
+ */
+export async function signOut(
+  actor: { userId: string; roles: string[] },
+  refreshToken?: string | null,
+  reason: RevocationReason = 'signOut',
+): Promise<SignOutOutcome> {
+  if (!refreshToken) return signOutOutcome(false);
+
+  let claims: { sub: string; jti: string | null; exp: number | null };
+  try {
+    claims = verifyRefreshToken(refreshToken);
+  } catch {
+    /* An unverifiable token is nothing to revoke, and it is also not worth an
+     * error: it may simply have expired while the page was open. */
+    logger.info('Sign-out presented an unusable refresh token', { userId: actor.userId });
+    return signOutOutcome(false);
+  }
+
+  /* A member holding somebody else's refresh token must not be able to end
+   * their session — that would be a denial of service wearing a courtesy's
+   * clothes. Staff may, and it is recorded as administrative rather than as
+   * the owner signing out. */
+  if (!mayRevoke(actor, claims.sub)) {
+    logger.warn('Sign-out refused: token belongs to another account', {
+      actorId: actor.userId, tokenSubject: claims.sub,
+    });
+    return signOutOutcome(false);
+  }
+
+  const expiresAt = revocationExpiry(claims.exp);
+  if (!claims.jti || !expiresAt) {
+    /* Signed before `jti` existed, or with no expiry claim. There is no id to
+     * deny and nothing to hang a TTL on; writing a row would either be a
+     * denial nobody holds or a row that never gets cleaned up. */
+    logger.warn('Sign-out could not revoke: token predates session ids', {
+      userId: actor.userId,
+    });
+    return signOutOutcome(false);
+  }
+
+  await RevokedToken.updateOne(
+    { jti: claims.jti },
+    {
+      $setOnInsert: {
+        jti: claims.jti,
+        userId: claims.sub,
+        reason: actor.userId === claims.sub ? reason : 'administrative',
+        revokedBy: actor.userId,
+        expiresAt,
+      },
+    },
+    { upsert: true },
+  ).exec();
+
+  logger.info('Signed out', { userId: claims.sub, by: actor.userId, jti: claims.jti });
+  return signOutOutcome(true);
+}
+
+export const authService = {
+  register, login, refresh, changePassword, assignRoles, signOut,
+};
 export { PROFILE_FACTORIES };

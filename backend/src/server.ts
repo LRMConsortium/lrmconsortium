@@ -1,6 +1,6 @@
 import type { Server } from 'node:http';
 import { createApp } from './app.js';
-import { connectDatabase, disconnectDatabase } from './config/database.js';
+import { assertIndexesBuilt, connectDatabase, disconnectDatabase } from './config/database.js';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 
@@ -8,6 +8,13 @@ let server: Server | null = null;
 
 async function start(): Promise<void> {
   await connectDatabase();
+
+  /* Production builds no indexes at boot — correctly, since two servers should
+   * not race to create them and `syncIndexes` also *drops* ones no longer
+   * declared. But nothing called the migration either, so production ran with
+   * no index beyond `_id` and every uniqueness guard in the codebase was inert.
+   * This only looks, and refuses to serve traffic if the migration was missed. */
+  if (env.isProduction) await assertIndexesBuilt();
 
   const app = createApp();
   const instance: Server = app.listen(env.PORT, () => {

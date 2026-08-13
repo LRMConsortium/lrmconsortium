@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<!--
+ ═══════════════════════════════════════════════════════════════════════════
+ LEGACY RENTAL MANAGEMENT CONSORTIUM (LRMC)
+ MEMBER PORTAL — OVERVIEW
+
+ Zone D (MEMBER_PORTAL). The landing page for everyone who is not HQ: a
+ landlord with a portfolio, a tenant with a home, a coordinator with a region.
+
+ ── One page, three readings ─────────────────────────────────────────────
+ Not three pages. The same account can hold more than one role — a coordinator
+ who also lets a property is ordinary — and three separate landing pages would
+ mean choosing one to send them to and hiding the rest behind navigation they
+ have to know exists.
+
+ So the page resolves a *reading* from the roles on the token and shows the
+ tiles that reading has anything to say about. The reading is a presentation
+ decision and nothing else:
+
+   1. `?as=landlord|tenant|coordinator` from the URL, for a person who holds
+      several and wants a particular one.
+   2. Otherwise the widest reading their roles permit, in the order
+      coordinator → landlord → tenant, because that is the order of how much
+      of the institution the person is responsible for.
+   3. **Clamped to what the roles allow.** `?as=coordinator` in a tenant's
+      address bar gives them the tenant reading. Not because it would be
+      unsafe otherwise — every endpoint is gated again server-side — but
+      because the coordinator reading would be a screen of empty tiles and
+      403s, which tells them nothing and looks broken.
+
+ ── Every number comes from an aggregate endpoint ────────────────────────
+ GET /stats/properties · /stats/payments · /stats/maintenance ·
+     /stats/applications · /stats/ususu
+
+ None of these tiles counts a list. That distinction is the whole reason the
+ endpoints exist: counting `rows.length` from a paginated call is right up to
+ the page size and then quietly wrong, and wrong in the flattering direction —
+ the figure stays plausible, it is just too small. Each endpoint runs one
+ aggregation over the whole collection and scopes it from the token, so a
+ landlord gets their portfolio, a coordinator their region, and nobody gets a
+ parameter they could widen.
+
+ The browser does no arithmetic on this page. It formats what it is given.
+
+ ── `—` is a real state, distinct from zero ──────────────────────────────
+ The endpoints return `null` for a rate with nothing to divide by. That renders
+ as `—`, never as `0%`. A landlord on their first day reading "0% occupancy"
+ reasonably concludes something is broken; reading `—` and "no properties yet"
+ concludes correctly that they have not added one.
+
+ ── Money is never summed across currencies ──────────────────────────────
+ `/stats/payments` returns `collected` as one entry per currency. There is no
+ exchange rate anywhere in this platform, so adding dalasi to dollars would
+ produce a figure that is not an amount of anything — while looking entirely
+ ordinary on a tile. The tile shows the launch currency and says how many other
+ currencies exist rather than folding them in.
+
+ ── Loading is per tile ──────────────────────────────────────────────────
+ The shell paints immediately; each group of tiles fills itself. One slow
+ endpoint delays one row rather than the page, which matters far more on a
+ Gambian mobile connection than on an office line. Every group has three
+ states — loading, loaded, unavailable — and the third is written out, because
+ a card rendering nothing looks broken while a card saying so looks finished.
+ ═══════════════════════════════════════════════════════════════════════════
+-->
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Overview · Legacy Rental Management Consortium</title>
+  <meta name="description" content="Your LRMC portal — properties, rent, maintenance and applications at a glance." />
+  <!-- Zone D is behind a session, so it is never indexed; the canonical is
+       here so a shared link resolves to one address rather than to whichever
+       `?as=` the sharer happened to be reading. -->
+  <link rel="canonical" href="https://lrmconsortium.com/members/index.html" />
+  <meta name="robots" content="noindex, nofollow" />
+
+  <link rel="icon" href="/assets/img/lrmc-favicon.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/assets/img/lrmc-apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: {
+      colors: {
+        /* LRMC branding-locked palette */
+        lrmc: { blue:'#1E3A8A', gold:'#D4AF37', slate:'#334155' },
+        blue: { 100:'#DBEAFE', 300:'#93C5FD', 500:'#3B82F6', 600:'#2563EB', 700:'#1D4ED8', 800:'#1E3A8A', 900:'#172554' },
+        slate:{ 50:'#F8FAFC', 100:'#F1F5F9', 200:'#E2E8F0', 300:'#CBD5E1', 400:'#94A3B8', 500:'#64748B', 700:'#334155', 800:'#1E293B', 900:'#0F172A' },
+        emerald:{ 50:'#ECFDF5', 100:'#D1FAE5', 500:'#10B981', 600:'#059669', 700:'#047857' },
+        amber:{ 50:'#FFFBEB', 100:'#FEF3C7', 500:'#F59E0B', 600:'#D97706', 700:'#B45309' },
+        rose:{ 50:'#FFF1F2', 100:'#FFE4E6', 600:'#E11D48', 700:'#BE123C' },
+        gold: { 100:'#FBF6E5', 500:'#D4AF37', 700:'#8A6D1C' },
+      },
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+    } } };
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/theme.css" />
+  <link rel="stylesheet" href="/assets/css/utilities.css" />
+
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <!-- First, and not deferred. This is the file that has to work on the
+       connection where the CDN did not — see its header. -->
+  <script src="/assets/js/boot.js"></script>
+  <script src="/assets/js/sdk.js" defer></script>
+  <script src="/assets/js/auth.js" defer></script>
+  <script src="/assets/js/ui.js" defer></script>
+  <script src="/assets/js/properties.js" defer></script>
+  <script src="/assets/js/portal.js" defer></script>
+  <!-- Watches for the four faults that throw and the one that does not:
+       a control that should do something and does not. See its header. -->
+  <script src="/assets/js/error-capture.js" defer></script>
+  <!-- Self-hosted first, CDN second. `deploy/vendor-assets.sh` fetches the
+       local copy; a machine that has never run it falls through to unpkg, and
+       a machine that cannot reach unpkg either falls through to boot.js. -->
+  <script src="/assets/vendor/alpine.min.js" defer
+          onerror="this.remove();var s=document.createElement('script');s.src='https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js';s.defer=true;document.head.appendChild(s);"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+
+  <style>[x-cloak] { display: none !important; }</style>
+</head>
+
+<body class="h-full antialiased" data-zone="MEMBER_PORTAL" x-data="lrmcShell">
+
+<a href="#lrmc-main" class="lrmc-skip-link">Skip to main content</a>
+
+<div class="flex h-full">
+
+  <!-- ═══ SIDEBAR ═════════════════════════════════════════════════════════
+       Shared chrome with members/properties.html: same rail, same order, same
+       active-state convention. A member moving between the two pages should
+       not have to re-find anything.
+  -->
+  <aside
+    class="fixed lg:static inset-y-0 left-0 z-40 w-[260px] bg-blue-800 border-r border-slate-200
+           flex flex-col transition-transform duration-200 lg:translate-x-0"
+    :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
+    :aria-hidden="(!sidebarOpen && window.innerWidth < 1024).toString()">
+
+    <div class="h-16 flex items-center gap-3 px-5 border-b border-slate-200 flex-shrink-0">
+      <img src="/assets/img/lrmc-mark.png" alt="" class="w-9 h-9 flex-shrink-0 object-contain" />
+      <div class="min-w-0">
+        <p class="text-sm font-extrabold text-gold-500 leading-tight tracking-wide">LRMC</p>
+        <p class="text-[10px] text-slate-400 leading-tight truncate">Legacy Rental Management Consortium</p>
+      </div>
+    </div>
+
+    <nav class="flex-1 overflow-y-auto px-3 py-4" aria-label="Main">
+      <p class="lrmc-nav-section">Your portal</p>
+      <a href="/members/index.html" class="lrmc-nav-item active" aria-current="page">
+        <i data-lucide="layout-dashboard" class="w-[18px] h-[18px]"></i><span>Overview</span>
+      </a>
+      <a href="/members/properties.html" class="lrmc-nav-item">
+        <i data-lucide="home" class="w-[18px] h-[18px]"></i><span>Properties</span>
+      </a>
+      <a href="/members/payments.html" class="lrmc-nav-item">
+        <i data-lucide="banknote" class="w-[18px] h-[18px]"></i><span>Payments</span>
+      </a>
+      <a href="/members/maintenance.html" class="lrmc-nav-item">
+        <i data-lucide="wrench" class="w-[18px] h-[18px]"></i><span>Maintenance</span>
+      </a>
+      <a href="/members/leases.html" class="lrmc-nav-item">
+        <i data-lucide="file-text" class="w-[18px] h-[18px]"></i><span>Leases</span>
+      </a>
+      <a href="/members/ususu.html" class="lrmc-nav-item">
+        <i data-lucide="users" class="w-[18px] h-[18px]"></i><span>Ususu</span>
+      </a>
+      <a href="/members/applications.html" class="lrmc-nav-item">
+        <i data-lucide="clipboard-list" class="w-[18px] h-[18px]"></i><span>Applications</span>
+      </a>
+      <a href="/members/dashboard.html" class="lrmc-nav-item">
+        <i data-lucide="bar-chart-3" class="w-[18px] h-[18px]"></i><span>Performance</span>
+      </a>
+    </nav>
+
+    <div class="border-t border-slate-200 p-3 flex-shrink-0">
+      <div class="flex items-center gap-3 px-2 py-2">
+        <div class="w-8 h-8 rounded-full bg-gold-100 flex items-center justify-center flex-shrink-0">
+          <i data-lucide="user" class="w-4 h-4 text-gold-500"></i>
+        </div>
+        <div class="min-w-0 flex-1">
+          <p id="lrmc-actor-name" class="text-xs font-semibold text-slate-800 truncate">—</p>
+          <p id="lrmc-actor-role" class="text-[10px] font-bold text-gold-500 tracking-wider uppercase truncate">—</p>
+        </div>
+        <button type="button" id="sign-out"
+                class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm !min-h-0 !p-1.5" aria-label="Sign out">
+          <i data-lucide="log-out" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <div x-show="sidebarOpen" x-cloak @click="close()"
+       class="lrmc-scrim fixed inset-0 bg-slate-900/50 z-30 lg:hidden" aria-hidden="true"></div>
+
+  <!-- ═══ MAIN COLUMN ═════════════════════════════════════════════════════ -->
+  <div class="flex-1 flex flex-col min-w-0">
+
+    <!-- The toggle is wrapped in a plain span. A display utility written
+         directly onto an `lrmc-*` class silently loses: same specificity, and
+         utilities.css loads after Tailwind — so `lg:hidden` on
+         `.lrmc-btn` left this button visible on every desktop. -->
+    <header class="h-16 bg-white border-b border-slate-200 flex items-center gap-4
+                   px-4 lg:px-6 flex-shrink-0 sticky top-0 z-20">
+      <span class="lg:hidden"><button type="button" @click="toggle()"
+              class="lrmc-btn lrmc-btn-ghost !min-h-0 !p-2" aria-label="Toggle navigation">
+        <i data-lucide="menu" class="w-5 h-5"></i>
+      </button></span>
+
+      <div class="min-w-0 flex-1">
+        <h1 class="text-base font-bold text-slate-900 truncate">Overview</h1>
+        <p id="reading-caption" class="text-xs text-slate-500 truncate">—</p>
+      </div>
+
+      <a href="/members/properties.html" class="lrmc-btn lrmc-btn-primary lrmc-btn-sm">
+        <i data-lucide="search" class="w-4 h-4"></i>
+        <span class="hidden sm:inline">Properties</span>
+      </a>
+    </header>
+
+    <main id="lrmc-main" class="flex-1 overflow-y-auto p-4 lg:p-6">
+
+      <!-- Only visible when Alpine never arrived. A person whose page is half
+           working should be told, not left wondering why a button does nothing. -->
+      <p class="lrmc-fallback-note lrmc-card border-amber-500 bg-amber-50 text-sm
+                text-amber-700 mb-6" role="status">
+        Some of this page could not load. Everything here still works, but menus
+        and pop-ups may not open. Reloading on a better connection will fix it.
+      </p>
+
+
+      <!-- ── Reading switch ───────────────────────────────────────────────
+           Rendered only when the roles permit more than one, so it is never a
+           switch into a surface that would answer 403 to everything.
+      -->
+      <div id="reading-switch" hidden class="mb-6" role="tablist"
+           aria-label="Which of your roles to show">
+        <div class="inline-flex gap-1 p-1 bg-slate-100 rounded-xl">
+          <button type="button" id="as-coordinator" role="tab" hidden
+                  class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm" aria-selected="false">Region</button>
+          <button type="button" id="as-landlord" role="tab" hidden
+                  class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm" aria-selected="false">Portfolio</button>
+          <button type="button" id="as-tenant" role="tab" hidden
+                  class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm" aria-selected="false">My home</button>
+        </div>
+      </div>
+
+      <p id="reading-resolving" class="text-sm text-slate-500 mb-6">Loading your portal…</p>
+
+      <!-- ── Headline tiles ───────────────────────────────────────────────
+           Which tiles appear depends on the reading; the group is one grid so
+           an empty reading is never a page of gaps.
+      -->
+      <section aria-labelledby="headline-heading" class="mb-8">
+        <h2 id="headline-heading" class="text-lg font-bold text-slate-900 mb-4">At a glance</h2>
+        <div id="headline-tiles"
+             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+      </section>
+
+      <!-- ── Rent and collections ────────────────────────────────────────── -->
+      <section id="money-section" aria-labelledby="money-heading" class="mb-8" hidden>
+        <h2 id="money-heading" class="text-lg font-bold text-slate-900 mb-4">Rent through LRMC</h2>
+        <div id="money-tiles"
+             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+      </section>
+
+      <!-- ── Applications and maintenance ────────────────────────────────── -->
+      <section id="work-section" aria-labelledby="work-heading" class="mb-8" hidden>
+        <h2 id="work-heading" class="text-lg font-bold text-slate-900 mb-4">Work in hand</h2>
+        <div id="work-tiles"
+             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+      </section>
+
+      <!-- ── Ususu ───────────────────────────────────────────────────────── -->
+      <section id="ususu-section" aria-labelledby="ususu-heading" class="mb-8" hidden>
+        <h2 id="ususu-heading" class="text-lg font-bold text-slate-900 mb-4">Ususu contributions</h2>
+        <div id="ususu-tiles"
+             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+        <!-- Said plainly because the alternative is a member assuming an Ususu
+             record is required to be housed. It is not, and the scoring engine
+             is built so that it cannot become so. -->
+        <p class="text-xs text-slate-700 mt-3 max-w-2xl">
+          Ususu contributions count in your favour on a tenancy application. Having
+          none never counts against you — an application with no Ususu record is
+          held for a person to look at, not declined.
+        </p>
+      </section>
+
+      <!-- ── Where to go next ────────────────────────────────────────────── -->
+      <section aria-labelledby="next-heading">
+        <h2 id="next-heading" class="text-lg font-bold text-slate-900 mb-4">Next</h2>
+        <div id="next-links" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<div id="lrmc-toast" class="fixed bottom-4 right-4 z-50" aria-live="polite" aria-atomic="true"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+ * MEMBER OVERVIEW
+ *
+ * Everything below either resolves the reading or formats an endpoint's reply.
+ * There is no arithmetic on a collection anywhere in this file, and there is no
+ * request that takes a scope parameter — both are asserted by
+ * `verify-members-index.py`.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+var READING = null;
+
+/* The three readings, as data. Each names which sections it has anything to say
+ * about, so adding one is a row here rather than a branch in four functions. */
+var READINGS = {
+  coordinator: {
+    label: 'Region',
+    caption: 'Properties, applications and maintenance across your region',
+    sections: ['money', 'work'],
+  },
+  landlord: {
+    label: 'Portfolio',
+    caption: 'Your properties, your rent and your applicants',
+    sections: ['money', 'work'],
+  },
+  tenant: {
+    label: 'My home',
+    caption: 'Your tenancy, your payments and your applications',
+    sections: ['money', 'work', 'ususu'],
+  },
+};
+
+/* Widest first. A person who is both a coordinator and a landlord lands on the
+ * regional reading, because that is the larger responsibility and the one they
+ * are more likely to have opened the page for. */
+var READING_ORDER = ['coordinator', 'landlord', 'tenant'];
+
+/**
+ * Which readings this person's roles support.
+ *
+ * Grants, not role names. `LrmcAuth.can` reads what the token actually carries,
+ * so a role gaining or losing a permission changes this without an edit here —
+ * and the permission names are the same strings the backend gates on.
+ */
+function availableReadings() {
+  var out = [];
+  if (LrmcAuth.can('analytics:read') || LrmcAuth.can('property:read')
+      || LrmcAuth.can('vendor:update')) {
+    out.push('coordinator');
+  }
+  if (LrmcAuth.can('property:create') || LrmcAuth.can('property:updateOwn')) {
+    out.push('landlord');
+  }
+  /* Anybody with a session has a tenant reading: they can search for a home
+   * and they have their own payments and applications. It is the floor. */
+  out.push('tenant');
+  return out;
+}
+
+function resolveReading(requested, available) {
+  if (requested && available.indexOf(requested) !== -1) return requested;
+  for (var i = 0; i < READING_ORDER.length; i += 1) {
+    if (available.indexOf(READING_ORDER[i]) !== -1) return READING_ORDER[i];
+  }
+  return 'tenant';
+}
+
+function applyReading(reading) {
+  READING = reading;
+  var spec = READINGS[reading];
+
+  document.getElementById('reading-resolving').hidden = true;
+  document.getElementById('reading-caption').textContent = spec.caption;
+
+  ['money', 'work', 'ususu'].forEach(function (name) {
+    document.getElementById(name + '-section').hidden =
+      spec.sections.indexOf(name) === -1;
+  });
+
+  READING_ORDER.forEach(function (r) {
+    var btn = document.getElementById('as-' + r);
+    if (!btn || btn.hidden) return;
+    btn.setAttribute('aria-selected', String(r === reading));
+    btn.classList.toggle('lrmc-btn-primary', r === reading);
+    btn.classList.toggle('lrmc-btn-ghost', r !== reading);
+  });
+
+  /* The address bar reflects what is on screen, so a reload or a shared link
+   * lands on the same reading. `replaceState`, not `pushState`: switching a
+   * reading is not a navigation and should not need three Backs to undo. */
+  var params = new URLSearchParams(location.search);
+  params.set('as', reading);
+  history.replaceState(null, '', '?' + params.toString());
+
+  loadHeadline();
+  if (spec.sections.indexOf('money') !== -1) loadMoney();
+  if (spec.sections.indexOf('work') !== -1) loadWork();
+  if (spec.sections.indexOf('ususu') !== -1) loadUsusu();
+  renderNext();
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Tiles
+ *
+ * `value === null` is a distinct state from `'0'` and renders `—`. Every
+ * caller passes null deliberately: either the endpoint returned null for a
+ * rate it could not compute, or the request failed.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+function tile(label, value, meta) {
+  var unknown = value === null || value === undefined;
+  return '<div class="lrmc-card">' +
+    '<p class="lrmc-stat-label">' + LrmcUI.esc(label) + '</p>' +
+    '<p class="lrmc-stat-value">' + (unknown ? '—' : LrmcUI.esc(value)) + '</p>' +
+    '<p class="lrmc-stat-meta">' +
+      LrmcUI.esc(unknown ? 'Not available yet' : (meta || '')) + '</p>' +
+    '</div>';
+}
+
+function skeletons(box, count) {
+  var out = '';
+  for (var i = 0; i < count; i += 1) {
+    out += '<div class="lrmc-card"><div class="lrmc-skeleton h-4 w-1/2 mb-3"></div>' +
+      '<div class="lrmc-skeleton h-7 w-2/3"></div></div>';
+  }
+  box.innerHTML = out;
+}
+
+function paint(box, html) {
+  box.innerHTML = html;
+  if (window.lucide) window.lucide.createIcons();
+}
+
+/**
+ * A percentage the server may not have been able to compute.
+ *
+ * `/stats/*` returns `null` rather than `0` when there is nothing to divide by.
+ * Passing that straight to `LrmcUI.percent` would print `0.0%`; this keeps null
+ * as null so `tile` renders `—`.
+ */
+function pct(value) {
+  if (value === null || value === undefined) return null;
+  return LrmcUI.percent(value, 1);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Headline
+ * ──────────────────────────────────────────────────────────────────────── */
+
+function loadHeadline() {
+  var box = document.getElementById('headline-tiles');
+  skeletons(box, 4);
+
+  /* One endpoint failing costs one tile, not the row. */
+  Promise.all([
+    Lrmc.stats.properties().catch(function () { return null; }),
+    Lrmc.stats.applications().catch(function () { return null; }),
+    Lrmc.stats.maintenance().catch(function () { return null; }),
+  ]).then(function (r) {
+    var props = r[0], apps = r[1], maint = r[2];
+
+    paint(box,
+      tile('Properties', props ? String(props.totalProperties) : null,
+           props ? props.occupied + ' occupied, ' + props.vacant + ' vacant' : '') +
+      tile('Occupancy', props ? pct(props.occupancyRate) : null,
+           'Of lettable properties') +
+      tile(READING === 'tenant' ? 'My applications' : 'Applications',
+           apps ? String(apps.totalApplications) : null,
+           apps ? apps.underReview + ' under review' : '') +
+      tile('Maintenance', maint ? String(maint.openRequests + maint.inProgress) : null,
+           maint ? maint.completed + ' completed' : ''));
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Money
+ * ──────────────────────────────────────────────────────────────────────── */
+
+function loadMoney() {
+  var box = document.getElementById('money-tiles');
+  skeletons(box, 4);
+
+  Lrmc.stats.payments().catch(function () { return null; }).then(function (pay) {
+    paint(box,
+      tile(collectedLabel(pay), collectedValue(pay), collectedMeta(pay)) +
+      tile('Paid on time', pay ? pct(pay.reliability) : null,
+           pay ? pay.onTime + ' of ' + pay.settled + ' settled' : '') +
+      tile('Awaiting payment', pay ? String(pay.awaiting) : null,
+           'Raised, not yet settled') +
+      tile('Failed', pay ? String(pay.failed) : null,
+           'Attempted and refused'));
+  });
+}
+
+/* The window comes from the reply. A tile hard-coding "30 days" over a figure
+ * the server computed across ninety is a small lie that survives for years. */
+function collectedLabel(pay) {
+  var days = pay && pay.collectionWindowDays;
+  return 'Collected, ' + (days ? days + ' days' : 'recently');
+}
+
+/**
+ * The launch currency's figure, and only that.
+ *
+ * `collected` is one row per currency because there is no exchange rate on this
+ * platform. Adding them would produce a number that is not an amount of
+ * anything while looking completely ordinary, so the tile shows one currency
+ * and `collectedMeta` says how many others exist.
+ */
+function collectedValue(pay) {
+  if (!pay || !Array.isArray(pay.collected)) return null;
+  if (!pay.collected.length) return LrmcUI.moneyWhole(0, 'GMD');
+  var launch = pay.collected.filter(function (c) { return c.currency === 'GMD'; })[0];
+  var first = launch || pay.collected[0];
+  return LrmcUI.moneyWhole(first.amount, first.currency);
+}
+
+function collectedMeta(pay) {
+  if (!pay || !Array.isArray(pay.collected)) return '';
+  if (!pay.collected.length) return 'Nothing settled in this period';
+  var others = pay.collected.length - 1;
+  return others > 0
+    ? 'Plus ' + others + ' other ' + (others === 1 ? 'currency' : 'currencies')
+    : 'Settled through LRMC';
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Work in hand
+ * ──────────────────────────────────────────────────────────────────────── */
+
+function loadWork() {
+  var box = document.getElementById('work-tiles');
+  skeletons(box, 4);
+
+  Promise.all([
+    Lrmc.stats.applications().catch(function () { return null; }),
+    Lrmc.stats.maintenance().catch(function () { return null; }),
+  ]).then(function (r) {
+    var apps = r[0], maint = r[1];
+
+    paint(box,
+      tile('Under review', apps ? String(apps.underReview) : null,
+           'Waiting on a decision') +
+      tile('Approved', apps ? String(apps.approved) : null,
+           apps ? apps.declined + ' declined' : '') +
+      tile('Open jobs', maint ? String(maint.openRequests) : null,
+           maint ? maint.inProgress + ' in progress' : '') +
+      /* Reported rather than hidden, so the parts add up to the total. A
+         dashboard whose numbers do not reconcile is one nobody trusts twice. */
+      tile('Stalled', maint ? String(maint.stalled) : null,
+           'On hold or cancelled'));
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Ususu
+ * ──────────────────────────────────────────────────────────────────────── */
+
+function loadUsusu() {
+  var box = document.getElementById('ususu-tiles');
+  skeletons(box, 3);
+
+  Lrmc.stats.ususu().catch(function () { return null; }).then(function (u) {
+    paint(box,
+      tile('Contributions', u ? String(u.totalContributions) : null,
+           u ? u.totalMisses + ' missed' : '') +
+      /* `avgGroupHealth` is null over an empty ledger, which is the honest
+         answer for somebody who has never contributed — not 0, which reads
+         like a bad record rather than no record. */
+      tile('Group health', u ? pct(u.avgGroupHealth) : null,
+           'Across your contributions') +
+      tile('Members', u ? String(u.totalMembers) : null,
+           'With a contribution record'));
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Next
+ *
+ * Which links appear follows the reading, and each is a real page. A tile
+ * pointing at something unbuilt would be worse than no tile.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+var NEXT_LINKS = {
+  coordinator: [
+    ['/members/properties.html?mode=list', 'clipboard-list', 'Applications queue',
+     'Assess and decide on tenancy applications'],
+    ['/members/properties.html?mode=find', 'search', 'Find a property',
+     'Search everything LRMC manages'],
+  ],
+  landlord: [
+    ['/members/properties.html?mode=list', 'home', 'My portfolio',
+     'Add a property, review applicants, see performance'],
+    ['/members/properties.html?mode=find', 'search', 'Browse listings',
+     'See what else LRMC has on the market'],
+  ],
+  tenant: [
+    ['/members/properties.html?mode=find', 'search', 'Find a home',
+     'Search homes managed by LRMC and request a viewing'],
+    ['/members/properties.html?mode=find', 'file-text', 'My applications',
+     'Where each of your applications stands'],
+  ],
+};
+
+function renderNext() {
+  var links = NEXT_LINKS[READING] || NEXT_LINKS.tenant;
+  paint(document.getElementById('next-links'), links.map(function (l) {
+    /* The anchor is a plain wrapper and `lrmc-card` sits on the div inside it.
+     * Writing `block` onto `.lrmc-card` to make the anchor fill its cell would
+     * lose silently: the utility and the component class have the same
+     * specificity and utilities.css loads after Tailwind, so the component
+     * wins and the anchor stays inline. `lrmc_checks.py` sweeps the tree for
+     * exactly this because it cost a phone menu button that showed on every
+     * desktop. */
+    return '<a href="' + LrmcUI.esc(l[0]) + '" class="no-underline">' +
+      '<div class="lrmc-card h-full hover:border-blue-300 transition-colors">' +
+      '<div class="flex items-start gap-3">' +
+        '<span class="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center ' +
+          'flex-shrink-0"><i data-lucide="' + LrmcUI.esc(l[1]) +
+          '" class="w-[18px] h-[18px] text-blue-800"></i></span>' +
+        '<span class="min-w-0">' +
+          '<span class="block text-sm font-semibold text-slate-900">' + LrmcUI.esc(l[2]) + '</span>' +
+          '<span class="block text-xs text-slate-700 mt-0.5">' + LrmcUI.esc(l[3]) + '</span>' +
+        '</span>' +
+      '</div></div></a>';
+  }).join(''));
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Boot
+ * ──────────────────────────────────────────────────────────────────────── */
+
+document.addEventListener('DOMContentLoaded', function () {
+  /* Zone D. An unauthenticated visitor is sent to sign in, remembering where
+   * they were, and nothing below runs. */
+  if (!LrmcAuth.requireSession('/public/login.html')) return;
+
+  var actor = LrmcAuth.actor();
+  if (actor) {
+    document.getElementById('lrmc-actor-name').textContent = actor.fullName || '—';
+    document.getElementById('lrmc-actor-role').textContent = actor.primaryRole || '—';
+  }
+
+  document.getElementById('sign-out').addEventListener('click', function () {
+    LrmcAuth.signOut().then(function () {
+      location.replace('/public/login.html');
+    });
+  });
+
+  var available = availableReadings();
+  if (available.length > 1) {
+    document.getElementById('reading-switch').hidden = false;
+    available.forEach(function (r) {
+      var btn = document.getElementById('as-' + r);
+      if (!btn) return;
+      btn.hidden = false;
+      btn.addEventListener('click', function () { applyReading(r); });
+    });
+  }
+
+  applyReading(resolveReading(new URLSearchParams(location.search).get('as'), available));
+
+  if (window.lucide) window.lucide.createIcons();
+});
+</script>
+</body>
+</html>

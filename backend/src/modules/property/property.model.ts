@@ -8,6 +8,10 @@ import {
   type LocationShape,
   type TimestampShape,
 } from '../../shared/schemaFragments.js';
+import { OCCUPANCY_STATUSES, type OccupancyStatus } from '../../config/lifecycles.js';
+
+export { OCCUPANCY_STATUSES };
+export type { OccupancyStatus };
 
 export const PROPERTY_TYPES = [
   'singleFamily',
@@ -55,7 +59,7 @@ export interface IProperty extends LocationShape, LifecycleShape, TimestampShape
   rentAmount?: number;
   rentCurrency: string;
   rentPeriod: 'monthly' | 'nightly' | 'yearly';
-  occupancyStatus: 'vacant' | 'occupied' | 'maintenance' | 'offMarket';
+  occupancyStatus: OccupancyStatus;
   listedPublicly: boolean;
   lastInspectionAt?: Date;
   nextInspectionDue?: Date;
@@ -88,7 +92,7 @@ const propertySchema = new Schema<IProperty>(
 
     occupancyStatus: {
       type: String,
-      enum: ['vacant', 'occupied', 'maintenance', 'offMarket'],
+      enum: OCCUPANCY_STATUSES,
       default: 'vacant',
       index: true,
     },

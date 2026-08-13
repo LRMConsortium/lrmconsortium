@@ -27,6 +27,7 @@ import {
   validateDocumentFields,
   type DocumentType,
   type FieldBag,
+  type ReviewDesk,
 } from './documentRules.js';
 import {
   ACTION_FOR_STATUS,
@@ -785,11 +786,16 @@ memberRouter.get(
   validate({ query: documentQuery }),
   asyncHandler(async (req, res) => {
     const now = new Date();
-    const filters: Record<string, unknown> = { owner: req.actor!.userId };
+    /* Ownership through the server door, the caller's narrowing through the
+     * client one. `owner` happens to be an allowlisted field, so this worked —
+     * but it worked by coincidence, and the coincidence is what made the same
+     * pattern a data leak in three other modules. */
+    const filters: Record<string, unknown> = {};
     if (req.query.type) filters.type = req.query.type;
     if (req.query.status) filters.status = req.query.status;
 
     const { items, meta } = await documentService.list({
+      serverFilters: { owner: req.actor!.userId },
       filters,
       limit: Number(req.query.limit ?? 25),
       page: Number(req.query.page ?? 1),
@@ -827,14 +833,31 @@ staffRouter.get(
       return actor.roles.includes('backOfficeStaff');
     });
 
-    const filters: Record<string, unknown> = {
-      status: { $in: ['submitted', 'underReview'] },
-      desk: { $in: [...new Set(desks)] },
-    };
-    if (req.query.desk) filters.desk = req.query.desk;
+    const allowedDesks = [...new Set(desks)];
+
+    /* ── The desk allowlist is narrowed, never replaced ────────────────────
+     * This read `if (req.query.desk) filters.desk = req.query.desk` — computing
+     * the reviewer's own desks and then overwriting that restriction with
+     * whatever the caller asked for on the next line. A reviewer on the
+     * identity desk could read the finance desk's queue by adding `?desk=`.
+     *
+     * A caller may narrow to one of *their* desks. Asking for somebody else's
+     * is refused rather than quietly narrowed to nothing: an empty queue reads
+     * as "no work waiting", which is a different and more misleading answer
+     * than "that is not your desk". */
+    const requestedDesk = req.query.desk as ReviewDesk | undefined;
+    if (requestedDesk && !allowedDesks.includes(requestedDesk)) {
+      throw ApiError.forbidden('That is not one of your review desks');
+    }
+
+    const filters: Record<string, unknown> = {};
     if (req.query.type) filters.type = req.query.type;
 
     const { items, meta } = await documentService.list({
+      serverFilters: {
+        status: { $in: ['submitted', 'underReview'] },
+        desk: { $in: requestedDesk ? [requestedDesk] : allowedDesks },
+      },
       filters,
       sort: 'submittedAt',
       limit: Number(req.query.limit ?? 25),
@@ -856,13 +879,21 @@ hqRouter.get(
     if (req.query.type) filters.type = req.query.type;
     if (req.query.status) filters.status = req.query.status;
     if (req.query.desk) filters.desk = req.query.desk;
+
+    /* `expiresOn` is not an allowlisted client field — correctly, since this
+     * range is computed here rather than sent. Passed as a client filter it was
+     * dropped, and `?expiringWithinDays=30` quietly answered with every
+     * document rather than the expiring ones: an executive asking what lapses
+     * this month was told "all of it", which reads as "nothing is urgent". */
+    const serverFilters: Record<string, unknown> = {};
     if (req.query.expiringWithinDays !== undefined) {
       const horizon = new Date(Date.now() + Number(req.query.expiringWithinDays) * 86_400_000);
-      filters.expiresOn = { $ne: null, $lte: horizon };
+      serverFilters.expiresOn = { $ne: null, $lte: horizon };
     }
 
     const { items, meta } = await documentService.list({
       filters,
+      ...(Object.keys(serverFilters).length > 0 ? { serverFilters } : {}),
       limit: Number(req.query.limit ?? 25),
       page: Number(req.query.page ?? 1),
     });

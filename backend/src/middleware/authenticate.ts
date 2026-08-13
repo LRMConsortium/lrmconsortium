@@ -1,5 +1,6 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'node:crypto';
 import { env } from '../config/env.js';
 import {
   actionsForRoles,
@@ -31,20 +32,52 @@ export function signAccessToken(claims: AccessTokenClaims): string {
   } as jwt.SignOptions);
 }
 
+/**
+ * A refresh token, with an id of its own.
+ *
+ * The `jti` is what makes signing out possible. Without one there is nothing to
+ * write down: a stateless thirty-day token can only be revoked by revoking
+ * every token the user holds, which logs them out of devices they never
+ * touched. With one, `POST /auth/logout` denies exactly this session.
+ *
+ * `randomUUID` from `node:crypto`, never `Math.random` — a guessable id would
+ * let somebody deny another person's session by writing down ids until one
+ * matched.
+ */
 export function signRefreshToken(userId: string): string {
-  return jwt.sign({ sub: userId, typ: 'refresh' }, env.jwtRefreshSecret, {
+  return jwt.sign({ sub: userId, typ: 'refresh', jti: randomUUID() }, env.jwtRefreshSecret, {
     expiresIn: env.JWT_REFRESH_EXPIRES_IN,
     issuer: 'lrmc',
   } as jwt.SignOptions);
 }
 
-export function verifyRefreshToken(token: string): { sub: string } {
+/**
+ * Verify the signature and shape. **Does not check revocation** — that needs a
+ * database read, so it lives in `auth.service.refresh`, which has one.
+ *
+ * `exp` rides along because a revocation is stored with the token's own expiry;
+ * see `revocation.revocationExpiry`.
+ */
+export function verifyRefreshToken(token: string): {
+  sub: string;
+  jti: string | null;
+  exp: number | null;
+} {
   try {
     const payload = jwt.verify(token, env.jwtRefreshSecret, { issuer: 'lrmc' });
     if (typeof payload === 'string' || (payload as jwt.JwtPayload).typ !== 'refresh') {
       throw ApiError.unauthenticated('Invalid refresh token');
     }
-    return { sub: String((payload as jwt.JwtPayload).sub) };
+    const claims = payload as jwt.JwtPayload;
+    return {
+      sub: String(claims.sub),
+      /* Tokens signed before `jti` existed have none. They cannot be revoked
+       * individually; they expire on their original schedule. Returning null
+       * rather than inventing an id keeps that visible to the caller instead of
+       * silently writing a denial for a token nobody holds. */
+      jti: typeof claims.jti === 'string' && claims.jti ? claims.jti : null,
+      exp: typeof claims.exp === 'number' ? claims.exp : null,
+    };
   } catch {
     throw ApiError.unauthenticated('Invalid or expired refresh token');
   }

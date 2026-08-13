@@ -20,14 +20,11 @@ export const PAYMENT_KINDS = [
   'refund',
 ] as const;
 
-export const PAYMENT_STATUSES = [
-  'pending',
-  'processing',
-  'succeeded',
-  'failed',
-  'refunded',
-  'cancelled',
-] as const;
+/* The vocabulary is canonical in config/lifecycles.ts, which is Mongoose-free
+ * and so can be asserted against without a database. Re-exported here because
+ * callers reasonably look for a collection's statuses next to its schema. */
+import { PAYMENT_STATUSES } from '../../config/lifecycles.js';
+export { PAYMENT_STATUSES };
 
 /**
  * One ledger for every movement of money on the platform — rent, ride fares,
@@ -61,6 +58,17 @@ export interface IPayment extends Omit<LifecycleShape, 'status'>, TimestampShape
 
   providerReference?: string;
   providerName?: string;
+  /**
+   * Who wrote this row down by hand, if anybody did.
+   *
+   * Absent on a payment the platform generated — a rent instalment from the
+   * lease schedule, a fare from a completed ride. Present, and permanent, on a
+   * receipt a coordinator entered for cash taken in a compound. A hand-written
+   * money record with no named author is not evidence of anything, and this is
+   * also what lets a coordinator read back what they recorded without being
+   * given the rest of somebody's finances.
+   */
+  recordedBy?: Types.ObjectId;
   paidAt?: Date;
   failureReason?: string;
   receiptUrl?: string;
@@ -90,6 +98,7 @@ const paymentSchema = new Schema<IPayment>(
     /** Never logged, never returned — it identifies the payment instrument. */
     providerReference: { type: String, trim: true, select: false },
     providerName: { type: String, trim: true },
+    recordedBy: { type: Schema.Types.ObjectId, index: true },
     paidAt: { type: Date, index: true },
     failureReason: { type: String, trim: true },
     receiptUrl: { type: String, trim: true },

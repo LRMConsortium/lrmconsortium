@@ -168,6 +168,9 @@ const hqExecutive = define({
     'publicMetrics:read',
     'lease:read',
     'payment:read',
+    /* Writing down cash taken in person. Distinct from `payment:create`, which
+     * is starting a transfer — see the note on the `record` action. */
+    'payment:record',
     'commercialClient:read',
     'maintenanceRequest:read',
     'ride:read',
@@ -267,6 +270,7 @@ const backOfficeStaff = define({
     'lease:update',
     'payment:read',
     'payment:create',
+    'payment:record',
     'commercialClient:create',
     'commercialClient:read',
     'commercialClient:update',
@@ -348,7 +352,17 @@ const coordinator = define({
     'rentPayment:read',
     'rentPayment:create',
     'lease:read',
+    /* Terminating a tenancy — the one lifecycle act a landlord may not do,
+     * because LRMC carries the tenancy and answers for the outcome. */
+    'lease:update',
+    'lease:create',
     'payment:readOwn',
+    /* The reason `POST /payments/record` exists. A coordinator collects rent in
+     * a compound from a tenant with no card; without this the receipt cannot be
+     * written and the tenant's payment evidence stays empty. Deliberately NOT
+     * `payment:create` — see the note on the `record` action for why the two
+     * are different powers. */
+    'payment:record',
     'notification:readOwn',
     'document:create',
     'document:read',
@@ -434,6 +448,11 @@ const landlord = define({
     'vendorProfile:read',
     'lease:readOwn',
     'lease:create',
+    /* Activating and completing their own tenancies. NOT terminating — ending
+     * one early is LRMC's decision, and `leaseLifecycle.TRANSITIONS_BY_PARTY`
+     * is where that is enforced. The grant opens the route; the table decides
+     * which of the three acts a landlord may actually perform. */
+    'lease:updateOwn',
     'payment:readOwn',
     'notification:readOwn',
     'document:create',

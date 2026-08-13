@@ -1063,6 +1063,19 @@ marketplaceRouter.get(
     const merchant = await merchantFor(actor.userId);
     const customer = merchant ? null : await customerFor(actor.userId);
 
+    /* ── Refuse, do not fall through ──────────────────────────────────────
+     * This built `{ deletedAt: null }` and then answered with it — the whole
+     * platform's order book, aggregated, plus ten orders in full, to anybody
+     * holding `marketplace:read` and no marketplace account. `GET /orders`
+     * three hundred lines up gets this right; this one did not.
+     *
+     * It was not a hypothetical caller either: `merchant` and `customer` are
+     * self-registerable, and `PROFILE_FACTORIES` built no profile for either,
+     * so every self-registered marketplace account landed here permanently. */
+    if (!merchant && !customer) {
+      throw ApiError.forbidden('You have no marketplace account');
+    }
+
     const scope: Record<string, unknown> = { deletedAt: null };
     if (merchant) scope.merchant = merchant._id;
     else if (customer) scope.customer = customer._id;

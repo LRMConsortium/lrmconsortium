@@ -58,6 +58,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Properties · Legacy Rental Management Consortium</title>
 
+  <!-- Zone D is behind a session and never indexed. The canonical is here
+       so a shared link resolves to one address rather than to whichever
+       `?mode=` the sharer happened to be reading. -->
+  <link rel="canonical" href="https://lrmconsortium.com/members/properties.html" />
+  <meta name="robots" content="noindex, nofollow" />
+
   <link rel="icon" href="/assets/img/lrmc-favicon.png" type="image/png" />
   <link rel="apple-touch-icon" href="/assets/img/lrmc-apple-touch-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -85,11 +91,22 @@
   <link rel="stylesheet" href="/assets/css/utilities.css" />
 
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <!-- First, and not deferred. This is the file that has to work on the
+       connection where the CDN did not — see its header. -->
+  <script src="/assets/js/boot.js"></script>
   <script src="/assets/js/sdk.js" defer></script>
   <script src="/assets/js/auth.js" defer></script>
   <script src="/assets/js/ui.js" defer></script>
   <script src="/assets/js/properties.js" defer></script>
-  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="/assets/js/portal.js" defer></script>
+  <!-- Watches for the four faults that throw and the one that does not:
+       a control that should do something and does not. See its header. -->
+  <script src="/assets/js/error-capture.js" defer></script>
+  <!-- Self-hosted first, CDN second. `deploy/vendor-assets.sh` fetches the
+       local copy; a machine that has never run it falls through to unpkg, and
+       a machine that cannot reach unpkg either falls through to boot.js. -->
+  <script src="/assets/vendor/alpine.min.js" defer
+          onerror="this.remove();var s=document.createElement('script');s.src='https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js';s.defer=true;document.head.appendChild(s);"></script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
 
   <style>[x-cloak] { display: none !important; }</style>
@@ -124,11 +141,23 @@
       <a href="/members/properties.html" class="lrmc-nav-item active" aria-current="page">
         <i data-lucide="home" class="w-[18px] h-[18px]"></i><span>Properties</span>
       </a>
+      <a href="/members/payments.html" class="lrmc-nav-item">
+        <i data-lucide="banknote" class="w-[18px] h-[18px]"></i><span>Payments</span>
+      </a>
+      <a href="/members/maintenance.html" class="lrmc-nav-item">
+        <i data-lucide="wrench" class="w-[18px] h-[18px]"></i><span>Maintenance</span>
+      </a>
       <a href="/members/leases.html" class="lrmc-nav-item">
         <i data-lucide="file-text" class="w-[18px] h-[18px]"></i><span>Leases</span>
       </a>
-      <a href="/members/payments.html" class="lrmc-nav-item">
-        <i data-lucide="banknote" class="w-[18px] h-[18px]"></i><span>Payments</span>
+      <a href="/members/ususu.html" class="lrmc-nav-item">
+        <i data-lucide="users" class="w-[18px] h-[18px]"></i><span>Ususu</span>
+      </a>
+      <a href="/members/applications.html" class="lrmc-nav-item">
+        <i data-lucide="clipboard-list" class="w-[18px] h-[18px]"></i><span>Applications</span>
+      </a>
+      <a href="/members/dashboard.html" class="lrmc-nav-item">
+        <i data-lucide="bar-chart-3" class="w-[18px] h-[18px]"></i><span>Performance</span>
       </a>
     </nav>
 
@@ -150,7 +179,7 @@
   </aside>
 
   <div x-show="sidebarOpen" x-cloak @click="close()"
-       class="fixed inset-0 bg-slate-900/50 z-30 lg:hidden" aria-hidden="true"></div>
+       class="lrmc-scrim fixed inset-0 bg-slate-900/50 z-30 lg:hidden" aria-hidden="true"></div>
 
   <!-- ═══ MAIN COLUMN ═════════════════════════════════════════════════════ -->
   <div class="flex-1 flex flex-col min-w-0">
@@ -1010,10 +1039,27 @@ function loadLandlordViewings() {
 /**
  * Performance.
  *
- * Counted from records the server returned, never estimated. A figure LRMC
- * cannot compute yet says so instead of showing a plausible zero — an
- * occupancy rate of 0% and an occupancy rate LRMC has not measured look
- * identical on a tile, and only one of them is a reason to worry.
+ * ── Why these are aggregate endpoints and not list calls ─────────────────
+ * This function used to fetch `properties.list({ limit: 100 })`, count the
+ * `occupied` ones in the browser, and divide. That is correct for a landlord
+ * with ten properties and wrong for one with two hundred — and wrong in the
+ * direction nobody reports: the occupancy percentage stays entirely plausible,
+ * it is just computed over the first hundred rows. The same applied to the
+ * maintenance count and to the rent figure, which summed a page of the ledger.
+ *
+ * `/stats/*` runs one aggregation over the whole collection, scoped server-side
+ * from the token. The browser does no arithmetic here at all now; it formats.
+ *
+ * ── A figure LRMC has not measured says so ───────────────────────────────
+ * The endpoints return `null` for a rate with nothing to divide, and this
+ * renders `—`. An occupancy rate of 0% and an occupancy rate nobody could
+ * compute look identical on a tile, and only one of them is a reason to worry.
+ *
+ * ── Money is per currency ────────────────────────────────────────────────
+ * `collected` is an array, one entry per currency, because the ledger holds
+ * several and there is no exchange rate on this platform. The tile shows the
+ * launch currency's figure and says how many others there are rather than
+ * adding dalasi to dollars and presenting the result as an amount.
  */
 function loadPerformance() {
   var box = document.getElementById('performance');
@@ -1022,44 +1068,57 @@ function loadPerformance() {
       '<div class="lrmc-skeleton h-7 w-2/3"></div></div>';
   }).join('');
 
+  /* One endpoint failing must cost one tile, not the row. Each catch resolves
+   * to null and the tile renders `—`. */
   Promise.all([
-    Lrmc.properties.list({ limit: 100 }).catch(function () { return null; }),
-    Lrmc.request('/landlord/me/payments').catch(function () { return null; }),
-    Lrmc.maintenance.list({ limit: 100 }).catch(function () { return null; }),
+    Lrmc.stats.properties().catch(function () { return null; }),
+    Lrmc.stats.payments().catch(function () { return null; }),
+    Lrmc.stats.maintenance().catch(function () { return null; }),
   ]).then(function (r) {
-    var props = rowsOf(r[0]);
-    var payments = rowsOf(r[1]);
-    var jobs = rowsOf(r[2]);
-
-    var occupied = props.filter(function (p) { return p.occupancyStatus === 'occupied'; }).length;
-    var occupancy = props.length
-      ? Math.round((occupied / props.length) * 100) + '%'
-      : null;
-
-    var since = Date.now() - 30 * 86400000;
-    var income = payments === null ? null : payments
-      .filter(function (p) { return p.status === 'paid' && p.paidAt && Date.parse(p.paidAt) >= since; })
-      .reduce(function (sum, p) { return sum + (Number(p.amount) || 0); }, 0);
-
-    var openJobs = jobs === null ? null : jobs.filter(function (j) {
-      return ['open', 'assigned', 'inProgress', 'scheduled'].indexOf(j.status) !== -1;
-    }).length;
+    var props = r[0];
+    var pay = r[1];
+    var maint = r[2];
 
     box.innerHTML =
-      tile('Properties', props.length === 0 && r[0] === null ? null : String(props.length),
-           props.length ? occupied + ' occupied' : 'None yet') +
-      tile('Occupancy', occupancy, occupancy === null ? 'No properties to measure' : 'Of your portfolio') +
-      tile('Collected, 30 days', income === null ? null : LrmcUI.moneyWhole(income),
-           'Rent received through LRMC') +
-      tile('Open maintenance', openJobs === null ? null : String(openJobs),
-           'Jobs not yet closed');
+      tile('Properties',
+           props ? String(props.totalProperties) : null,
+           props ? props.occupied + ' occupied, ' + props.vacant + ' vacant' : '') +
+      tile('Occupancy',
+           props && props.occupancyRate !== null && props.occupancyRate !== undefined
+             ? LrmcUI.percent(props.occupancyRate, 1) : null,
+           'Of lettable properties') +
+      tile(collectedLabel(pay), collectedValue(pay), collectedMeta(pay)) +
+      tile('Open maintenance',
+           maint ? String(maint.openRequests + maint.inProgress) : null,
+           maint ? maint.stalled + ' stalled' : '');
     if (window.lucide) window.lucide.createIcons();
   });
 }
 
-function rowsOf(res) {
-  if (res === null || res === undefined) return null;
-  return Array.isArray(res) ? res : (res.data || []);
+/* The window comes from the reply, so the label cannot claim thirty days over
+ * a figure computed across ninety. */
+function collectedLabel(pay) {
+  var days = pay && pay.collectionWindowDays;
+  return 'Collected, ' + (days ? days + ' days' : 'recently');
+}
+
+function collectedValue(pay) {
+  if (!pay || !Array.isArray(pay.collected)) return null;
+  if (!pay.collected.length) return LrmcUI.moneyWhole(0, 'GMD');
+  var launch = pay.collected.filter(function (c) { return c.currency === 'GMD'; })[0];
+  var first = launch || pay.collected[0];
+  return LrmcUI.moneyWhole(first.amount, first.currency);
+}
+
+function collectedMeta(pay) {
+  if (!pay || !Array.isArray(pay.collected)) return '';
+  if (!pay.collected.length) return 'Nothing settled in this period';
+  /* Never summed across currencies — said out loud instead, so the number on
+   * the tile is not mistaken for the whole. */
+  var others = pay.collected.length - 1;
+  return others > 0
+    ? 'Plus ' + others + ' other ' + (others === 1 ? 'currency' : 'currencies')
+    : 'Settled through LRMC';
 }
 
 /* A tile with no value says so. `—` and `0` are different statements. */

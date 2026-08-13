@@ -14,6 +14,11 @@ coverage/
 .env.*
 !.env.example
 
+# Python bytecode from the frontend verification suites. `lrmc_checks.pyc`
+# was tracked and turning up as a modification on every run.
+__pycache__/
+*.pyc
+
 # Logs and editor noise
 *.log
 npm-debug.log*

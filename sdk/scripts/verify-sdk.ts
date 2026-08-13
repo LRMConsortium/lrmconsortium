@@ -503,6 +503,79 @@ async function main(): Promise<void> {
     readFileSync(resolve(process.cwd(), '../backend/docs/openapi.json'), 'utf8'),
   ) as { paths: Record<string, Record<string, { operationId: string }>> };
 
+  /* Every module, not just the ones with an expected-method list.
+   *
+   * This guard was written to catch `list2`, and it did — but it only ran
+   * inside the OPERATIONAL_SURFACE loop, so `evidence.get2` shipped anyway. A
+   * check that covers most of a surface is a check that will be believed about
+   * all of it. */
+  for (const [moduleName, mod] of Object.entries(api as Record<string, Record<string, unknown>>)) {
+    for (const k of Object.keys(mod).filter((n) => typeof mod[n] === 'function')) {
+      check(`${moduleName}.${k}: is not a deduped name`, !/\d$/.test(k),
+        'two operations collided; add a NAME_OVERRIDES entry');
+    }
+  }
+
+  /* ── Method-name and endpoint-name sweeps, over the whole surface ────────
+   *
+   * The deduped-name guard was widened last week and immediately found
+   * `evidence.get2` and `marketplace.get` — a *list* endpoint called `get` —
+   * both of which had shipped because the original guard only ran over modules
+   * with an expected-method list. These two are the same idea applied to the
+   * other two things a generator can get quietly wrong.
+   * ─────────────────────────────────────────────────────────────────────── */
+  {
+    const surface = api as Record<string, Record<string, unknown>>;
+
+    /* Names a caller cannot reason about at the call site. `get(id)` on a
+     * module could be a list or an item; `data()` could be anything. These are
+     * not style preferences — they are the names that made `marketplace.get`
+     * survive review, because nobody reading it knew which one it was. */
+    const VAGUE = new Set(['get', 'do', 'run', 'data', 'fetch', 'call', 'post', 'go', 'item']);
+    for (const [moduleName, mod] of Object.entries(surface)) {
+      for (const fn of Object.keys(mod).filter((k) => typeof mod[k] === 'function')) {
+        check(`${moduleName}.${fn}: is not a vague name`, !VAGUE.has(fn),
+          'a caller cannot tell what this returns from the call site');
+        check(`${moduleName}.${fn}: starts lower-case`, /^[a-z]/.test(fn));
+        check(`${moduleName}.${fn}: is not snake_case`, !fn.includes('_'));
+      }
+    }
+
+    /* A `list`-named method must actually list, and a `getById` must take an
+     * id. `marketplace.get` was `GET /orders` — a list — and the name said
+     * nothing. This catches the shape rather than the word. */
+    for (const [moduleName] of Object.entries(surface)) {
+      let meta: Record<string, { method: string; pathTemplate: string }>;
+      try {
+        meta = ((await import(`../src/modules/${moduleName}.js`)) as {
+          META: Record<string, { method: string; pathTemplate: string }>;
+        }).META;
+      } catch { continue; }
+
+      for (const [fn, m] of Object.entries(meta)) {
+        if (!m) continue;
+        const takesId = m.pathTemplate.includes('{');
+        if (fn === 'list' || fn.startsWith('listFor')) {
+          check(`${moduleName}.${fn}: a list method is a GET`, m.method === 'GET');
+        }
+        if (fn === 'getById') {
+          check(`${moduleName}.getById: addresses a single record`, takesId,
+            `${m.pathTemplate} takes no id, so this is a list wearing an item's name`);
+        }
+        if (fn === 'create') {
+          check(`${moduleName}.create: is a POST`, m.method === 'POST');
+        }
+        /* An endpoint path and its method name should not contradict each
+         * other. A `read`/`get` name on a POST is the shape that hides a
+         * mutation behind a name that reads as safe. */
+        if (/^(read|get|list|summary|recent)/.test(fn)) {
+          check(`${moduleName}.${fn}: a reading name is a GET`, m.method === 'GET',
+            `${m.method} ${m.pathTemplate} — a mutation must not be named like a read`);
+        }
+      }
+    }
+  }
+
   const specOps = new Set<string>();
   for (const [path, methods] of Object.entries(spec.paths)) {
     for (const method of Object.keys(methods)) specOps.add(`${method.toUpperCase()} ${path}`);
@@ -523,6 +596,13 @@ async function main(): Promise<void> {
     // References, disputes and the Ususu ledger are one surface: they are the
     // same shape of record and they are read together by the scoring engine.
     'evidence',
+    // Aggregates. Separate from the collections they count because the reply is
+    // a different kind of thing — a number the database produced, scoped to the
+    // caller's token, rather than a page of documents.
+    'stats',
+    // Fault reports in, anomalies out. Nothing on this surface can act against
+    // a member — see errorCollector.ts.
+    'security',
   ];
   for (const name of EXPECTED_MODULES) {
     check(`module ${name} exists`, name in api, `missing from the api surface`);
@@ -607,16 +687,29 @@ async function main(): Promise<void> {
     leases: [
       'list', 'create', 'getById', 'update', 'recordPayment', 'schedule',
       'runRentReminders', 'mineAsTenant', 'mineAsLandlord',
+      // The member-portal surface: drawing one up, the three lifecycle acts,
+      // and the two reads.
+      'draftForMember', 'activate', 'complete', 'terminate',
+      'listForUser', 'listForProperty',
     ],
     maintenanceRequests: [
       'list', 'create', 'getById', 'update', 'assignVendor', 'sla', 'runSlaEscalation',
       'myQueue', 'historyForProperty',
+      // The member-portal surface: raising one from inside a tenancy, moving it
+      // along, and one person's list and summary.
+      'request', 'updateStatus', 'listForUser', 'summaryForUser',
     ],
     rides: [
       'list', 'request', 'getById', 'update', 'accept', 'start', 'complete', 'cancel',
       'matches', 'dispatchQueue', 'mineAsDriver', 'mineAsRider',
     ],
-    payments: ['list', 'getById', 'mineAsTenant', 'mineAsLandlord', 'mineAsDriver', 'mineAsAdvertiser'],
+    payments: [
+      'list', 'getById', 'mineAsTenant', 'mineAsLandlord', 'mineAsDriver', 'mineAsAdvertiser',
+      // One person's ledger, one person's summary, and the ledger's single
+      // write route — a receipt for cash taken in a room. See the note on the
+      // `record` action in config/permissions.ts.
+      'history', 'summary', 'record',
+    ],
     notifications: ['registerToken', 'inbox', 'sendTest', 'broadcast', 'mark'],
     commercialClients: [
       'list', 'create', 'getById', 'update', 'properties', 'fleet', 'ads', 'analytics',
@@ -643,6 +736,17 @@ async function main(): Promise<void> {
       actual.length,
       methods.length,
     );
+    /* A name ending in a digit is the deduper's fingerprint: two operations
+     * wanted the same method name and one silently became `list2`. That is not
+     * a broken build — the compiler is perfectly happy — but a caller writing
+     * `list2()` cannot tell from the call site which of the two they picked, or
+     * that there was a choice. Fix it with a NAME_OVERRIDES entry naming what
+     * the operation actually does. */
+    for (const k of actual) {
+      check(`${moduleName}.${k}: is not a deduped name`, !/\d$/.test(k),
+        'two operations collided; add a NAME_OVERRIDES entry');
+    }
+
     const unexpected = actual.filter((k) => !methods.includes(k));
     for (const k of unexpected) check(`${moduleName}.${k}: is an expected method`, false);
   }
@@ -731,7 +835,12 @@ async function main(): Promise<void> {
       META: Record<string, { method: string }>;
     };
     const writes = Object.entries(meta.META).filter(([, m]) => m.method !== 'GET');
-    eq('payments exposes no write method', writes.length, 0);
+    /* The ledger has exactly one door through the SDK, same as on the server.
+     * It was zero until this week; see the long note in the backend suite for
+     * why recording cash in person had to become possible, and what fences it. */
+    eq('payments exposes exactly one write method', writes.length, 1);
+    eq('and it is the in-person receipt', writes[0]?.[0], 'record');
+    eq('by POST', writes[0]?.[1].method, 'POST');
   }
 
   // Payout batches are the *only* place a client can cause money to leave the

@@ -150,8 +150,28 @@
       login:    function (b) { return post('/auth/login', b); },
       refresh:  function (b) { return post('/auth/refresh', b); },
       me:       function ()  { return get('/auth/me'); },
-      logout:   function ()  { return post('/auth/logout'); },
+      /* Send the refresh token. It is the only thing the server can revoke —
+       * the access token is a stateless JWT and expires on its own schedule —
+       * so a logout with an empty body clears this browser and leaves the
+       * session alive everywhere else. `LrmcAuth.signOut` reads it before
+       * clearing storage for exactly this reason. */
+      logout:   function (b) { return post('/auth/logout', b || {}); },
       changePassword: function (b) { return post('/auth/change-password', b); },
+    },
+
+    /* Fault reports from a browser.
+     *
+     * Zone E and unauthenticated on purpose: the most valuable report is the
+     * one from a page that broke before the member could sign in, and requiring
+     * a token would discard exactly those.
+     *
+     * Nothing about the outcome comes back. A caller learns that LRMC received
+     * the report and nothing about what was done with it — an intake that
+     * echoed its own grading would be a way to discover the thresholds. */
+    errors: {
+      capture: function (b) { return post('/security/errors', b); },
+      recent:  function (q) { return get('/security/errors', q); },
+      anomalies: function () { return get('/security/anomalies'); },
     },
 
     hq: {
@@ -203,6 +223,30 @@
       archive:function (id) { return del('/property/' + seg(id)); },
     },
 
+    /* Aggregates.
+     *
+     * Every dashboard tile used to count a page of list results. That is right
+     * at ten properties and wrong at two hundred, and wrong in the direction
+     * nobody notices: the number stays plausible, it just gets too small. Each
+     * of these is one aggregation over the whole collection.
+     *
+     * There is no `owner` or `region` argument and there must never be one.
+     * The scope is derived server-side from the token — a landlord gets their
+     * portfolio, a coordinator their region, Back Office everything — because
+     * a parameter a page could set would turn each of these into a directory
+     * of the institution's holdings.
+     *
+     * Rates come back `null` rather than `0` when there is nothing to measure.
+     * Render `—`; a landlord reading "0% reliability" on their first day
+     * reasonably concludes something is broken. */
+    stats: {
+      properties:   function () { return get('/stats/properties'); },
+      payments:     function () { return get('/stats/payments'); },
+      maintenance:  function () { return get('/stats/maintenance'); },
+      applications: function () { return get('/stats/applications'); },
+      ususu:        function () { return get('/stats/ususu'); },
+    },
+
     /* The five things LRMC looks up about an applicant. Reading somebody
      * else's is staff-only; the server narrows on the subject, not on what
      * the caller asks for. */
@@ -214,6 +258,21 @@
       openDispute: function (b) { return post('/disputes/open', b); },
       resolveDispute: function (id, b) { return post('/dispute/' + seg(id) + '/resolve', b); },
       disputesFor: function (id) { return get('/disputes/' + seg(id)); },
+
+      /* Ususu circles.
+       *
+       * The group routes are mounted before `/ususu/:subjectId` on the server,
+       * because `/ususu/group/x` matches that pattern with `subjectId="group"`.
+       * Nothing here depends on that — these are literal paths — but it is why
+       * the two families can coexist. */
+      createGroup:       function (b) { return post('/ususu/group/create', b); },
+      groupAddMember:    function (b) { return post('/ususu/group/add-member', b); },
+      groupRemoveMember: function (b) { return post('/ususu/group/remove-member', b); },
+      groupContribute:   function (b) { return post('/ususu/group/contribute', b); },
+      groupMiss:         function (b) { return post('/ususu/group/miss', b); },
+      readGroup:         function (id) { return get('/ususu/group/' + seg(id)); },
+      groupSummary:      function (id) { return get('/ususu/group/' + seg(id) + '/summary'); },
+      groupsForUser:     function (id) { return get('/ususu/group/user/' + seg(id)); },
 
       ususuContribute: function (b) { return post('/ususu/contribute', b); },
       ususuMiss: function (b) { return post('/ususu/miss', b); },
@@ -252,12 +311,43 @@
       recordLease: function (id, b) { return post('/application/' + seg(id) + '/lease', b); },
     },
 
+    /* Tenancies.
+     *
+     * The three lifecycle acts are separate calls rather than one `update`
+     * with a status, because they are separate *powers*: a landlord holds
+     * activate and complete, a coordinator holds terminate, and a tenant holds
+     * none. One endpoint taking a status would hide that behind a parameter.
+     *
+     * Which of them this person may actually use is decided entirely
+     * server-side by `leaseLifecycle` — the page offers what the grants
+     * suggest and re-reads whatever the server allowed. */
     leases:   { list: function (q) { return get('/leases', q); },
                 read: function (id) { return get('/lease/' + seg(id)); },
-                create: function (b) { return post('/leases', b); } },
+                create: function (b) { return post('/leases', b); },
+                draft:  function (b) { return post('/leases/create', b); },
+                activate: function (b) { return post('/leases/activate', b); },
+                complete: function (b) { return post('/leases/complete', b); },
+                terminate: function (b) { return post('/leases/terminate', b); },
+                forUser: function (id, q) { return get('/leases/user/' + seg(id), q); },
+                forProperty: function (id, q) { return get('/leases/property/' + seg(id), q); } },
 
+    /* The ledger.
+     *
+     * `record` is the only write, and it is deliberately the only one. See the
+     * note on the `record` action in the backend's permissions config: writing
+     * down cash taken in a compound is a different power from starting a
+     * payment, and only a coordinator or Back Office holds it.
+     *
+     * `history` and `summary` are scoped server-side from the token. A
+     * coordinator gets back only the receipts they wrote themselves, and the
+     * reply says so in `scope` and `partial` — show it, because a partial total
+     * read as a whole one is worse than no total. */
     payments: { list: function (q) { return get('/payments', q); },
-                mineAsTenant: function () { return get('/tenant/me/payments'); } },
+                mineAsTenant: function () { return get('/tenant/me/payments'); },
+                mineAsLandlord: function () { return get('/landlord/me/payments'); },
+                history: function (id, q) { return get('/payments/' + seg(id) + '/history', q); },
+                summary: function (id) { return get('/payments/' + seg(id) + '/summary'); },
+                record: function (b) { return post('/payments/record', b); } },
 
     payouts:  { batches: function (q) { return get('/payout-batches', q); },
                 settle: function (id, b) { return post('/payout-batch/' + seg(id) + '/settle', b); } },
@@ -266,8 +356,18 @@
                 mine:  function () { return get('/member/me/documents'); },
                 analytics: function () { return get('/hq/documents/analytics'); } },
 
+    /* Work orders.
+     *
+     * `updateStatus` sends the id in the body because that is the shape the
+     * route takes — see its contract note. Which changes are legal is decided
+     * entirely server-side by `maintenanceLifecycle`: this page never works out
+     * whether a transition is allowed, it asks and re-reads the answer. */
     maintenance: { list: function (q) { return get('/maintenance-requests', q); },
-                   myQueue: function () { return get('/vendor/me/maintenance-queue'); } },
+                   myQueue: function () { return get('/vendor/me/maintenance-queue'); },
+                   request: function (b) { return post('/maintenance/request', b); },
+                   updateStatus: function (b) { return post('/maintenance/update', b); },
+                   listForUser: function (id, q) { return get('/maintenance/' + seg(id) + '/list', q); },
+                   summaryForUser: function (id) { return get('/maintenance/' + seg(id) + '/summary'); } },
 
     landlords:   { list: function (q) { return get('/landlords', q); } },
     tenants:     { list: function (q) { return get('/tenants', q); } },

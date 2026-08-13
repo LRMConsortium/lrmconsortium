@@ -29,7 +29,7 @@
  * it with nothing installed.
  */
 
-import type { EvidenceBundle } from '../../config/evidence.js';
+import { STABLE_TENANCY_MONTHS, type EvidenceBundle } from '../../config/evidence.js';
 
 export const ELIGIBILITY_FACTORS = [
   'identity',
@@ -38,6 +38,7 @@ export const ELIGIBILITY_FACTORS = [
   'paymentHistory',
   'ususuContributions',
   'disputes',
+  'tenancyStability',
 ] as const;
 
 export type EligibilityFactor = (typeof ELIGIBILITY_FACTORS)[number];
@@ -54,12 +55,42 @@ export type EligibilityFactor = (typeof ELIGIBILITY_FACTORS)[number];
  */
 export const FACTOR_WEIGHTS: Record<EligibilityFactor, number> = {
   identity: 25,
-  paymentHistory: 25,
+  paymentHistory: 20,
   disputes: 15,
-  references: 15,
+  references: 10,
   employment: 12,
+  tenancyStability: 10,
   ususuContributions: 8,
 };
+
+/*
+ * ── Why `tenancyStability` is 10, and where the 10 came from ──────────────
+ *
+ * It is worth writing down, because getting this wrong builds a catch-22 that
+ * nobody notices until the platform has no customers.
+ *
+ * Tenancy stability is evidence from a person's *previous LRMC tenancies*.
+ * Every applicant for their first one has none — which is every applicant, at
+ * launch, by definition. So the weight has to be small enough that a first-time
+ * applicant can still reach `recommend` without it.
+ *
+ * The arithmetic. A realistic newcomer has identity, some payment history (a
+ * deposit is a payment), references and employment, but no Ususu record and no
+ * prior tenancy. Their ceiling is:
+ *
+ *     100 − ususu(8) − tenancyStability(W) ≥ RECOMMEND_AT(75)   ⟹   W ≤ 17
+ *
+ * Ten leaves headroom. Twenty-five — the obvious "make it matter" number —
+ * would cap a first-time applicant at 67 and make it structurally impossible
+ * for LRMC to recommend anybody who had not already rented from LRMC. That is
+ * the same shape as the Ususu bug caught in Week 1, where a 30-point weight
+ * would have made a rideshare account mandatory for housing.
+ *
+ * The 10 is taken from `paymentHistory` (25→20) and `references` (15→10)
+ * rather than minted, because the weights sum to 100 and that is asserted.
+ * Payment history keeps the largest non-identity share, which is right: what
+ * somebody actually paid is stronger evidence than how long they stayed.
+ */
 
 /** Human wording, so a decision letter never names a database column. */
 export const FACTOR_LABELS: Record<EligibilityFactor, string> = {
@@ -68,6 +99,7 @@ export const FACTOR_LABELS: Record<EligibilityFactor, string> = {
   references: 'References',
   paymentHistory: 'Payment history with LRMC',
   ususuContributions: 'Ususu contributions',
+  tenancyStability: 'Tenancy history with LRMC',
   disputes: 'Open disputes',
 };
 
@@ -145,6 +177,18 @@ export interface EligibilityInput {
   streak?: number;
   /** 0–100. */
   groupHealth?: number;
+
+  /**
+   * Tenancy history — the shape `tenancyEvidenceFrom` carries.
+   *
+   * `undefined` means LRMC has no lease record for this person, which is the
+   * ordinary case for a first-time applicant and must never be read as a bad
+   * history. See `scoreTenancy`.
+   */
+  longestTenancyMonths?: number;
+  completedTenancies?: number;
+  terminatedTenancies?: number;
+  hasActiveLease?: boolean;
 
   /** Disputes currently open against the applicant. */
   openDisputes?: number;
@@ -331,6 +375,67 @@ function scoreUsusu(input: EligibilityInput): FactorResult {
     `${missed} of ${total} contributions missed.`);
 }
 
+/**
+ * How long this person has held a tenancy through LRMC, and how those ended.
+ *
+ * ── No record is `unknown`, never `fail` ──────────────────────────────────
+ * The single most important line here. Somebody applying for their first LRMC
+ * tenancy has no history with LRMC — that is not a bad tenant, it is a new
+ * customer, and at launch it is every customer. Scoring it as a failure would
+ * decline people for not having been customers before, and the scoring engine
+ * would quietly guarantee that LRMC never acquires any.
+ *
+ * `unknown` flows into the ceiling rule in `assessApplication`, which holds the
+ * application at review rather than declining it.
+ *
+ * ── A terminated tenancy is reported, not punished ────────────────────────
+ * Tenancies end early for a great many reasons — a landlord selling, a job
+ * moving, a building failing an inspection — and only some are about the
+ * tenant. A termination lowers the *status* to `concern` so a person looks, and
+ * it does not zero the score. LRMC's own records cannot tell whose fault it
+ * was, so the arithmetic must not pretend to.
+ *
+ * ── Measured on the longest tenancy, not the total ────────────────────────
+ * Six separate one-month lets and one six-month tenancy are both "six months
+ * housed", and only one of them is stability.
+ */
+function scoreTenancy(input: EligibilityInput): FactorResult {
+  const months = input.longestTenancyMonths;
+  if (typeof months !== 'number') {
+    return result('tenancyStability', 'unknown', 0,
+      'No tenancy history with LRMC yet.');
+  }
+
+  const terminated = input.terminatedTenancies ?? 0;
+  const completed = input.completedTenancies ?? 0;
+  const active = input.hasActiveLease === true;
+
+  /* A record that exists but contains nothing — a lease drawn up and abandoned
+   * before it started. Still no evidence of stability, so still unknown rather
+   * than a zero somebody has to explain. */
+  if (months <= 0 && !completed && !terminated && !active) {
+    return result('tenancyStability', 'unknown', 0,
+      'A tenancy on record, but none that has run yet.');
+  }
+
+  const fraction = Math.max(0, Math.min(1, months / STABLE_TENANCY_MONTHS));
+  const held = active ? 'currently housed' : `${months} month${months === 1 ? '' : 's'}`;
+
+  if (terminated > 0) {
+    return result('tenancyStability', 'concern', fraction,
+      `${months} months at the longest tenancy; ${terminated} ended early. Worth asking why.`);
+  }
+  if (months >= STABLE_TENANCY_MONTHS) {
+    return result('tenancyStability', 'pass', fraction,
+      `${months} months in one tenancy${completed ? `, ${completed} completed` : ''}.`);
+  }
+  if (months > 0 || active) {
+    return result('tenancyStability', 'concern', fraction,
+      `${held}, which is a short record rather than a poor one.`);
+  }
+  return result('tenancyStability', 'unknown', 0, 'No tenancy history with LRMC yet.');
+}
+
 function scoreDisputes(input: EligibilityInput): FactorResult {
   const open = input.openDisputes;
   const resolved = input.resolvedDisputes ?? 0;
@@ -363,6 +468,7 @@ const SCORERS: Record<EligibilityFactor, (input: EligibilityInput) => FactorResu
   references: scoreReferences,
   paymentHistory: scorePaymentHistory,
   ususuContributions: scoreUsusu,
+  tenancyStability: scoreTenancy,
   disputes: scoreDisputes,
 };
 
@@ -498,6 +604,17 @@ export function inputFromEvidence(
     input.openDisputes = d.disputesOpen;
     input.resolvedDisputes = d.disputesResolved;
     input.disputeSeverity = d.disputeSeverity;
+  }
+
+  /* Left entirely absent when there is no record, so `unknown` falls out of
+   * omission rather than being re-implemented. Same pattern as every other
+   * evidence type here. */
+  const t = evidence.tenancyEvidence;
+  if (t && t.hasRecord) {
+    input.longestTenancyMonths = t.longestTenancyMonths;
+    input.completedTenancies = t.completedCount;
+    input.terminatedTenancies = t.terminatedCount;
+    input.hasActiveLease = t.hasActiveLease;
   }
 
   const u = evidence.ususuEvidence;

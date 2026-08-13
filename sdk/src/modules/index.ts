@@ -39,7 +39,9 @@ import { rentalCarCompanies } from './rentalCarCompanies.js';
 import { resorts } from './resorts.js';
 import { riders } from './riders.js';
 import { rides } from './rides.js';
+import { security } from './security.js';
 import { staff } from './staff.js';
+import { stats } from './stats.js';
 import { tenants } from './tenants.js';
 import { vendors } from './vendors.js';
 import { viewing } from './viewing.js';
@@ -78,7 +80,9 @@ export { rentalCarCompanies, META as rentalCarCompaniesMeta, type RentalCarCompa
 export { resorts, META as resortsMeta, type ResortsApi } from './resorts.js';
 export { riders, META as ridersMeta, type RidersApi } from './riders.js';
 export { rides, META as ridesMeta, type RidesApi } from './rides.js';
+export { security, META as securityMeta, type SecurityApi } from './security.js';
 export { staff, META as staffMeta, type StaffApi } from './staff.js';
+export { stats, META as statsMeta, type StatsApi } from './stats.js';
 export { tenants, META as tenantsMeta, type TenantsApi } from './tenants.js';
 export { vendors, META as vendorsMeta, type VendorsApi } from './vendors.js';
 export { viewing, META as viewingMeta, type ViewingApi } from './viewing.js';
@@ -124,7 +128,9 @@ export const api = {
   resorts,
   riders,
   rides,
+  security,
   staff,
+  stats,
   tenants,
   vendors,
   viewing,

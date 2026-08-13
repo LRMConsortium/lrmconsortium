@@ -69,9 +69,6 @@ def run_shared_checks(root: pathlib.Path, check):
 PLANNED_PAGES = {
     '/public/article.html',
     '/public/reset.html',
-    '/members/index.html',
-    '/members/leases.html',
-    '/members/payments.html',
     '/members/profile.html',
     '/marketplace/orders.html',
     '/marketplace/products.html',

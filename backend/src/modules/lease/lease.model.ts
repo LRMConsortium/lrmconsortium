@@ -8,15 +8,11 @@ import {
   type TimestampShape,
 } from '../../shared/schemaFragments.js';
 
-export const LEASE_STATUSES = [
-  'draft',
-  'pendingSignature',
-  'active',
-  'inArrears',
-  'expiring',
-  'ended',
-  'terminated',
-] as const;
+/* Canonical in config/lifecycles.ts, which is Mongoose-free and so assertable
+ * without a database. Re-exported because callers reasonably look for a
+ * collection's statuses next to its schema. */
+import { LEASE_STATUSES } from '../../config/lifecycles.js';
+export { LEASE_STATUSES };
 
 /**
  * A lease binds a tenant to a property for a term, at a rent.
@@ -36,7 +32,15 @@ export interface ILease extends Omit<LifecycleShape, 'status'>, TimestampShape {
   coordinator?: Types.ObjectId;
 
   leaseStart: Date;
-  leaseEnd: Date;
+  /**
+   * When the term runs out, or `null` for an open-ended tenancy.
+   *
+   * Nullable because month-to-month is ordinary in The Gambia and a required
+   * end date would force whoever wrote the lease to invent one — which then
+   * looks like a commitment, drives `expiring`, and eventually ends a tenancy
+   * nobody meant to end.
+   */
+  leaseEnd?: Date | null;
   monthlyRent: number;
   currency: (typeof CURRENCIES)[number];
   paymentDayOfMonth: number;
@@ -56,6 +60,15 @@ export interface ILease extends Omit<LifecycleShape, 'status'>, TimestampShape {
   signedByTenantAt?: Date;
   signedByLandlordAt?: Date;
   terminationReason?: string;
+  /**
+   * When the tenancy actually stopped.
+   *
+   * Distinct from `leaseEnd`, which is when the term was *meant* to run out. A
+   * lease terminated in March has a `leaseEnd` in December, and measuring
+   * tenancy length from the second would credit somebody with nine months they
+   * did not live there.
+   */
+  closedAt?: Date | null;
 
   status: (typeof LEASE_STATUSES)[number];
 }
@@ -69,7 +82,7 @@ const leaseSchema = new Schema<ILease>(
     coordinator: { type: Schema.Types.ObjectId, ref: 'CoordinatorProfile', index: true },
 
     leaseStart: { type: Date, required: true },
-    leaseEnd: { type: Date, required: true, index: true },
+    leaseEnd: { type: Date, default: null, index: true },
     monthlyRent: { type: Number, required: true, min: 0 },
     currency: { type: String, enum: CURRENCIES, default: 'GMD' },
     paymentDayOfMonth: { type: Number, min: 1, max: 31, default: 1 },
@@ -88,6 +101,7 @@ const leaseSchema = new Schema<ILease>(
     signedByTenantAt: { type: Date },
     signedByLandlordAt: { type: Date },
     terminationReason: { type: String, trim: true },
+    closedAt: { type: Date, default: null, index: true },
 
     status: { type: String, enum: LEASE_STATUSES, default: 'draft', index: true },
     ...lifecycleFields,
@@ -101,6 +115,8 @@ leaseSchema.index({ landlord: 1, status: 1 });
 leaseSchema.index({ status: 1, nextDueDate: 1 });
 
 leaseSchema.pre('validate', function ensureReferenceAndWindow(next) {
+  /* An open-ended lease has no end to compare against; only a *stated* end
+   * that lands before the start is wrong. */
   if (this.leaseEnd && this.leaseStart && this.leaseEnd <= this.leaseStart) {
     return next(new Error('leaseEnd must be after leaseStart'));
   }

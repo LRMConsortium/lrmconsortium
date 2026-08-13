@@ -363,3 +363,45 @@
   font-size: .875rem;
 }
 .lrmc-skip-link:focus { left: .5rem; }
+
+/* ── Working without Alpine ─────────────────────────────────────────────────
+ *
+ * `assets/js/boot.js` adds `lrmc-no-alpine` to <html> when Alpine has not
+ * arrived. That is not a hypothetical: LRMC launches in The Gambia, a great
+ * many members are on intermittent mobile data, and a script from a CDN is the
+ * single most likely thing on the page to fail.
+ *
+ * What failed before these rules existed, measured rather than guessed: on a
+ * 390px viewport the sidebar sat at left:0 over the whole screen, the main
+ * content was underneath it, and the toggle button did nothing — because
+ * `:class="sidebarOpen ? … : '-translate-x-full'"` is an Alpine binding and
+ * without Alpine it never evaluates. The page was unusable, silently, with no
+ * console error.
+ *
+ * These rules take over the two things Alpine was doing: keeping the rail
+ * off-canvas on a phone, and sliding it in when asked. `boot.js` flips
+ * `data-open` in place of the Alpine state.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lrmc-no-alpine aside {
+  transform: translateX(-100%);
+  transition: transform .2s;
+}
+.lrmc-no-alpine aside[data-open="true"] { transform: translateX(0); }
+
+/* At the desktop breakpoint the rail is part of the layout, not an overlay, so
+ * it is always in view — matching `lg:static lg:translate-x-0`. */
+@media (min-width: 1024px) {
+  .lrmc-no-alpine aside { transform: translateX(0); }
+}
+
+/* The scrim. Alpine's `x-show` normally reveals it; `x-cloak` keeps it hidden
+ * without Alpine, which is correct — so this only shows it while the rail is
+ * open in fallback mode. */
+.lrmc-no-alpine .lrmc-scrim { display: none; }
+.lrmc-no-alpine .lrmc-scrim[data-open="true"] { display: block; }
+
+/* Said out loud rather than degrading in silence. A person whose page is half
+ * working should be told, not left wondering. */
+.lrmc-fallback-note { display: none; }
+.lrmc-no-alpine .lrmc-fallback-note { display: block; }

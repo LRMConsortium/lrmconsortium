@@ -11,7 +11,12 @@ dotenv.config();
  */
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().int().positive().default(3000),
+  /* 4000, because that is what `deploy/nginx.conf` proxies to — in four places.
+   * The default was 3000 and the example file said 3000, so a deployment that
+   * took either at its word answered nothing at all: every API call a 502, with
+   * both files individually correct and no error anywhere saying why.
+   * `verify.ts` now reads the nginx config and fails if the two disagree. */
+  PORT: z.coerce.number().int().positive().default(4000),
   API_PREFIX: z.string().default('/api/v1'),
 
   MONGO_URI: z.string().min(1, 'MONGO_URI is required'),

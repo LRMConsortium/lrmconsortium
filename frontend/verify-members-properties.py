@@ -102,17 +102,49 @@ APPLICATIONS = [
 ]
 
 PAYMENTS = [
-    {"_id": "p1", "amount": 12000, "status": "paid", "paidAt": "2026-08-01T00:00:00.000Z"},
-    {"_id": "p2", "amount": 8000, "status": "paid", "paidAt": "2026-07-28T00:00:00.000Z"},
+    {"_id": "p1", "amount": 12000, "status": "succeeded", "paidAt": "2026-08-01T00:00:00.000Z"},
+    {"_id": "p2", "amount": 8000, "status": "succeeded", "paidAt": "2026-07-28T00:00:00.000Z"},
     {"_id": "p3", "amount": 5000, "status": "pending"},
 ]
 
 JOBS = [{"_id": "m1", "status": "open"}, {"_id": "m2", "status": "closed"}]
 
+# ── Aggregate replies ──────────────────────────────────────────────────────
+# Shaped like backend/src/modules/stats/index.ts. The totals are deliberately
+# far larger than any page size, so a tile that went back to counting a list
+# would read a plainly different number and fail rather than look plausible.
+PROPERTY_STATS = {
+    "totalProperties": 217, "occupied": 180, "vacant": 30,
+    "unavailable": 7, "unclassified": 0, "occupancyRate": 85.7,
+}
+PAYMENT_STATS = {
+    "totalPayments": 940, "settled": 900, "onTime": 870, "late": 30,
+    "awaiting": 32, "failed": 8, "reliability": 96.7,
+    "collectionWindowDays": 30,
+    "collected": [{"currency": "GMD", "amount": 4_250_000, "payments": 880}],
+}
+PAYMENT_STATS_MULTI = dict(PAYMENT_STATS, collected=[
+    {"currency": "GMD", "amount": 4_250_000, "payments": 880},
+    {"currency": "USD", "amount": 12_400, "payments": 15},
+])
+MAINTENANCE_STATS = {
+    "totalRequests": 64, "openRequests": 12, "inProgress": 9,
+    "completed": 40, "stalled": 3, "unclassified": 0,
+}
+APPLICATION_STATS = {
+    "totalApplications": 48, "underReview": 11, "approved": 25,
+    "declined": 9, "withdrawn": 3, "unclassified": 0,
+}
+
 STATE = {
     "public": "ok", "owned": "ok", "apps": "ok", "viewings": "ok",
     "payments": "ok", "jobs": "ok",
+    "paymentStats": PAYMENT_STATS,
+    "statsDown": set(),
     "queries": [], "ownedQueries": [], "appQueries": [], "posted": [],
+    # Everything the page requested while the performance tiles were loading,
+    # so the suite can prove no list endpoint was touched for a figure.
+    "perfPaths": [], "statsQueries": [],
 }
 
 class H(http.server.SimpleHTTPRequestHandler):
@@ -164,6 +196,25 @@ class H(http.server.SimpleHTTPRequestHandler):
     def do_GET(s):
         base, _, query = s.path.partition('?')
         q = parse_qs(query)
+
+        if base.startswith('/api/v1/'):
+            STATE["perfPaths"].append(base)
+
+        if base.startswith('/api/v1/stats/'):
+            name = base.rsplit('/', 1)[1]
+            STATE["statsQueries"].append((base, q))
+            if name in STATE["statsDown"]:
+                return s._json({"success": False,
+                                "error": {"code": "INTERNAL", "message": "boom"}}, 500)
+            table = {
+                'properties': PROPERTY_STATS,
+                'payments': STATE["paymentStats"],
+                'maintenance': MAINTENANCE_STATS,
+                'applications': APPLICATION_STATS,
+            }
+            if name in table:
+                return s._json({"success": True, "data": table[name]})
+            s.send_response(404); s.end_headers(); return
 
         if base == '/api/v1/properties/public':
             STATE["queries"].append(q)
@@ -266,11 +317,13 @@ t = src
 t = t.replace('<script src="https://cdn.tailwindcss.com"></script>',
               '<link rel="stylesheet" href="/__t/tw-subset.css" /><script src="/__t/tailwind-double.js"></script>')
 t = t.replace('<script src="https://unpkg.com/htmx.org@1.9.12"></script>', '<script src="/__t/htmx-double.js"></script>')
-t = t.replace('<script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>', '<script src="/__t/alpine-double.js" defer></script>')
+t = re.sub(r'<script src="/assets/vendor/alpine\.min\.js"[\s\S]*?</script>',
+           '<script src="/__t/alpine-double.js" defer></script>', t)
 t = t.replace('<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>', '<script src="/__t/lucide-double.js" defer></script>')
 t = re.sub(r'<link href="https://fonts\.googleapis[^>]*>', '', t)
 t = re.sub(r'<link rel="preconnect"[^>]*>', '', t)
-assert 'unpkg' not in t and 'cdn.tailwindcss' not in t, 'a CDN reference survived'
+_left = re.findall(r'(?:src|href)="(https://(?:unpkg\.com|cdn\.tailwindcss)[^"]*)"', t)
+assert not _left, f'a CDN reference survived: {_left}'
 pathlib.Path('/tmp/members-properties-under-test.html').write_text(t)
 
 socketserver.TCPServer.allow_reuse_address = True
@@ -362,7 +415,8 @@ with sync_playwright() as p:
                 sessionStorage.setItem('lrmc.token', 'tok-x');
                 sessionStorage.setItem('lrmc.actor', JSON.stringify(a));
             }""", actor)
-        for k in ('queries', 'ownedQueries', 'appQueries', 'posted'):
+        for k in ('queries', 'ownedQueries', 'appQueries', 'posted',
+                  'perfPaths', 'statsQueries'):
             STATE[k] = []
         pg.goto(f'http://127.0.0.1:{PORT}/page{query}', wait_until='networkidle')
         pg.wait_for_timeout(600)
@@ -699,23 +753,60 @@ with sync_playwright() as p:
           'Unknown field' in pg.inner_text('#wizard-error'))
     STATE["owned"] = 'ok'
 
-    print('\n— performance is counted, never estimated —')
+    print('\n— performance is aggregated by the database, not counted here —')
+    # These tiles used to fetch `properties.list({ limit: 100 })` and count the
+    # occupied ones in the browser. Correct at ten properties, wrong at two
+    # hundred — and wrong in the flattering direction, because the percentage
+    # stays entirely plausible and is simply computed over the first hundred
+    # rows. The stub now returns a total far larger than any page, so a tile
+    # reading a page size fails here.
     load(LANDLORD)
     perf = pg.inner_text('#performance')
-    check('the portfolio size is shown', '5' in perf)
-    check('occupancy is a percentage of what LRMC holds', '60%' in perf)
-    check('rent collected is in dalasi', 'D 20,000' in perf)
-    check('and only paid instalments are counted', 'D 25,000' not in perf)
+    check('the portfolio total is the aggregate, not a page of rows',
+          '217' in perf)
+    check('and not the page size the list call would have returned',
+          '100' not in perf and '12' not in perf)
+    check('occupancy is the rate the server computed', '85.7%' in perf)
+    check('rent collected is in dalasi', 'D 4,250,000' in perf)
     check('open maintenance is counted', 'Open maintenance' in perf)
+
+    check('all three aggregates were requested',
+          {'/api/v1/stats/properties', '/api/v1/stats/payments',
+           '/api/v1/stats/maintenance'} <= set(STATE["perfPaths"]))
+    # These two were fetched *only* to compute tiles. The portfolio grid
+    # legitimately lists properties, so the check names what the tiles used to
+    # pull rather than banning list calls outright.
+    for gone in ['/api/v1/landlord/me/payments', '/api/v1/maintenance-requests']:
+        check(f'the tiles no longer pull {gone}', gone not in STATE["perfPaths"])
+    # A `limit=100` anywhere means somebody is counting a page again.
+    check('and nothing asks for a hundred rows to count them',
+          not any(q.get('limit') == ['100'] for q in STATE["ownedQueries"]))
+    # A scope the browser could set would turn the tile into a directory of the
+    # institution's holdings.
+    check('and no stats call carries a scope parameter',
+          not any(q for p, q in STATE["statsQueries"] if q))
+
     # An occupancy of 0% and an occupancy LRMC has not measured look identical
     # on a tile, and only one of them is a reason to worry.
-    STATE["payments"] = 'down'
+    STATE["statsDown"] = {'payments'}
     load(LANDLORD)
     check('a figure LRMC cannot compute says so rather than showing zero',
           'Not available yet' in pg.inner_text('#performance'))
     check('and does not print a plausible D 0',
           'D 0' not in pg.inner_text('#performance'))
-    STATE["payments"] = 'ok'
+    check('while the tiles that did answer still render',
+          '217' in pg.inner_text('#performance'))
+    STATE["statsDown"] = set()
+
+    # Several currencies must never be added: 4,250,000 + 12,400 is not an
+    # amount of anything, and it would look completely ordinary on a tile.
+    STATE["paymentStats"] = PAYMENT_STATS_MULTI
+    load(LANDLORD)
+    perf = pg.inner_text('#performance')
+    check('currencies are never summed together',
+          'D 4,250,000' in perf and '4,262,400' not in perf)
+    check('and the others are named rather than folded in', 'other currenc' in perf)
+    STATE["paymentStats"] = PAYMENT_STATS
 
     print('\n— nothing rendered can become markup —')
     STATE["apps"] = 'hostile'

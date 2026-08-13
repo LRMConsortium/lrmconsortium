@@ -162,6 +162,24 @@ export interface PaymentRow {
   paidAt?: Date | string | null;
 }
 
+/**
+ * The ledger's word for settled.
+ *
+ * **`succeeded`, not `paid`.** `paid` belongs to the marketplace order
+ * lifecycle and means something else; filtering payments on it matches no row
+ * ever written, and the result is not an error — it is `hasRecord: false` for
+ * every applicant, which reads exactly like "this person is new".
+ *
+ * Not redeclared here. `config/lifecycles.ts` types these as subsets of the
+ * ledger's own enum, so a rename in the schema is a compile error rather than
+ * a filter that silently matches nothing.
+ */
+import {
+  SETTLED_PAYMENT_STATUSES,
+  FAILED_PAYMENT_STATUSES,
+} from '../../config/lifecycles.js';
+export { SETTLED_PAYMENT_STATUSES, FAILED_PAYMENT_STATUSES };
+
 /** Days after which a settled payment counts as late rather than on time. */
 export const LATE_AFTER_DAYS = 3;
 
@@ -185,8 +203,8 @@ function ms(value: Date | string | null | undefined): number | null {
  * look worse on the first of the month.
  */
 export function paymentsEvidenceFrom(rows: PaymentRow[]): PaymentsEvidence {
-  const settled = rows.filter((r) => r.status === 'paid');
-  const failed = rows.filter((r) => r.status === 'failed' || r.status === 'missed');
+  const settled = rows.filter((r) => (SETTLED_PAYMENT_STATUSES as readonly string[]).includes(r.status));
+  const failed = rows.filter((r) => (FAILED_PAYMENT_STATUSES as readonly string[]).includes(r.status));
 
   if (!settled.length && !failed.length) return { ...EMPTY_PAYMENTS };
 

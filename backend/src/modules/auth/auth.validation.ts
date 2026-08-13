@@ -77,6 +77,20 @@ export const loginSchema = z
 
 export const refreshSchema = z.object({ refreshToken: z.string().min(10) }).strict();
 
+/**
+ * Signing out.
+ *
+ * `refreshToken` is **optional**, and that is the whole design of this schema.
+ * A person pressing sign-out has asked to leave; requiring the token would turn
+ * "your storage was already cleared" into a 400 on the way out, and a browser
+ * that hit it would leave the person apparently signed in. Present means the
+ * session is revoked server-side; absent means the local session is cleared and
+ * the reply says so plainly.
+ */
+export const logoutSchema = z
+  .object({ refreshToken: z.string().min(10).optional() })
+  .strict();
+
 export const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1).max(200),

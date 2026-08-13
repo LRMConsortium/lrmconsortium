@@ -34,15 +34,15 @@ export const META = {
   create: { operationId: 'postListings', method: 'POST' as const, pathTemplate: '/listings', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","merchant","seller"] as Role[], permissions: ["listing:create"], ownership: 'none' as const, auth: 'required' as const },
   dispute: { operationId: 'postOrderByOrderIdDispute', method: 'POST' as const, pathTemplate: '/order/{orderId}/dispute', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","merchant","seller","customer","buyer"] as Role[], permissions: ["order:updateOwn","order:update"], ownership: 'scoped' as const, auth: 'required' as const },
   fulfil: { operationId: 'postOrderByOrderIdFulfil', method: 'POST' as const, pathTemplate: '/order/{orderId}/fulfil', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","merchant","seller"] as Role[], permissions: ["order:update"], ownership: 'scoped' as const, auth: 'required' as const },
-  get: { operationId: 'getOrders', method: 'GET' as const, pathTemplate: '/orders', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","merchant","seller","customer","buyer"] as Role[], permissions: ["order:read"], ownership: 'scoped' as const, auth: 'required' as const },
-  get2: { operationId: 'getOrderByOrderId', method: 'GET' as const, pathTemplate: '/order/{orderId}', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","merchant","seller","customer","buyer"] as Role[], permissions: ["order:read"], ownership: 'scoped' as const, auth: 'required' as const },
   getById: { operationId: 'getListingByListingId', method: 'GET' as const, pathTemplate: '/listing/{listingId}', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","merchant","seller","customer","buyer"] as Role[], permissions: ["listing:read"], ownership: 'none' as const, auth: 'required' as const },
   list: { operationId: 'getListings', method: 'GET' as const, pathTemplate: '/listings', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","merchant","seller","customer","buyer"] as Role[], permissions: ["listing:read"], ownership: 'none' as const, auth: 'required' as const },
+  listOrders: { operationId: 'getOrders', method: 'GET' as const, pathTemplate: '/orders', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","merchant","seller","customer","buyer"] as Role[], permissions: ["order:read"], ownership: 'scoped' as const, auth: 'required' as const },
   me: { operationId: 'getListingsMe', method: 'GET' as const, pathTemplate: '/listings/me', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","merchant","seller","customer","buyer"] as Role[], permissions: ["listing:read"], ownership: 'self' as const, auth: 'required' as const },
   overview: { operationId: 'getMarketplaceOverview', method: 'GET' as const, pathTemplate: '/marketplace/overview', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","merchant","seller","customer","buyer"] as Role[], permissions: ["marketplace:read"], ownership: 'self' as const, auth: 'required' as const },
   pay: { operationId: 'postOrderByOrderIdPay', method: 'POST' as const, pathTemplate: '/order/{orderId}/pay', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","merchant","seller","customer","buyer"] as Role[], permissions: ["order:updateOwn","order:update"], ownership: 'scoped' as const, auth: 'required' as const },
-  post: { operationId: 'postOrders', method: 'POST' as const, pathTemplate: '/orders', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","customer","buyer"] as Role[], permissions: ["order:create"], ownership: 'none' as const, auth: 'required' as const },
+  placeOrder: { operationId: 'postOrders', method: 'POST' as const, pathTemplate: '/orders', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","customer","buyer"] as Role[], permissions: ["order:create"], ownership: 'none' as const, auth: 'required' as const },
   publish: { operationId: 'postListingByListingIdPublish', method: 'POST' as const, pathTemplate: '/listing/{listingId}/publish', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","merchant","seller"] as Role[], permissions: ["listing:update"], ownership: 'scoped' as const, auth: 'required' as const },
+  readOrder: { operationId: 'getOrderByOrderId', method: 'GET' as const, pathTemplate: '/order/{orderId}', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","merchant","seller","customer","buyer"] as Role[], permissions: ["order:read"], ownership: 'scoped' as const, auth: 'required' as const },
   resolve: { operationId: 'postOrderByOrderIdResolve', method: 'POST' as const, pathTemplate: '/order/{orderId}/resolve', zone: 'BACK_OFFICE' as const, roles: ["founder","backOfficeStaff"] as Role[], permissions: ["order:update"], ownership: 'none' as const, auth: 'required' as const },
   suspend: { operationId: 'postListingByListingIdSuspend', method: 'POST' as const, pathTemplate: '/listing/{listingId}/suspend', zone: 'BACK_OFFICE' as const, roles: ["founder","backOfficeStaff"] as Role[], permissions: ["listing:review","listing:update"], ownership: 'none' as const, auth: 'required' as const },
   unpublish: { operationId: 'postListingByListingIdUnpublish', method: 'POST' as const, pathTemplate: '/listing/{listingId}/unpublish', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","merchant","seller"] as Role[], permissions: ["listing:update"], ownership: 'scoped' as const, auth: 'required' as const },
@@ -139,36 +139,6 @@ export const marketplace = {
   },
 
   /**
-   * Orders visible to the caller
-   * 
-   * Scoped in the data layer. A merchant asking for another merchant's orders gets an empty page, not a 403 that confirms the order exists.
-   *
-   * `GET /orders`
-   * Zone: MEMBER_PORTAL
-   * Roles: founder, hqExecutive, backOfficeStaff, merchant, seller, customer, buyer
-   * Permission: order:read
-   * Ownership: scoped
-   */
-  get(options?: ListOptions): Promise<Page<Order>> {
-    return client().list<Order>('/orders', withMeta(options, META.get));
-  },
-
-  /**
-   * One order, with what this caller may do next
-   * 
-   * `availableActions` is derived from the lifecycle table for this caller's side, so the client never reimplements the rules to decide which buttons to draw.
-   *
-   * `GET /order/{orderId}`
-   * Zone: MEMBER_PORTAL
-   * Roles: founder, hqExecutive, backOfficeStaff, merchant, seller, customer, buyer
-   * Permission: order:read
-   * Ownership: scoped
-   */
-  get2(orderId: string, options?: RequestOptions): Promise<OrderDetail> {
-    return client().get<OrderDetail>(`/order/${seg(orderId)}`, withMeta(options, META.get2));
-  },
-
-  /**
    * One listing
    *
    * `GET /listing/{listingId}`
@@ -194,6 +164,21 @@ export const marketplace = {
    */
   list(options?: ListOptions): Promise<Page<Listing>> {
     return client().list<Listing>('/listings', withMeta(options, META.list));
+  },
+
+  /**
+   * Orders visible to the caller
+   * 
+   * Scoped in the data layer. A merchant asking for another merchant's orders gets an empty page, not a 403 that confirms the order exists.
+   *
+   * `GET /orders`
+   * Zone: MEMBER_PORTAL
+   * Roles: founder, hqExecutive, backOfficeStaff, merchant, seller, customer, buyer
+   * Permission: order:read
+   * Ownership: scoped
+   */
+  listOrders(options?: ListOptions): Promise<Page<Order>> {
+    return client().list<Order>('/orders', withMeta(options, META.listOrders));
   },
 
   /**
@@ -250,8 +235,8 @@ export const marketplace = {
    * Permission: order:create
    * Ownership: none
    */
-  post(body: PlaceOrderRequest, options?: RequestOptions): Promise<Order> {
-    return client().post<Order>('/orders', body, withMeta(options, META.post));
+  placeOrder(body: PlaceOrderRequest, options?: RequestOptions): Promise<Order> {
+    return client().post<Order>('/orders', body, withMeta(options, META.placeOrder));
   },
 
   /**
@@ -267,6 +252,21 @@ export const marketplace = {
    */
   publish(listingId: string, options?: RequestOptions): Promise<Listing> {
     return client().post<Listing>(`/listing/${seg(listingId)}/publish`, undefined, withMeta(options, META.publish));
+  },
+
+  /**
+   * One order, with what this caller may do next
+   * 
+   * `availableActions` is derived from the lifecycle table for this caller's side, so the client never reimplements the rules to decide which buttons to draw.
+   *
+   * `GET /order/{orderId}`
+   * Zone: MEMBER_PORTAL
+   * Roles: founder, hqExecutive, backOfficeStaff, merchant, seller, customer, buyer
+   * Permission: order:read
+   * Ownership: scoped
+   */
+  readOrder(orderId: string, options?: RequestOptions): Promise<OrderDetail> {
+    return client().get<OrderDetail>(`/order/${seg(orderId)}`, withMeta(options, META.readOrder));
   },
 
   /**

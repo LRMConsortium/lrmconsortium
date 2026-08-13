@@ -294,6 +294,22 @@ export type AirbnbHostInput = (ContactFields & LocationFields & LifecycleFieldsI
   serviceTier?: "basic" | "standard" | "premium";
 });
 
+export interface AnomalyFeed {
+  findings: {
+    signal: string;
+    /** The ceiling is `escalate`. Nothing here blocks or locks. */
+    action: "watch" | "escalate";
+    count: number;
+    windowMinutes?: number;
+    subject?: string;
+    address?: string;
+    summary: string;
+  }[];
+  /** Says that counts are per process, so a reader knows why they look low. */
+  note?: string;
+  reportsPerBrowserPerWindow?: number;
+}
+
 /** A tenancy application. LRMC scores it; a named person decides it. `decision` carries both the author and the reason, for an approval as much as for a refusal. */
 export interface Application {
   _id?: string;
@@ -330,6 +346,15 @@ export interface ApplicationAssessment {
 }
 
 export type ApplicationList = Application[];
+
+export interface ApplicationStats {
+  totalApplications: number;
+  underReview: number;
+  approved: number;
+  declined: number;
+  withdrawn?: number;
+  unclassified?: number;
+}
 
 /** A recommendation, never a decision. Stored on the application as a snapshot of what the decider was looking at — recomputing on read would rewrite history every time somebody paid their rent. */
 export interface Assessment {
@@ -668,6 +693,15 @@ export interface CreateApplicationRequest {
   monthlyIncome?: number;
   message?: string;
   documentKeys?: string[];
+}
+
+export interface CreateUsusuGroupRequest {
+  name: string;
+  members?: string[];
+  contributionAmount?: number;
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  region?: string;
+  note?: string;
 }
 
 /** Everything a frontend needs on boot: identity, grants, zones, actions. */
@@ -1126,6 +1160,48 @@ export interface EmergencyContactFields {
   emergencyContactName?: string;
   emergencyContactPhone?: string;
   emergencyContactRelationship?: string;
+}
+
+export interface ErrorReceipt {
+  received: boolean;
+}
+
+export interface ErrorReport {
+  id: string;
+  kind: string;
+  severity: "noise" | "degraded" | "blocking";
+  message: string;
+  /** A path template, never a real URL. */
+  path: string;
+  source?: string;
+  line?: number;
+  stack?: string;
+  control?: string;
+  /** Null for a fault reported before sign-in. */
+  reportedBy?: string;
+  /** Plain English, computed on read. Never a stack — a coordinator is being asked whether a member is stuck, not to debug. */
+  summary?: string;
+  createdAt?: string;
+  /** 90 days. A retention decision, not a storage one. */
+  expiresAt?: string;
+}
+
+export type ErrorReportList = ErrorReport[];
+
+export interface ErrorReportRequest {
+  /** `deadPath` is the one nothing throws for: a control that should do something and does not. It is the most valuable kind here — a member meeting it has no vocabulary to report it. */
+  kind: "uncaught" | "unhandledRejection" | "frameworkMissing" | "networkFailure" | "deadPath" | "assetFailure";
+  message: string;
+  /** The script. Code, not data. */
+  source?: string;
+  line?: number;
+  column?: number;
+  /** Truncated and redacted before storage. */
+  stack?: string;
+  /** Reduced to a path template server-side. Never stored raw — a query string is where a name goes. */
+  url?: string;
+  /** Which control, for a dead path. */
+  control?: string;
 }
 
 /** Every failure, in one shape. */
@@ -1704,7 +1780,7 @@ export type Lease = (LifecycleFields & {
   terminationReason?: string;
   daysRemaining?: number | null;
   isInArrears?: boolean;
-  status?: "draft" | "pendingSignature" | "active" | "inArrears" | "expiring" | "ended" | "terminated";
+  status?: "draft" | "pendingSignature" | "active" | "inArrears" | "expiring" | "completed" | "terminated";
 });
 
 /** Request variant of `Lease`. */
@@ -1728,8 +1804,12 @@ export type LeaseInput = (LifecycleFieldsInput & {
   signedByTenantAt?: string;
   signedByLandlordAt?: string;
   terminationReason?: string;
-  status?: "draft" | "pendingSignature" | "active" | "inArrears" | "expiring" | "ended" | "terminated";
+  status?: "draft" | "pendingSignature" | "active" | "inArrears" | "expiring" | "completed" | "terminated";
 });
+
+export interface LeaseActionRequest {
+  lease: string;
+}
 
 /** The lease totals after a payment, recomputed rather than incremented. */
 export interface LeaseBalance {
@@ -1739,7 +1819,7 @@ export interface LeaseBalance {
   arrearsAmount: number;
   creditBalance?: number;
   nextDueDate?: string | Record<string, unknown>;
-  status: "draft" | "pendingSignature" | "active" | "inArrears" | "expiring" | "ended" | "terminated";
+  status: "draft" | "pendingSignature" | "active" | "inArrears" | "expiring" | "completed" | "terminated";
   escalation?: "none" | "reminder" | "firstNotice" | "finalNotice" | "legalReferral";
 }
 
@@ -1763,11 +1843,17 @@ export interface LeaseSchedule {
   /** Paid ahead of schedule. Never negative; arrears is the other direction. */
   creditBalance?: number;
   nextDueDate?: string | Record<string, unknown>;
-  status?: "draft" | "pendingSignature" | "active" | "inArrears" | "expiring" | "ended" | "terminated";
+  status?: "draft" | "pendingSignature" | "active" | "inArrears" | "expiring" | "completed" | "terminated";
   escalation?: "none" | "reminder" | "firstNotice" | "finalNotice" | "legalReferral";
   /** True when the term is longer than the schedule window returned. */
   truncated?: boolean;
   entries: RentScheduleEntry[];
+}
+
+export interface LeaseTerminateRequest {
+  lease: string;
+  /** Required. The tenant is told, and a terminated lease with no stated reason is a fact about somebody's housing that nobody has to defend. */
+  reason: string;
 }
 
 export interface LifecycleFields {
@@ -1830,6 +1916,11 @@ export interface LocationFields {
 export interface LoginRequest {
   email: string;
   password: string;
+}
+
+export interface LogoutRequest {
+  /** The session's refresh token. Send it: revoking it is what makes signing out mean anything server-side. Omitted, the reply says nothing was revoked. */
+  refreshToken?: string;
 }
 
 export type MaintenanceRequest = (LifecycleFields & {
@@ -1916,11 +2007,36 @@ export interface MaintenanceSla {
   escalation: "none" | "notifyVendor" | "notifyCoordinator" | "notifyBackOffice" | "notifyHQ";
 }
 
+export interface MaintenanceStats {
+  totalRequests: number;
+  openRequests: number;
+  inProgress: number;
+  completed: number;
+  /** On hold or cancelled. */
+  stalled?: number;
+  unclassified?: number;
+}
+
 export interface MaintenanceStatusEntry {
   status: string;
   at: string;
   by?: string;
   note?: string;
+}
+
+export interface MaintenanceSummary {
+  total: number;
+  open: number;
+  inProgress: number;
+  completed: number;
+  /** On hold or cancelled. Reported so the parts sum to the total. */
+  stalled: number;
+  /** A status no bucket claims. Should always be 0; visible so it cannot hide. */
+  unclassified?: number;
+  /** Computed on every read from the current state, never stored. An unassigned emergency, a breached SLA, or a job parked past 72 hours. */
+  needsEscalation: number;
+  /** NULL over nothing resolved — never 0, which would read as an instant turnaround. */
+  averageResolutionHours: Record<string, unknown>;
 }
 
 export interface MarkNotificationRequest {
@@ -1953,6 +2069,19 @@ export interface MarketplaceOverview {
     currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
     createdAt?: string;
   }[];
+}
+
+export interface MemberCreateLeaseRequest {
+  property: string;
+  /** The tenant, as a USER id. The server joins to their profile. */
+  tenant: string;
+  monthlyRent: number;
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  leaseStart: string;
+  /** OPTIONAL. Absent or null means a month-to-month tenancy, which is ordinary in The Gambia. A required end date would force whoever writes the lease to invent one that then looks like a commitment. */
+  leaseEnd?: Record<string, unknown>;
+  paymentDayOfMonth?: number;
+  securityDeposit?: number;
 }
 
 /** A trading account on the LRMC marketplace. Sellers act for it. */
@@ -2201,6 +2330,47 @@ export type PaymentList = Payment[];
 /** Request variant of `PaymentList`. */
 export type PaymentListInput = PaymentInput[];
 
+export interface PaymentStats {
+  totalPayments: number;
+  settled?: number;
+  onTime: number;
+  late: number;
+  awaiting?: number;
+  failed?: number;
+  /** Of settled instalments. Null when none have settled. */
+  reliability: Record<string, unknown>;
+  /** The period `collected` covers. Label the figure from this rather than assuming 30. */
+  collectionWindowDays: number;
+  /** Money settled inside the window, grouped by currency and deliberately NOT summed into one figure: the ledger carries several currencies and there is no exchange rate on this platform. An empty array means nothing settled in the window. */
+  collected: {
+    currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+    amount: number;
+    payments: number;
+  }[];
+}
+
+export interface PaymentSummary {
+  total: number;
+  settled: number;
+  onTime: number;
+  late: number;
+  failed?: number;
+  /** Raised, not yet settled. Excluded from every rate. */
+  awaiting?: number;
+  /** (onTime / (onTime + late)) * 100. NULL when nothing has settled — never 0, which would tell somebody on their first day that none of their payments were on time. Not the same as `paymentReliability` in an assessment, which counts missed instalments too. */
+  onTimeRate: Record<string, unknown>;
+  /** One entry per currency, deliberately not summed. There is no exchange rate on this platform, so a single total would not be an amount of anything. */
+  settledByCurrency: {
+    currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+    amount: number;
+    payments: number;
+  }[];
+  /** Whose rows these totals cover. */
+  scope: "all" | "recordedByMe";
+  /** True when the totals cover only part of the person's history — a coordinator seeing their own receipts. Say so on screen; a partial total read as a whole one is worse than no total. */
+  partial: boolean;
+}
+
 export interface PaymentsEvidence {
   paymentsOnTime: number;
   paymentsLate: number;
@@ -2393,6 +2563,18 @@ export type PropertyInput = (LocationFields & LifecycleFieldsInput & {
   nextInspectionDue?: string;
 });
 
+export interface PropertyStats {
+  totalProperties: number;
+  occupied: number;
+  vacant: number;
+  /** Under maintenance or off-market. */
+  unavailable?: number;
+  /** A status no bucket claims. Should be zero. */
+  unclassified?: number;
+  /** Of lettable properties. Null when there are none. */
+  occupancyRate: Record<string, unknown>;
+}
+
 export type PublicContent = (LifecycleFields & {
   slug: string;
   contentType: "page" | "article" | "announcement" | "faq" | "testimonial" | "servicePage" | "pressRelease";
@@ -2474,6 +2656,17 @@ export interface PushTokenRegistrationInput {
   locale?: string;
 }
 
+export interface RaiseMaintenanceRequest {
+  property: string;
+  title: string;
+  description?: string;
+  serviceType: string;
+  /** How urgent the person reporting it thinks it is. Triage may change it. */
+  priority?: "low" | "normal" | "high" | "emergency";
+  /** Storage keys, never URLs. An address a client supplies is an address a client controls. */
+  photosBefore?: string[];
+}
+
 export interface RatingFields {
   rating?: number;
   ratingCount?: number;
@@ -2481,6 +2674,22 @@ export interface RatingFields {
 
 /** Request variant of `RatingFields`. */
 export type RatingFieldsInput = Record<string, never>;
+
+export interface RecordPaymentRequest {
+  /** The member the money came from, as a USER id. The server joins to their profile. */
+  payer: string;
+  /** The lease the money is against, where there is one. */
+  subject?: string;
+  subjectKind?: "Lease" | "MaintenanceRequest";
+  /** Only these two. A payout recorded by hand would mark money as sent that was never sent. */
+  kind: "rent" | "deposit";
+  method?: "cash" | "mobileMoney" | "bankTransfer";
+  amount: number;
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  /** When the money changed hands, which is not when it was typed in. A future date is refused. */
+  paidAt?: string;
+  notes?: string;
+}
 
 /** Records a rent payment and rolls the lease totals forward in the same request. */
 export interface RecordRentPaymentRequest {
@@ -2970,6 +3179,15 @@ export interface SettlePayoutBatchRequest {
   notes?: string;
 }
 
+export interface SignOutOutcome {
+  /** Always true. The local session ends regardless of what could be revoked. */
+  signedOut: boolean;
+  /** Whether a refresh token was presented and is now denied. False means any refresh token for this session remains valid until it expires. */
+  refreshRevoked: boolean;
+  /** Present when nothing was revoked, explaining why. */
+  note?: string;
+}
+
 export interface SlaEscalationRun {
   asOf: string;
   dryRun?: boolean;
@@ -3122,6 +3340,13 @@ export interface TransitionRequirements {
   gated: boolean;
 }
 
+export interface UpdateMaintenanceStatusRequest {
+  request: string;
+  status: "open" | "triaged" | "assigned" | "quoted" | "approved" | "inProgress" | "onHold" | "completed" | "verified" | "cancelled";
+  /** REQUIRED when cancelling or parking a request, and when sending one back from completed. Whoever raised it is told what happened, and a bare status change reads as an accident. */
+  note?: string;
+}
+
 export interface UpdateRideRequest {
   driver?: string;
   region?: string;
@@ -3218,10 +3443,88 @@ export interface UsusuEvidenceView {
   entries: UsusuEntry[];
 }
 
+export interface UsusuGroup {
+  id: string;
+  name: string;
+  /** The coordinator who runs it. Holds the register, not the money. */
+  createdBy: string;
+  members: string[];
+  status: "forming" | "active" | "paused" | "closed";
+  contributionAmount?: number;
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  region?: string;
+  note?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UsusuGroupContributionRequest {
+  group: string;
+  member: string;
+  /** YYYY-MM. What a streak is counted over and what makes a duplicate detectable. */
+  period: string;
+  amount: number;
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  note?: string;
+}
+
+export type UsusuGroupList = UsusuGroup[];
+
+export interface UsusuGroupMemberRequest {
+  group: string;
+  member: string;
+}
+
+export interface UsusuGroupMissRequest {
+  group: string;
+  member: string;
+  period: string;
+  note?: string;
+}
+
+export interface UsusuGroupSummary {
+  group?: UsusuGroup;
+  memberCount: number;
+  contributions: number;
+  misses: number;
+  /** 100 minus five per miss, floored at zero. NULL when nobody has contributed yet — a circle formed on Tuesday is not in perfect health and is not in bad health. */
+  groupHealth: Record<string, unknown>;
+  /** Consecutive contributions per member, counted BACKWARDS from the latest period. A member in the circle with no entries gets a real 0. */
+  streaks: Record<string, number>;
+  /** One entry per currency, never summed. There is no exchange rate on this platform. */
+  contributedByCurrency?: {
+    currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+    amount: number;
+    entries: number;
+  }[];
+  /** Whether anything has been recorded at all. */
+  hasActivity: boolean;
+  /** Oldest first, so a page renders the history in the order it happened. */
+  entries?: {
+    member: string;
+    kind: "contribution" | "miss";
+    period: string;
+    amount?: number;
+    currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  }[];
+}
+
 export interface UsusuMissRequest {
   subject: string;
   period: string;
   note?: string;
+}
+
+export interface UsusuStats {
+  /** Savings circles this caller can see. NOT every circle on the platform — a coordinator sees only the ones they steward or belong to. */
+  totalGroups?: number;
+  /** Forming, active or paused. */
+  activeGroups?: number;
+  /** People with a ledger, not groups — there is no group entity. */
+  totalMembers: number;
+  avgGroupHealth: Record<string, unknown>;
+  totalContributions: number;
+  totalMisses: number;
 }
 
 export type Vendor = (ContactFields & LocationFields & LifecycleFields & VerificationFields & IdentityFields & RatingFields & {

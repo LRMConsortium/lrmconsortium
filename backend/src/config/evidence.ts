@@ -169,6 +169,48 @@ export function paymentReliabilityFrom(
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * Tenancy history
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/** Months of continuous tenancy above which stability is fully credited. */
+export const STABLE_TENANCY_MONTHS = 12;
+
+export interface TenancyEvidence {
+  leaseCount: number;
+  completedCount: number;
+  terminatedCount: number;
+  hasActiveLease: boolean;
+  monthsHoused: number;
+  /**
+   * The longest single tenancy, in months.
+   *
+   * Reported alongside the total because they say different things: six
+   * one-month lets and one six-month tenancy are both "six months housed", and
+   * only one of them is evidence of stability.
+   */
+  longestTenancyMonths: number;
+  hasRecord: boolean;
+}
+
+/**
+ * No tenancy history at all.
+ *
+ * `hasRecord: false` is doing the same work here as everywhere else in this
+ * file, and it matters more here than almost anywhere: every applicant for
+ * their first LRMC tenancy lands on this object. Reading it as a zero would
+ * decline people for never having been customers, which at launch is everybody.
+ */
+export const EMPTY_TENANCY: TenancyEvidence = {
+  leaseCount: 0,
+  completedCount: 0,
+  terminatedCount: 0,
+  hasActiveLease: false,
+  monthsHoused: 0,
+  longestTenancyMonths: 0,
+  hasRecord: false,
+};
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * The bundle
  * ────────────────────────────────────────────────────────────────────────── */
 
@@ -178,6 +220,7 @@ export interface EvidenceBundle {
   disputesEvidence: DisputesEvidence;
   ususuEvidence: UsusuEvidence;
   paymentsEvidence: PaymentsEvidence;
+  tenancyEvidence: TenancyEvidence;
 }
 
 export const EVIDENCE_KEYS = [
@@ -186,6 +229,7 @@ export const EVIDENCE_KEYS = [
   'disputesEvidence',
   'ususuEvidence',
   'paymentsEvidence',
+  'tenancyEvidence',
 ] as const;
 
 export type EvidenceKey = (typeof EVIDENCE_KEYS)[number];
@@ -198,6 +242,7 @@ export function emptyEvidence(): EvidenceBundle {
     disputesEvidence: { ...EMPTY_DISPUTES },
     ususuEvidence: { ...EMPTY_USUSU },
     paymentsEvidence: { ...EMPTY_PAYMENTS },
+    tenancyEvidence: { ...EMPTY_TENANCY },
   };
 }
 
@@ -215,5 +260,6 @@ export function withDefaults(partial: Partial<EvidenceBundle>): EvidenceBundle {
     disputesEvidence: { ...base.disputesEvidence, ...(partial.disputesEvidence ?? {}) },
     ususuEvidence: { ...base.ususuEvidence, ...(partial.ususuEvidence ?? {}) },
     paymentsEvidence: { ...base.paymentsEvidence, ...(partial.paymentsEvidence ?? {}) },
+    tenancyEvidence: { ...base.tenancyEvidence, ...(partial.tenancyEvidence ?? {}) },
   };
 }
