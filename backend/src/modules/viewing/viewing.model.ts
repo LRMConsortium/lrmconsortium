@@ -62,8 +62,12 @@ const viewingSchema = new Schema<IViewing>(
   {
     property: { type: Schema.Types.ObjectId, ref: 'Property', required: true, index: true },
     requestedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    landlord: { type: Schema.Types.ObjectId, ref: 'User', index: true },
-    coordinator: { type: Schema.Types.ObjectId, ref: 'User', index: true },
+    /* Profile ids — same correction as Application, same cause: written from
+     * `property.owner` and `property.assignedCoordinator`, declared as User,
+     * and compared against `actor.userId` on every read. `requestedBy` above
+     * stays a User: it records who asked, which is a person. */
+    landlord: { type: Schema.Types.ObjectId, ref: 'LandlordProfile', index: true },
+    coordinator: { type: Schema.Types.ObjectId, ref: 'CoordinatorProfile', index: true },
 
     requestedFor: { type: Date, required: true, index: true },
     localHour: { type: Number, required: true, min: 0, max: 23 },

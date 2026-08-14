@@ -7524,6 +7524,102 @@ section('Phantom paths: conditions Mongoose silently deletes');
 }
 
 
+// ═══════════════════════════════════════════════════════════════════════════
+section('Three id spaces, and which one each reference speaks');
+
+/* This platform has three, and they are all correct:
+ *
+ *   1. **Evidence about a person** is keyed by **User** — Reference, Dispute,
+ *      UsusuEntry. Deliberate, and documented in `evidence.model.ts`: evidence
+ *      follows the person across every role they hold, so a dispute raised
+ *      about somebody does not vanish because they were acting as a landlord
+ *      that day rather than as a tenant.
+ *   2. **A party in a business record** is keyed by **profile** — Lease.tenant
+ *      and .landlord, Payment.payer and .payee, Maintenance.assignedVendor.
+ *      One person's landlord ledger and tenant ledger are different records and
+ *      must never be summed.
+ *   3. **A notification recipient** is a **User**. You notify a person.
+ *
+ * The defect was never that one of these is wrong. It was code that spanned two
+ * of them with a single value — and because a Mongo query against the wrong id
+ * space returns `[]` rather than raising, the failure looked like an absence of
+ * data rather than a bug. `gatherEvidence` did exactly that, and the result was
+ * that **no application on the platform could ever be recommended**: every
+ * applicant scored as having no payment history and no tenancy, so the engine
+ * held every one of them at review. It looked like caution. It was a join. */
+{
+  const appSrc = readFileSync(
+    resolve(process.cwd(), 'src/modules/application/index.ts'), 'utf8');
+
+  check('the applicant is resolved to their profiles before the ledger is read',
+    /const profileIds = await profileIdsFor\(String\(subject\)\)/.test(appSrc),
+    'one id cannot key both a User collection and a profile collection');
+  check('payment history is read by profile',
+    /Payment\.find\(\{ payer: \{ \$in: profileIds \}/.test(appSrc),
+    'keyed by user id this returned [] for every applicant, scored as "no history"');
+  check('tenancy history is read by profile',
+    /Lease\.find\(\{ tenant: \{ \$in: profileIds \}/.test(appSrc));
+  check('and the evidence collections are still read by user',
+    /Reference\.find\(\{ subject: subject as never/.test(appSrc)
+    && /Dispute\.find\(\{ subject: subject as never/.test(appSrc),
+    'evidence about a person must follow the person, not one of their roles');
+
+  /* ── A rule about assertions, learned the hard way four times ────────────
+   * A *negative* assertion over source text — "this phrase must not appear" —
+   * is a trap in this codebase, because the comments quote code and explain
+   * defects by naming them. The first draft of this very check asserted that
+   * the phrase "applicant is already a profile id" was gone, and it failed
+   * against the fixed code: the header above quotes the false claim in order to
+   * explain why it was false. Three earlier assertions passed against mutations
+   * for the mirror-image reason.
+   *
+   * So: **positive assertions on prose, never negative ones.** What matters is
+   * not that the wrong explanation is absent but that a right one is present —
+   * this function spans two id spaces, and the next person to touch it needs to
+   * be told so before they "simplify" it back. */
+  /* Line-break tolerant: the header is wrapped prose, and an assertion that
+   * depends on where a sentence happens to wrap is an assertion that fails the
+   * next time somebody reflows a comment. */
+  check('the header explains the id spaces it spans',
+    /keyed by \*\*User[\s\S]{0,12}id\*\*/.test(appSrc)
+    && /keyed by \*\*profile[\s\S]{0,12}id\*\*/.test(appSrc),
+    'the next person to simplify this needs to know why it is not simple');
+
+  // ── The schemas record which space each field speaks ──
+  const PARTY_REFS: [string, string, string[]][] = [
+    ['application', 'src/modules/application/application.model.ts', ['landlord', 'coordinator']],
+    ['viewing', 'src/modules/viewing/viewing.model.ts', ['landlord', 'coordinator']],
+  ];
+  for (const [name, path, fields] of PARTY_REFS) {
+    const src = readFileSync(resolve(process.cwd(), path), 'utf8');
+    for (const field of fields) {
+      const decl = new RegExp(`${field}: \\{[^}]*ref: '(\\w+)'`);
+      const ref = src.match(decl)?.[1];
+      check(`${name}.${field} is declared as the profile it actually holds`,
+        ref === 'LandlordProfile' || ref === 'CoordinatorProfile',
+        `declared ref: '${ref}', but it is written from a property's owner — a profile id`);
+    }
+  }
+
+  /* The two that stay Users, asserted so a future sweep does not "fix" them
+   * into profiles and quietly break the thing the distinction protects. */
+  const appModel = readFileSync(
+    resolve(process.cwd(), 'src/modules/application/application.model.ts'), 'utf8');
+  check('but the applicant stays a User',
+    /applicant: \{[^}]*ref: 'User'/.test(appModel),
+    'evidence about a person follows the person');
+  const evidenceModel = readFileSync(
+    resolve(process.cwd(), 'src/modules/evidence/evidence.model.ts'), 'utf8');
+  eq('and all three evidence collections stay keyed by User',
+    (evidenceModel.match(/subject: \{[^}]*ref: 'User'/g) ?? []).length, 3);
+  const notificationModel = readFileSync(
+    resolve(process.cwd(), 'src/modules/notification/notification.model.ts'), 'utf8');
+  check('a notification recipient stays a User',
+    /recipient: \{[^}]*ref: 'User'/.test(notificationModel),
+    'you notify a person, not a role they hold');
+}
+
+
 /**
  * The providers are the one asynchronous surface here. Wrapped in a function
  * rather than reached for with top-level await, which this project's module

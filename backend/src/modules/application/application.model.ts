@@ -109,8 +109,17 @@ const applicationSchema = new Schema<IApplication>(
   {
     property: { type: Schema.Types.ObjectId, ref: 'Property', required: true, index: true },
     applicant: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    landlord: { type: Schema.Types.ObjectId, ref: 'User', index: true },
-    coordinator: { type: Schema.Types.ObjectId, ref: 'User', index: true },
+    /* Profile ids, not User ids — these are *parties in a business record*,
+     * written from `property.owner` and `property.assignedCoordinator`, both
+     * of which are profile ids. The declaration said `User` while the writes
+     * said profile, so every read comparing them to `actor.userId` compared
+     * two id spaces that can never meet: a landlord was refused their own
+     * property, and every coordinator queue was permanently empty.
+     *
+     * `applicant` above stays a User on purpose. Evidence about a person
+     * follows the person, not one of the roles they happen to hold. */
+    landlord: { type: Schema.Types.ObjectId, ref: 'LandlordProfile', index: true },
+    coordinator: { type: Schema.Types.ObjectId, ref: 'CoordinatorProfile', index: true },
 
     status: {
       type: String,

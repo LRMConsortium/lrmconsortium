@@ -98,8 +98,59 @@ function scopeFor(actor: { userId: string; roles: string[] }): Record<string, un
  * the person it did not look at.**
  * ────────────────────────────────────────────────────────────────────────── */
 
-async function gatherEvidence(applicant: unknown): Promise<EvidenceBundle> {
-  const subject = applicant;
+/**
+ * Every profile document this user owns, as ids — the join between the two id
+ * spaces. The same helper exists in `payment/index.ts` for the same reason;
+ * kept local rather than shared because the two modules resolve it at different
+ * points and a shared one would invite caching it, which is how a person who
+ * gains a profile mid-session gets scored against the profiles they had when
+ * they signed in.
+ */
+async function profileIdsFor(userId: string): Promise<string[]> {
+  const user = await User.findOne({ _id: userId, deletedAt: null })
+    .select('profiles')
+    .lean()
+    .exec();
+  if (!user) return [];
+  return (user.profiles ?? []).map((p) => String(p.profileId));
+}
+
+/**
+ * Everything the scorer needs about one applicant.
+ *
+ * ── This platform has three id spaces, and this function spans all of them ──
+ * It used to take one id and use it for all six lookups, under a comment
+ * asserting "the applicant is already a profile id here". It is not, and it
+ * could not have been, because the six collections do not agree:
+ *
+ *   • `User`, and `Reference` / `Dispute` / `UsusuEntry` are keyed by **User
+ *     id**. That is deliberate and documented in `evidence.model.ts`: evidence
+ *     is about a *person*, and it must follow them across every role they hold.
+ *     A dispute raised about somebody should not vanish because they were
+ *     acting as a landlord that day rather than as a tenant.
+ *   • `Payment.payer` and `Lease.tenant` are keyed by **profile id**, because
+ *     one person's landlord ledger and tenant ledger are genuinely different
+ *     records and must not be summed together.
+ *
+ * One value cannot be both. Passed a User id — which is what `applicant` holds,
+ * matching its `ref: 'User'` — the two profile-keyed lookups returned `[]` for
+ * every applicant on the platform. Not an error: an empty array, which
+ * `paymentsEvidenceFrom` and `tenancyEvidenceFrom` faithfully reported as "we
+ * looked and found nothing".
+ *
+ * So every applicant scored as having no payment history and no tenancy, and
+ * **no application could ever be recommended** — the engine held every one of
+ * them at review, which is exactly what it is designed to do with an applicant
+ * nobody has evidence about. It looked like caution. It was a join.
+ *
+ * The profile ids are resolved once, here, and the two spaces are kept apart.
+ */
+async function gatherEvidence(applicantUserId: unknown): Promise<EvidenceBundle> {
+  const subject = applicantUserId;
+
+  /* The applicant's own profiles. `$in: []` when they hold none, which matches
+   * nothing — correct, and different from matching everything. */
+  const profileIds = await profileIdsFor(String(subject));
 
   const [user, references, disputes, ususu, payments, leases] = await Promise.all([
     User.findById(subject as never).select('isVerified verificationStatus').lean().exec()
@@ -110,12 +161,11 @@ async function gatherEvidence(applicant: unknown): Promise<EvidenceBundle> {
       .catch(() => null),
     UsusuEntry.find({ subject: subject as never, deletedAt: null }).sort('period').select('kind period').lean().exec()
       .catch(() => null),
-    Payment.find({ payer: subject as never, deletedAt: null }).select('status dueDate paidAt').lean().exec()
+    /* Profile-keyed from here down. */
+    Payment.find({ payer: { $in: profileIds } as never, deletedAt: null })
+      .select('status dueDate paidAt').lean().exec()
       .catch(() => null),
-    /* Tenancy history. `tenant` is the profile the lease points at, and the
-     * applicant is already a profile id here — the same id the other four
-     * gatherers use, so this needs no extra join. */
-    Lease.find({ tenant: subject as never, deletedAt: null })
+    Lease.find({ tenant: { $in: profileIds } as never, deletedAt: null })
       .select('status leaseStart leaseEnd closedAt').lean().exec()
       .catch(() => null),
   ]);
