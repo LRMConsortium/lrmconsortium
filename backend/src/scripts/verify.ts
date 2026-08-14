@@ -4884,7 +4884,9 @@ section('Stats: whose numbers these are');
   const coordinator = { userId: 'u-coord', roles: ['coordinator'], regions: ['banjul', 'kanifing'] };
   const roamingCoord = { userId: 'u-coord2', roles: ['coordinator'] };
 
-  const OWNED = { owner: 'landlordId', region: 'region' };
+  /* User-space, so the existing expectations below still read as they did.
+   * The profile-space branch is asserted separately underneath. */
+  const OWNED = { owner: { field: 'landlordId', space: 'user' as const }, region: 'region' };
 
   // ── The two privileged lists are real roles, and are disjoint ──
   // A role in both lists would take the institution-wide branch and its
@@ -4916,7 +4918,7 @@ section('Stats: whose numbers these are');
     JSON.stringify(scopeFor(landlord, OWNED)), JSON.stringify({ landlordId: 'u-landlord' }));
   check('and is never unrestricted', !isUnrestricted(scopeFor(landlord, OWNED)));
   eq('a tenant likewise',
-    JSON.stringify(scopeFor(tenant, { owner: 'tenantId' })),
+    JSON.stringify(scopeFor(tenant, { owner: { field: 'tenantId', space: 'user' as const } })),
     JSON.stringify({ tenantId: 'u-tenant' }));
 
   // The scope is the actor's own id, not something a caller supplied. Asserted
@@ -4930,7 +4932,8 @@ section('Stats: whose numbers these are');
     JSON.stringify({ region: { $in: ['banjul', 'kanifing'] } }));
   // A collection that records its supervisor directly is narrower and better.
   eq('and to themselves where the collection names a coordinator',
-    JSON.stringify(scopeFor(coordinator, { owner: 'landlordId', coordinator: 'coordinatorId', region: 'region' })),
+    JSON.stringify(scopeFor(coordinator, { owner: { field: 'landlordId', space: 'user' as const },
+      coordinator: { field: 'coordinatorId', space: 'user' as const }, region: 'region' })),
     JSON.stringify({ coordinatorId: 'u-coord' }));
 
   // The case that makes failing closed matter. A coordinator is not a plain
@@ -4999,9 +5002,21 @@ section('Stats: whose numbers these are');
   }
   check('stats derives every scope from the token',
     statsSrc.includes('req.actor as Actor'));
+  /* The rule itself must stay in `statsScope.ts`, which is Mongoose-free and
+   * therefore assertable without a database. `stats/index.ts` may hold a thin
+   * wrapper — it needs one, to resolve the caller's profile ids — but it must
+   * not branch on roles or decide what "unrestricted" means. This checks the
+   * intent rather than the old spelling: the previous version asserted that no
+   * `function scopeMatch(` existed at all, which stopped being the right
+   * question the moment the wrapper became necessary. */
+  check('the local wrapper delegates rather than deciding',
+    /return scopeFor\(actor, fields, await profileIdsFor\(actor\.userId\)\)/.test(statsSrc),
+    'a second implementation of the scope rule is a second thing to get wrong');
+  for (const reimplemented of ['UNSCOPED_ROLES', 'REGIONAL_ROLES', "_id: null"]) {
+    check(`and does not reimplement ${reimplemented}`, !statsSrc.includes(reimplemented),
+      'the rule lives in statsScope.ts because that is where it can be asserted');
+  }
   // An inline `{}` where a scope belongs is the whole bug in two characters.
-  check('and the scope rule is not reimplemented in the handlers',
-    !/function\s+scopeMatch\s*\(/.test(statsSrc));
 
   // Every aggregation begins from a scope, and none is left unfiltered. Counted
   // rather than eyeballed: a sixth endpoint added without one fails here.
@@ -5991,7 +6006,7 @@ section('Leases: the lifecycle, and who may move it');
     statsSrc.includes('conversionRate'));
   // Every lease aggregation goes through the same scope rule as the rest.
   const leaseAggregations = (statsSrc.match(/countByStatus\(Lease/g) ?? []).length;
-  const scopedLease = (statsSrc.match(/countByStatus\(Lease, scopeMatch\(/g) ?? []).length;
+  const scopedLease = (statsSrc.match(/countByStatus\(Lease, await scopeMatch\(/g) ?? []).length;
   eq('every lease aggregation is scoped from the token',
     scopedLease, leaseAggregations);
 }
@@ -7708,6 +7723,78 @@ section('Three id spaces, and which one each reference speaks');
     'keyed on actor.userId, every coordinator queue was permanently empty');
   check('and still user-keyed where the field is',
     /\{ applicant: actor\.userId \}/.test(appScope));
+
+  // ── Stats: every scoped field says which space it speaks ──
+  // `scopeFor` narrowed on `actor.userId` for every field, while Property.owner,
+  // Lease.landlord/tenant/coordinator and Payment.payer all hold profile ids.
+  // Four of the five member stats endpoints therefore matched nothing, and
+  // every member's dashboard read zero. Not an error — a match against the
+  // wrong id space returns no rows, which looks exactly like having no records.
+  const mine = ['p-landlord', 'p-tenant'];
+  const landlordActor = { userId: 'u-1', roles: ['landlord'] };
+  const coordActor = { userId: 'u-2', roles: ['coordinator'] };
+
+  eq('a profile-keyed owner matches the caller\'s profiles',
+    JSON.stringify(scopeFor(landlordActor, { owner: { field: 'landlord', space: 'profile' } }, mine)),
+    JSON.stringify({ landlord: { $in: mine } }));
+  eq('a user-keyed owner still matches the user',
+    JSON.stringify(scopeFor(landlordActor, { owner: { field: 'subject', space: 'user' } }, mine)),
+    JSON.stringify({ subject: 'u-1' }));
+  eq('a profile-keyed coordinator matches the caller\'s profiles',
+    JSON.stringify(scopeFor(coordActor, { coordinator: { field: 'coordinator', space: 'profile' } }, mine)),
+    JSON.stringify({ coordinator: { $in: mine } }));
+
+  /* A caller with no profile matches nothing — and `$in: []` is emphatically
+   * not `{}`. This is the same distinction `DENY_ALL` exists for, arriving by a
+   * different route. */
+  const noProfiles = scopeFor(landlordActor, { owner: { field: 'landlord', space: 'profile' } }, []);
+  check('a caller with no profile is scoped to nothing, not to everything',
+    !isUnrestricted(noProfiles) && JSON.stringify(noProfiles) === JSON.stringify({ landlord: { $in: [] } }));
+
+  // ── Each call site declares its space, and declares the right one ──
+  const statsIdx = readFileSync(resolve(process.cwd(), 'src/modules/stats/index.ts'), 'utf8');
+  check('every scoped field in stats declares an id space',
+    !/owner: '[a-zA-Z]+'/.test(statsIdx) && !/coordinator: '[a-zA-Z]+'/.test(statsIdx),
+    'a bare field name is a field whose space somebody guessed');
+  /* ── The authoritative map, rather than spot-checks ────────────────────
+   * A spot-check for one `field: 'landlord', space: 'profile'` passed against a
+   * mutation, because three call sites share that field name and only one was
+   * changed. Every declared pair is checked against the map below, so a single
+   * site drifting is a failure — and a field that appears nowhere in the map is
+   * one nobody has decided about, which is the state this whole section exists
+   * to make impossible. */
+  const SPACE_OF: Record<string, 'user' | 'profile'> = {
+    // Business records: the party is a profile.
+    owner: 'profile', assignedCoordinator: 'profile', landlord: 'profile',
+    tenant: 'profile', coordinator: 'profile', payer: 'profile',
+    // Evidence and authorship: the party is a person.
+    subject: 'user',        // UsusuEntry — evidence follows the person
+    raisedBy: 'user',       // polymorphic, written with the raiser's user id
+    recordedBy: 'user',     // who wrote the receipt
+  };
+  const declared = [...statsIdx.matchAll(/field: '(\w+)', space: '(user|profile)'/g)];
+  check('stats declares at least one space per scoped field', declared.length >= 8);
+  const wrongSpace = declared
+    .filter(([, field, space]) => SPACE_OF[field!] !== space)
+    .map(([, field, space]) => `${field} declared ${space}, should be ${SPACE_OF[field!] ?? '<undecided>'}`);
+  check('and every declared space matches the column it queries',
+    wrongSpace.length === 0, [...new Set(wrongSpace)].join('; '));
+  const missing = Object.keys(SPACE_OF)
+    .filter((f) => !declared.some(([, field]) => field === f));
+  check('and every field in the map is actually used',
+    missing.length === 0, `${missing.join(', ')} — stale map entry, or a call site was removed`);
+  /* Payment has no `coordinator` column. Naming one matched nothing, so every
+   * coordinator's payment tiles read zero — and what a coordinator may
+   * actually see is the receipts they wrote, which is user-keyed. */
+  /* Positive, not negative. The first draft of this also asserted that
+   * `coordinator: { field: 'coordinator'` appeared nowhere — and failed, because
+   * Lease genuinely has that column and four call sites correctly use it. Only
+   * Payment lacks one. A negative assertion over a whole file cannot express
+   * "this collection, not those"; a positive one about the site that matters
+   * can. Fifth time this session that lesson has come up. */
+  check('payments scope a coordinator to what they recorded',
+    /field: 'recordedBy', space: 'user'/.test(statsIdx),
+    'Payment has no coordinator column; naming one is a dashboard of zeros');
 }
 
 

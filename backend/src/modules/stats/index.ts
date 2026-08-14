@@ -41,7 +41,8 @@ import { UsusuEntry } from '../evidence/evidence.model.js';
 import { Lease } from '../lease/lease.model.js';
 import { UsusuGroup } from '../evidence/evidence.model.js';
 import { groupHealthFrom } from '../../config/evidence.js';
-import { scopeFor, type ScopeActor } from './statsScope.js';
+import { scopeFor, type ScopeActor, type ScopeFields } from './statsScope.js';
+import { User } from '../../models/User.js';
 import { LAUNCH_CURRENCY } from '../../config/currencies.js';
 
 /**
@@ -61,7 +62,30 @@ const guard = [authenticate, enterZone('MEMBER_PORTAL'), auditTrail('analytics')
  * `statsScope.ts`, which is Mongoose-free and therefore assertable without a
  * database. `scopeMatch` here is only the local name for it. */
 type Actor = ScopeActor;
-const scopeMatch = scopeFor;
+
+/**
+ * The caller's profile ids — the join between this platform's two id spaces
+ * for the fields that speak the profile one.
+ */
+async function profileIdsFor(userId: string): Promise<string[]> {
+  const user = await User.findOne({ _id: userId, deletedAt: null })
+    .select('profiles')
+    .lean()
+    .exec();
+  if (!user) return [];
+  return (user.profiles ?? []).map((pr) => String(pr.profileId));
+}
+
+/**
+ * `scopeFor` with the caller's profiles resolved.
+ *
+ * The rule itself stays pure and Mongoose-free in `statsScope.ts`; this is the
+ * one lookup it needs, done here so the rule can still be asserted in a suite
+ * that has no database.
+ */
+async function scopeMatch(actor: Actor, fields: ScopeFields): Promise<Record<string, unknown>> {
+  return scopeFor(actor, fields, await profileIdsFor(actor.userId));
+}
 
 /** Institution-wide, for the one place that needs it outside `scopeFor`. */
 function seesEverythingHere(actor: Actor): boolean {
@@ -103,8 +127,10 @@ router.get(
   ...guard,
   requirePermission('analytics:read', 'property:readOwn', 'property:read'),
   asyncHandler(async (req, res) => {
-    const match = scopeMatch(req.actor as Actor, {
-      owner: 'owner', coordinator: 'assignedCoordinator', region: 'region',
+    const match = await scopeMatch(req.actor as Actor, {
+      owner: { field: 'owner', space: 'profile' },
+      coordinator: { field: 'assignedCoordinator', space: 'profile' },
+      region: 'region',
     });
     const rows = await countByStatus(Property, match, '$occupancyStatus');
     const counts = tally(PROPERTY_BUCKETS, rows);
@@ -119,8 +145,9 @@ router.get(
      * are reported; neither is derived from the other. */
     const leaseCounts = tally(
       LEASE_BUCKETS,
-      await countByStatus(Lease, scopeMatch(req.actor as Actor, {
-        owner: 'landlord', coordinator: 'coordinator',
+      await countByStatus(Lease, await scopeMatch(req.actor as Actor, {
+        owner: { field: 'landlord', space: 'profile' },
+        coordinator: { field: 'coordinator', space: 'profile' },
       })),
     );
 
@@ -150,7 +177,13 @@ router.get(
   ...guard,
   requirePermission('analytics:read', 'payment:readOwn', 'payment:read'),
   asyncHandler(async (req, res) => {
-    const match = scopeMatch(req.actor as Actor, { owner: 'payer', coordinator: 'coordinator' });
+    const match = await scopeMatch(req.actor as Actor, {
+      owner: { field: 'payer', space: 'profile' },
+      /* Not `coordinator` — Payment has no such column, so it matched
+       * nothing and every coordinator's payment tiles read zero. What a
+       * coordinator may see is the receipts they wrote. */
+      coordinator: { field: 'recordedBy', space: 'user' },
+    });
     const rows = await countByStatus(Payment, match);
     const counts = tally(PAYMENT_BUCKETS, rows);
 
@@ -190,8 +223,9 @@ router.get(
      * page of rows in a browser. */
     const leaseRunning = tally(
       LEASE_BUCKETS,
-      await countByStatus(Lease, scopeMatch(req.actor as Actor, {
-        owner: 'tenant', coordinator: 'coordinator',
+      await countByStatus(Lease, await scopeMatch(req.actor as Actor, {
+        owner: { field: 'tenant', space: 'profile' },
+        coordinator: { field: 'coordinator', space: 'profile' },
       })),
     ).running;
 
@@ -239,8 +273,12 @@ router.get(
   ...guard,
   requirePermission('analytics:read', 'maintenanceRequest:readOwn', 'maintenanceRequest:read'),
   asyncHandler(async (req, res) => {
-    const match = scopeMatch(req.actor as Actor, {
-      owner: 'raisedBy', coordinator: 'assignedCoordinator', region: 'region',
+    const match = await scopeMatch(req.actor as Actor, {
+      /* `raisedBy` is polymorphic (`raisedByKind`) and is written with the
+       * raiser's *user* id. `assignedCoordinator` is a CoordinatorProfile. */
+      owner: { field: 'raisedBy', space: 'user' },
+      coordinator: { field: 'assignedCoordinator', space: 'profile' },
+      region: 'region',
     });
     const counts = tally(MAINTENANCE_BUCKETS, await countByStatus(MaintenanceRequest, match));
 
@@ -264,8 +302,9 @@ router.get(
   ...guard,
   requirePermission('analytics:read', 'application:readOwn', 'application:read'),
   asyncHandler(async (req, res) => {
-    const match = scopeMatch(req.actor as Actor, {
-      owner: 'landlord', coordinator: 'coordinator',
+    const match = await scopeMatch(req.actor as Actor, {
+      owner: { field: 'landlord', space: 'profile' },
+      coordinator: { field: 'coordinator', space: 'profile' },
     });
     const counts = tally(APPLICATION_BUCKETS, await countByStatus(Application, match));
 
@@ -275,8 +314,9 @@ router.get(
      * yes and never moved in. */
     const leasesFromApprovals = tally(
       LEASE_BUCKETS,
-      await countByStatus(Lease, scopeMatch(req.actor as Actor, {
-        owner: 'landlord', coordinator: 'coordinator',
+      await countByStatus(Lease, await scopeMatch(req.actor as Actor, {
+        owner: { field: 'landlord', space: 'profile' },
+        coordinator: { field: 'coordinator', space: 'profile' },
       })),
     );
     /* Every bucket `tally` knows about is present with zero rather than
@@ -317,7 +357,7 @@ router.get(
      * `scopeMatch` denies instead. A coordinator therefore sees nothing here
      * until the ledger records a region, which is the honest answer: there is
      * no data to work out which contributions are theirs to supervise. */
-    const match = scopeMatch(req.actor as Actor, { owner: 'subject' });
+    const match = await scopeMatch(req.actor as Actor, { owner: { field: 'subject', space: 'user' } });
 
     const rows = (await UsusuEntry.aggregate([
       { $match: { deletedAt: null, ...match } },

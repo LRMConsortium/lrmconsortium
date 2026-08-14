@@ -58,11 +58,41 @@ export interface ScopeActor {
  * it wrong would silently match nothing — a dashboard of zeros — or, worse,
  * match everything.
  */
+/**
+ * Which id space a field speaks.
+ *
+ * This platform has three, and they are all deliberate: evidence about a person
+ * is keyed by **User** so it follows them across every role they hold; a party
+ * in a business record is keyed by **profile** so one person's landlord ledger
+ * and tenant ledger stay separate; a notification recipient is a User.
+ *
+ * A scope that guesses gets it wrong half the time, and the wrong half fails
+ * *silently*: a match against the wrong space returns nothing, so the dashboard
+ * reads zero rather than erroring. Four of the five member stats endpoints did
+ * exactly that — they narrowed on `actor.userId` against columns holding
+ * profile ids, and every member saw a dashboard of zeros.
+ *
+ * So every scoped field must say which space it speaks. There is no default.
+ */
+export type IdSpace = 'user' | 'profile';
+
+export interface ScopedField {
+  field: string;
+  space: IdSpace;
+}
+
 export interface ScopeFields {
   /** The field holding the individual whose records these are. */
-  owner?: string;
-  /** The field holding the supervising coordinator, if the collection has one. */
-  coordinator?: string;
+  owner?: ScopedField;
+  /**
+   * The field holding the supervising coordinator, if the collection has one.
+   *
+   * Not every collection does. `Payment` has no `coordinator` — a coordinator
+   * reads back the receipts they *wrote*, which is `recordedBy`, and that is a
+   * User. Naming a field the collection lacks matches nothing, which is why
+   * this was a dashboard of zeros rather than an error.
+   */
+  coordinator?: ScopedField;
   /** The field holding the region, for coordinators supervising an area. */
   region?: string;
 }
@@ -87,14 +117,28 @@ export function isRegional(actor: ScopeActor): boolean {
 export function scopeFor(
   actor: ScopeActor,
   fields: ScopeFields,
+  /**
+   * The caller's profile ids. Passed in rather than fetched, so this stays a
+   * pure function the suite can exercise without a database — which is the
+   * whole reason it lives apart from the handlers.
+   */
+  profileIds: readonly string[] = [],
 ): Record<string, unknown> {
   if (!actor || typeof actor.userId !== 'string' || !actor.userId) return { ...DENY_ALL };
   if (!Array.isArray(actor.roles)) return { ...DENY_ALL };
 
   if (seesEverything(actor)) return { ...ALLOW_ALL };
 
+  /* A field matched against the id space it actually speaks. `$in: []` — a
+   * caller with no profile — matches nothing, which is the right answer and is
+   * emphatically not `{}`. */
+  const match = (f: ScopedField): Record<string, unknown> =>
+    f.space === 'user'
+      ? { [f.field]: actor.userId }
+      : { [f.field]: { $in: [...profileIds] } };
+
   if (isRegional(actor)) {
-    if (fields.coordinator) return { [fields.coordinator]: actor.userId };
+    if (fields.coordinator) return match(fields.coordinator);
     if (fields.region && actor.regions?.length) {
       return { [fields.region]: { $in: [...actor.regions] } };
     }
@@ -102,7 +146,7 @@ export function scopeFor(
     return { ...DENY_ALL };
   }
 
-  if (fields.owner) return { [fields.owner]: actor.userId };
+  if (fields.owner) return match(fields.owner);
 
   // A role this file has never heard of. Better an empty dashboard than
   // somebody else's.
