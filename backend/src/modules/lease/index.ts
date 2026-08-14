@@ -83,6 +83,27 @@ export const leaseService = new BaseService<ILease>(Lease, {
 
 const controller = createCrudController(leaseService);
 
+/**
+ * The person behind a tenant profile.
+ *
+ * `Notification.recipient` is a **User** — you notify a person, not one of the
+ * roles they hold — while `Lease.tenant` is a TenantProfile id. Both dispatches
+ * below passed the profile id straight through, so `GET /notifications/me`
+ * (which filters on `recipient: actor.userId`) matched nothing and
+ * `dispatch.targetsFor` found no push tokens.
+ *
+ * Every rent receipt and every rent reminder LRMC has ever sent went to an id
+ * that belongs to no user. Nothing failed; the rows were written and delivered
+ * to nobody.
+ */
+async function tenantUserFor(tenantProfileId: unknown): Promise<string | null> {
+  const profile = await TenantProfile.findOne({ _id: tenantProfileId as never, deletedAt: null })
+    .select('user')
+    .lean()
+    .exec();
+  return profile?.user ? String(profile.user) : null;
+}
+
 const collectionRouter = Router();
 const itemRouter = Router();
 /** Mounted under the existing `/tenant` and `/landlord` item paths. */
@@ -252,8 +273,10 @@ itemRouter.post(
     // Receipt to the tenant. Best-effort: a provider outage must not fail a
     // payment that has already been recorded.
     try {
+      const tenantUser = await tenantUserFor(lease.tenant);
+      if (!tenantUser) throw ApiError.internal('No user behind this tenant profile');
       await dispatchNotification({
-        recipient: String(lease.tenant),
+        recipient: tenantUser,
         category: 'rentReceipt',
         channel: 'inApp',
         title: `Rent received — ${lease.reference}`,
@@ -406,6 +429,12 @@ collectionRouter.post(
       due += 1;
       if (dryRun) continue;
 
+      /* A reminder with nobody to send it to is not sent. Skipped rather than
+       * dispatched to an empty string, which would write a notification row
+       * addressed to nothing and count it as delivered. */
+      const dueUser = await tenantUserFor(lease.tenant);
+      if (!dueUser) continue;
+
       const title =
         verdict.reason === 'inArrears'
           ? `Rent overdue — ${lease.reference}`
@@ -417,7 +446,7 @@ collectionRouter.post(
 
       outcomes.push(
         await dispatchNotification({
-          recipient: String(lease.tenant),
+          recipient: dueUser,
           category: 'rentDue',
           channel: 'push',
           title,

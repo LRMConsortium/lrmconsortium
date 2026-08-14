@@ -65,23 +65,61 @@ const applicationId = namedIdParam('applicationId');
 
 const guard = [authenticate, enterZone('MEMBER_PORTAL'), auditTrail('application')] as const;
 
+/**
+ * Which side of an application the caller is on.
+ *
+ * Pure, and given the caller's profile ids rather than fetching them, so the
+ * rule stays assertable without a database — which is how the rest of this
+ * platform's decisions are written.
+ *
+ * `applicant` is matched against the **user id** and `landlord` against the
+ * caller's **profile ids**, because those are the two different things those
+ * two fields hold. Both were compared to `actor.userId`, so `landlord` never
+ * matched: a landlord was refused their own property's applications, and fell
+ * through to `null` — "that application is not yours to see".
+ */
 function actorFor(
   req: { actor?: { userId: string; roles: string[] } },
   doc: Pick<IApplication, 'applicant' | 'landlord'>,
+  profileIds: readonly string[],
 ): ApplicationActor | null {
   const actor = req.actor;
   if (!actor) return null;
   if (String(doc.applicant) === actor.userId) return 'applicant';
-  if (doc.landlord && String(doc.landlord) === actor.userId) return 'landlord';
+  if (doc.landlord && profileIds.includes(String(doc.landlord))) return 'landlord';
   if (actor.roles.includes('backOfficeStaff') || actor.roles.includes('founder')) return 'staff';
   if (actor.roles.includes('coordinator')) return 'coordinator';
   return null;
 }
 
-function scopeFor(actor: { userId: string; roles: string[] }): Record<string, unknown> {
+/** Resolve the caller's profiles, then ask the pure rule above. */
+async function whoIs(
+  req: { actor?: { userId: string; roles: string[] } },
+  doc: Pick<IApplication, 'applicant' | 'landlord'>,
+): Promise<ApplicationActor | null> {
+  if (!req.actor) return null;
+  return actorFor(req, doc, await profileIdsFor(req.actor.userId));
+}
+
+/**
+ * What this caller may list.
+ *
+ * `coordinator` and `landlord` are profile-keyed; `applicant` is user-keyed.
+ * An `$in: []` — a caller who holds the role but has no profile — matches
+ * nothing, which is the right answer and is not the same as an empty filter.
+ */
+function scopeFor(
+  actor: { userId: string; roles: string[] },
+  profileIds: readonly string[],
+): Record<string, unknown> {
   if (actor.roles.includes('founder') || actor.roles.includes('backOfficeStaff')) return {};
-  if (actor.roles.includes('coordinator')) return { coordinator: actor.userId };
-  return { $or: [{ applicant: actor.userId }, { landlord: actor.userId }] };
+  if (actor.roles.includes('coordinator')) return { coordinator: { $in: [...profileIds] } };
+  return {
+    $or: [
+      { applicant: actor.userId },
+      { landlord: { $in: [...profileIds] } },
+    ],
+  };
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -293,7 +331,7 @@ collectionRouter.get(
     const page = q.page ?? 1;
     const limit = Math.min(100, q.limit ?? 20);
 
-    const filter: Record<string, unknown> = { deletedAt: null, ...scopeFor(req.actor!) };
+    const filter: Record<string, unknown> = { deletedAt: null, ...scopeFor(req.actor!, await profileIdsFor(req.actor!.userId)) };
     if (q.status) filter.status = q.status;
     if (q.property) filter.property = q.property;
     if (q.recommendation) filter['assessment.recommendation'] = q.recommendation;
@@ -324,7 +362,7 @@ itemRouter.get(
       .lean()
       .exec();
     if (!doc) throw ApiError.notFound('Application');
-    if (!actorFor(req, doc)) throw ApiError.forbidden('That application is not yours to see.');
+    if (!await whoIs(req, doc)) throw ApiError.forbidden('That application is not yours to see.');
     return ok(res, doc);
   }),
 );
@@ -336,7 +374,7 @@ itemRouter.patch(
   asyncHandler(async (req, res) => {
     const doc = await Application.findOne({ _id: req.params.applicationId, deletedAt: null }).exec();
     if (!doc) throw ApiError.notFound('Application');
-    if (actorFor(req, doc) !== 'applicant') {
+    if (await whoIs(req, doc) !== 'applicant') {
       throw ApiError.forbidden('Only the applicant may change their application.');
     }
     if (!isOpenApplication(doc.status)) {
@@ -359,7 +397,7 @@ itemRouter.post(
   asyncHandler(async (req, res) => {
     const doc = await Application.findOne({ _id: req.params.applicationId, deletedAt: null }).exec();
     if (!doc) throw ApiError.notFound('Application');
-    const who = actorFor(req, doc);
+    const who = await whoIs(req, doc);
     if (who !== 'coordinator' && who !== 'staff') {
       throw ApiError.forbidden('Only LRMC re-scores an application.');
     }
@@ -385,7 +423,7 @@ function moveRoute(to: ApplicationStatus) {
     const doc = await Application.findOne({ _id: req.params.applicationId, deletedAt: null }).exec();
     if (!doc) throw ApiError.notFound('Application');
 
-    const who = actorFor(req, doc);
+    const who = await whoIs(req, doc);
     if (!who) throw ApiError.forbidden('That application is not yours to move.');
 
     const body = req.body as { reason?: string; outstandingRequest?: string };
@@ -490,7 +528,7 @@ itemRouter.post(
     const doc = await Application.findOne({ _id: req.params.applicationId, deletedAt: null }).exec();
     if (!doc) throw ApiError.notFound('Application');
 
-    const who = actorFor(req, doc);
+    const who = await whoIs(req, doc);
     if (!who) throw ApiError.forbidden('That application is not yours to move.');
     if (!canTransitionApplication(doc.status, 'leaseIssued')) {
       throw ApiError.badRequest('Only an approved application becomes a lease.');

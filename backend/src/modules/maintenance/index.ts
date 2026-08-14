@@ -13,6 +13,7 @@ import { createCrudController } from '../../shared/BaseController.js';
 import { asyncHandler, created, ok, paginated } from '../../shared/http.js';
 import { aliasIdParam, listQuery, namedIdParam } from '../../shared/moduleFactory.js';
 import { VendorProfile } from '../vendor/vendor.model.js';
+import { CoordinatorProfile } from '../coordinator/coordinator.model.js';
 import { Property } from '../property/property.model.js';
 import { dispatchNotification, summariseDispatch, type DispatchOutcome } from '../notification/dispatch.js';
 import { MaintenanceRequest, type IMaintenanceRequest } from './maintenance.model.js';
@@ -53,6 +54,22 @@ export const maintenanceService = new BaseService<IMaintenanceRequest>(Maintenan
 });
 
 const controller = createCrudController(maintenanceService);
+
+/**
+ * The person behind a profile.
+ *
+ * `Notification.recipient` is a User; `assignedVendor` and `assignedCoordinator`
+ * are profile ids. One join, done where the branch already knows which model to
+ * ask.
+ */
+async function userBehindProfile(
+  model: { findOne: (f: Record<string, unknown>) => { select: (s: string) => { lean: () => { exec: () => Promise<unknown> } } } },
+  profileId: unknown,
+): Promise<string | null> {
+  const doc = (await model.findOne({ _id: profileId as never, deletedAt: null })
+    .select('user').lean().exec()) as { user?: unknown } | null;
+  return doc?.user ? String(doc.user) : null;
+}
 
 const collectionRouter = Router();
 const itemRouter = Router();
@@ -380,9 +397,19 @@ collectionRouter.post(
             : doc.assignedCoordinator;
       if (!recipient) continue;
 
+      /* `assignedVendor` and `assignedCoordinator` are profile ids;
+       * `Notification.recipient` is a User. Passed through unresolved, every SLA
+       * escalation LRMC has raised was addressed to an id belonging to no user —
+       * written, counted as delivered, and read by nobody. Which model to ask is
+       * known from the branch above. */
+      const recipientUser = clock.escalation === 'notifyVendor'
+        ? await userBehindProfile(VendorProfile, recipient)
+        : await userBehindProfile(CoordinatorProfile, recipient);
+      if (!recipientUser) continue;
+
       outcomes.push(
         await dispatchNotification({
-          recipient: String(recipient),
+          recipient: recipientUser,
           category: 'maintenance',
           channel: 'push',
           title: `SLA ${clock.state} — ${doc.reference}`,

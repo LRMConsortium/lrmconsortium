@@ -18,6 +18,7 @@ import {
   validate,
 } from '../../middleware/index.js';
 import { ApiError } from '../../shared/ApiError.js';
+import { User } from '../../models/User.js';
 import { asyncHandler, created, ok, paginated, pageMeta } from '../../shared/http.js';
 import { namedIdParam } from '../../shared/moduleFactory.js';
 import { Property } from '../property/property.model.js';
@@ -54,17 +55,41 @@ const guard = [authenticate, enterZone('MEMBER_PORTAL'), auditTrail('viewing')] 
  * the landlord of one property and a prospective tenant of another, and the
  * rules table is written in terms of the relationship, not the job title.
  */
+/**
+ * Which side of a viewing the caller is on.
+ *
+ * `requestedBy` is a **User** — it records who asked, which is a person.
+ * `landlord` is a **LandlordProfile id**, written from `property.owner`. Both
+ * were compared to `actor.userId`, so the landlord branch never matched and
+ * every landlord was refused their own property's viewings.
+ *
+ * Pure, and given the caller's profile ids, so the rule stays assertable
+ * without a database.
+ */
 function actorFor(
   req: { actor?: { userId: string; roles: string[] } },
   doc: Pick<IViewing, 'requestedBy' | 'landlord'>,
+  profileIds: readonly string[],
 ): ViewingActor | null {
   const actor = req.actor;
   if (!actor) return null;
   if (String(doc.requestedBy) === actor.userId) return 'tenant';
-  if (doc.landlord && String(doc.landlord) === actor.userId) return 'landlord';
+  if (doc.landlord && profileIds.includes(String(doc.landlord))) return 'landlord';
   if (actor.roles.includes('backOfficeStaff') || actor.roles.includes('founder')) return 'staff';
   if (actor.roles.includes('coordinator')) return 'coordinator';
   return null;
+}
+
+/** Resolve the caller's profiles, then ask the pure rule above. */
+async function whoIs(
+  req: { actor?: { userId: string; roles: string[] } },
+  doc: Pick<IViewing, 'requestedBy' | 'landlord'>,
+): Promise<ViewingActor | null> {
+  if (!req.actor) return null;
+  const user = await User.findOne({ _id: req.actor.userId, deletedAt: null })
+    .select('profiles').lean().exec();
+  const profileIds = (user?.profiles ?? []).map((pr) => String(pr.profileId));
+  return actorFor(req, doc, profileIds);
 }
 
 /** What a caller is allowed to see, expressed as a query. */
@@ -216,7 +241,7 @@ itemRouter.get(
   asyncHandler(async (req, res) => {
     const doc = await Viewing.findOne({ _id: req.params.viewingId, deletedAt: null }).lean().exec();
     if (!doc) throw ApiError.notFound('Viewing');
-    if (!actorFor(req, doc)) throw ApiError.forbidden('That viewing is not yours to see.');
+    if (!await whoIs(req, doc)) throw ApiError.forbidden('That viewing is not yours to see.');
     return ok(res, doc);
   }),
 );
@@ -228,7 +253,7 @@ itemRouter.patch(
   asyncHandler(async (req, res) => {
     const doc = await Viewing.findOne({ _id: req.params.viewingId, deletedAt: null }).exec();
     if (!doc) throw ApiError.notFound('Viewing');
-    if (actorFor(req, doc) !== 'tenant') {
+    if (await whoIs(req, doc) !== 'tenant') {
       throw ApiError.forbidden('Only the person who asked may change the note.');
     }
     if (!isOpenViewing(doc.status)) {
@@ -254,7 +279,7 @@ function transitionRoute(to: ViewingStatus, opts: { outcome?: boolean } = {}) {
     const doc = await Viewing.findOne({ _id: req.params.viewingId, deletedAt: null }).exec();
     if (!doc) throw ApiError.notFound('Viewing');
 
-    const who = actorFor(req, doc);
+    const who = await whoIs(req, doc);
     if (!who) throw ApiError.forbidden('That viewing is not yours to move.');
 
     if (!canTransitionViewing(doc.status, to)) {

@@ -7617,6 +7617,97 @@ section('Three id spaces, and which one each reference speaks');
   check('a notification recipient stays a User',
     /recipient: \{[^}]*ref: 'User'/.test(notificationModel),
     'you notify a person, not a role they hold');
+
+  // ── Every dispatch is addressed to a person ──
+  // `Notification.recipient` is a User, and `GET /notifications/me` filters on
+  // `recipient: actor.userId` while `dispatch.targetsFor` looks up push tokens
+  // by user. A profile id passed through unresolved therefore writes the row,
+  // reports it delivered, and reaches nobody — silently, because nothing about
+  // a well-formed ObjectId that matches no user looks like an error.
+  //
+  // Three sites did exactly that: both rent notifications and every SLA
+  // escalation. Every rent receipt and every overdue reminder this platform
+  // has ever produced went to an id belonging to no user.
+  const PROFILE_FIELDS = [
+    'lease.tenant', 'lease.landlord', 'doc.assignedVendor', 'doc.assignedCoordinator',
+    'request.assignedVendor', 'ride.driver', 'ride.rider', 'order.merchant', 'order.customer',
+  ];
+  const DISPATCHERS: [string, string][] = [
+    ['lease', 'src/modules/lease/index.ts'],
+    ['maintenance', 'src/modules/maintenance/index.ts'],
+    ['marketplace', 'src/modules/marketplace/index.ts'],
+    ['fac', 'src/modules/fac/index.ts'],
+    ['notification', 'src/modules/notification/index.ts'],
+    ['viewing', 'src/modules/viewing/index.ts'],
+    ['application', 'src/modules/application/index.ts'],
+    ['ride', 'src/modules/ride/index.ts'],
+  ];
+  const misaddressed: string[] = [];
+  for (const [name, path] of DISPATCHERS) {
+    let src: string;
+    try { src = readFileSync(resolve(process.cwd(), path), 'utf8'); } catch { continue; }
+    for (const m of src.matchAll(/recipient:\s*([^,\n]+)/g)) {
+      const expr = m[1]!.trim();
+      /* A profile-typed expression handed straight to `recipient`. Resolved
+       * values (`…User`, `.user`, a variable ending `User`) are the fix. */
+      if (PROFILE_FIELDS.some((f) => expr.includes(f))) {
+        misaddressed.push(`${name}: recipient: ${expr}`);
+      }
+    }
+  }
+  check('no notification is addressed to a profile id',
+    misaddressed.length === 0, misaddressed.join('; '));
+
+  const leaseSrc2 = readFileSync(resolve(process.cwd(), 'src/modules/lease/index.ts'), 'utf8');
+  check('rent notifications resolve the tenant to a person',
+    /async function tenantUserFor/.test(leaseSrc2)
+    && (leaseSrc2.match(/tenantUserFor\(lease\.tenant\)/g) ?? []).length === 2,
+    'both the receipt and the reminder need it, and they are 170 lines apart');
+  check('and a reminder with nobody to send it to is skipped, not sent to nothing',
+    /if \(!dueUser\) continue;/.test(leaseSrc2),
+    'an empty recipient writes a row and counts it delivered');
+
+  const maintSrc2 = readFileSync(
+    resolve(process.cwd(), 'src/modules/maintenance/index.ts'), 'utf8');
+  check('an SLA escalation asks the model the branch already named',
+    /userBehindProfile\(VendorProfile, recipient\)/.test(maintSrc2)
+    && /userBehindProfile\(CoordinatorProfile, recipient\)/.test(maintSrc2),
+    'vendor and coordinator are different collections; guessing one would silently drop the other');
+  /* And the resolved value is the one dispatched. Calling the helper and then
+   * sending the profile id anyway is a mutation that survived the first draft
+   * of this section — the sweep above only knows the field names, and this site
+   * holds the profile in a bare local. */
+  check('and dispatches the resolved person, not the profile it started from',
+    /recipient: recipientUser,/.test(maintSrc2));
+
+  // ── The party rules compare each field against the space it holds ──
+  // Nothing above covers these: they are pure functions with no side effect a
+  // sweep can see, and reverting either restores a silent 403 for the one
+  // person who should have access.
+  for (const [name, path, ownField, ownSpace] of [
+    ['application', 'src/modules/application/index.ts', 'applicant', 'user'],
+    ['viewing', 'src/modules/viewing/index.ts', 'requestedBy', 'user'],
+  ] as [string, string, string, string][]) {
+    const src = readFileSync(resolve(process.cwd(), path), 'utf8');
+    check(`${name}: the landlord is matched against the caller's profiles`,
+      /doc\.landlord && profileIds\.includes\(String\(doc\.landlord\)\)/.test(src),
+      'compared to actor.userId this never matched, and the landlord was refused their own property');
+    check(`${name}: and ${ownField} is still matched against the ${ownSpace} id`,
+      new RegExp(`String\\(doc\\.${ownField}\\) === actor\\.userId`).test(src),
+      'that field holds a User, and "fixing" it to a profile would break the person it serves');
+    check(`${name}: the rule stays pure, with the profiles passed in`,
+      /profileIds: readonly string\[\],/.test(src),
+      'a rule that fetches cannot be asserted without a database');
+  }
+
+  const appScope = readFileSync(
+    resolve(process.cwd(), 'src/modules/application/index.ts'), 'utf8');
+  check('the application list scope is profile-keyed where the fields are',
+    /coordinator: \{ \$in: \[\.\.\.profileIds\] \}/.test(appScope)
+    && /landlord: \{ \$in: \[\.\.\.profileIds\] \}/.test(appScope),
+    'keyed on actor.userId, every coordinator queue was permanently empty');
+  check('and still user-keyed where the field is',
+    /\{ applicant: actor\.userId \}/.test(appScope));
 }
 
 
