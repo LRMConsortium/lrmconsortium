@@ -10,6 +10,9 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { PHONE_REGEX } from '../config/contact.js';
+import {
+  MARKET_IDS, MARKETS, marketFor, marketIsDeployable, marketProblems,
+} from '../config/markets.js';
 import { resolve } from 'node:path';
 /* `BaseService` is the one Mongoose-adjacent import here, and it is safe: the
  * class imports *types* from mongoose but constructs nothing, and `buildFilter`
@@ -176,7 +179,7 @@ import {
 import {
   CURRENCIES, CURRENCY_SYMBOLS, LAUNCH_CURRENCY,
   LAUNCH_COUNTRY, LAUNCH_CITY, LAUNCH_LOCATION, LAUNCH_DIALLING_CODE,
-  MANAGEMENT_FEE_PERCENT, RIDE_COMMISSION_PERCENT,
+  MANAGEMENT_FEE_PERCENT, RIDE_COMMISSION_PERCENT, MARKET,
 } from '../config/currencies.js';
 import {
   VIEWING_STATUSES, VIEWING_TRANSITIONS, canTransitionViewing, nextViewingStatuses,
@@ -3472,6 +3475,26 @@ check('an unset secret is refused', secretProblem('X', undefined) !== null);
   check('and to FAC_PEPPER', /secretProblem\('FAC_PEPPER'/.test(envSource));
   check('and only in production', /env\.isProduction/.test(envSource));
   check('and throws rather than warning', /throw new Error\(\s*`Refusing to start in production/.test(envSource));
+
+  /* The market refusals, checked the same structural way and for the same
+   * reason: a boot-time throw has no unit-testable surface without loading the
+   * environment, and `dotenv` is not installed in this sandbox so `env.ts`
+   * cannot be imported here at all. The *logic* is pure and exercised above —
+   * `marketProblems` and `marketFor` — so what is left to establish is that
+   * `env.ts` actually calls them. Without that this file is decoration. */
+  check('env.ts imports the market registry', /from '\.\/markets\.js'/.test(envSource));
+  check('and refuses production without an explicit market',
+    /env\.isProduction && !raw\.LRMC_MARKET/.test(envSource),
+    'a silent default is how the pilot configuration reaches Banjul');
+  check('and refuses a market that has not decided its terms',
+    /marketProblems\(marketFor\(raw\.LRMC_MARKET\)\)/.test(envSource),
+    'a fee carried over from another market is a rate nobody set');
+  check('and both refusals throw', /is not ready to serve anybody/.test(envSource));
+  /* Development still needs no configuration at all. A required variable for
+   * `npm run dev` is a variable somebody sets wrong once and then copies. */
+  check('but development still defaults, so nothing local needs configuring',
+    /process\.env\.LRMC_MARKET \?\? 'gambia'/.test(
+      readFileSync(resolve(process.cwd(), 'src/config/currencies.ts'), 'utf8')));
 }
 
 // A *structural* check, and deliberately so. Constant-time comparison has no
@@ -7004,6 +7027,57 @@ section('Where LRMC actually is');
   // A percentage that lives only in HTML is a percentage the ledger cannot
   // agree with. These disagreed for four weeks: `ledger.ts` was already taking
   // 15% of every fare while the pricing page said "to confirm".
+  // ── Two markets, two deployments, one code line ──
+  // These six were literal constants until the US pilot and the Gambia launch
+  // became separate deployments. The shape is unchanged — one place, imported
+  // everywhere — and only the selection is configuration. The suite runs
+  // unconfigured, so it sees `gambia`, and every assertion below about "the
+  // launch" is an assertion about that market.
+  eq('the suite runs against the Gambia market', MARKET.id, 'gambia');
+  eq('and every market is a real one', MARKET_IDS.length, 2);
+
+  for (const id of MARKET_IDS) {
+    const m = MARKETS[id];
+    eq(`${id} is its own key`, m.id, id);
+    check(`${id} names a currency the platform recognises`,
+      (CURRENCIES as readonly string[]).includes(m.currency));
+    check(`${id} writes its dialling code with a +`, m.diallingCode.startsWith('+'));
+    /* No two markets may share a currency. Not a rule about money — a rule
+     * about deployments: two markets on one currency is the configuration
+     * mistake that looks correct in every log. */
+    for (const other of MARKET_IDS) {
+      if (other === id) continue;
+      check(`${id} and ${other} are different countries`,
+        MARKETS[other].country !== m.country);
+    }
+  }
+
+  // ── Gambia is decided; the pilot is not, and says so ──
+  check('the Gambia market is ready to serve people', marketIsDeployable(MARKETS.gambia),
+    marketProblems(MARKETS.gambia).map((p) => p.field).join(', '));
+  const pilot = marketProblems(MARKETS.unitedStates);
+  check('the US pilot is not yet, and names what is missing', pilot.length > 0);
+  for (const field of ['city', 'managementFeePercent', 'rideCommissionPercent']) {
+    check(`  the pilot still needs a ${field}`, pilot.some((p) => p.field === field),
+      'a value carried over from another market is a rate nobody set');
+  }
+  /* Tracked debt, printed the way unfetched vendor assets and unconfirmed
+   * public-page values are — so it cannot be forgotten between now and the
+   * pilot's first paying member. */
+  if (pilot.length) {
+    console.log(`        (US pilot: ${pilot.map((p) => p.field).join(', ')} still undecided)`);
+  }
+
+  // ── A market cannot be selected by accident ──
+  for (const bad of ['', 'Gambia', 'us', 'GAMBIA', undefined, null]) {
+    let refused = false;
+    try { marketFor(bad as never); } catch { refused = true; }
+    check(`"${String(bad)}" is not a market`, refused,
+      'a silent default is how the pilot config reaches Banjul');
+  }
+  eq('and a real one resolves', marketFor('unitedStates').currency, 'USD');
+
+  // ── Gambia's values are exactly what they were before the move ──
   eq('the management fee is 10%', MANAGEMENT_FEE_PERCENT, 10);
   eq('and Ususu takes 15%', RIDE_COMMISSION_PERCENT, 15);
   eq('which is the number the ledger actually splits on',

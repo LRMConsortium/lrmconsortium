@@ -160,9 +160,15 @@ math = (BACKEND / 'src/modules/marketplace/orderMath.ts').read_text()
 # page saying 10% while `ledger.ts` takes 12% is not a typo, it is LRMC taking
 # money it did not say it would take. Read from the code, both directions
 # asserted, so neither the page nor the constant can move alone.
-currencies = (BACKEND / 'src/config/currencies.ts').read_text()
-mgmt = re.search(r'MANAGEMENT_FEE_PERCENT\s*=\s*(\d+)', currencies).group(1)
-ride = re.search(r'RIDE_COMMISSION_PERCENT\s*=\s*(\d+)', currencies).group(1)
+# The fees now live per market. This suite builds and checks the market this
+# checkout is configured for, defaulting to gambia exactly as the builder does —
+# so the page it reads and the page the builder wrote are the same market's.
+import os
+_market = os.environ.get('LRMC_MARKET', 'gambia')
+markets = (BACKEND / 'src/config/markets.ts').read_text()
+_block = re.search(rf'\n  {_market}: \{{(.*?)\n  \}},', markets, re.S).group(1)
+mgmt = re.search(r'managementFeePercent:\s*(\d+)', _block).group(1)
+ride = re.search(r'rideCommissionPercent:\s*(\d+)', _block).group(1)
 commission = re.search(r'DEFAULT_MARKETPLACE_COMMISSION_PERCENT = (\d+)', math).group(1)
 release = re.search(r'AUTO_RELEASE_DAYS = (\d+)', math).group(1)
 cancel = re.search(r'FREE_CANCELLATION_HOURS = (\d+)', math).group(1)

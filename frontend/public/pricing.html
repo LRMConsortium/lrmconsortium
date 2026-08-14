@@ -11,9 +11,9 @@
    • marketplace commission, escrow release, free cancellation — `DEFAULT_
      MARKETPLACE_COMMISSION_PERCENT`, `AUTO_RELEASE_DAYS` and
      `FREE_CANCELLATION_HOURS` in `modules/marketplace/orderMath.ts`
-   • the management fee and the Ususu share — `MANAGEMENT_FEE_PERCENT` and
-     `RIDE_COMMISSION_PERCENT` in `config/currencies.ts`, which is where
-     `payment/ledger.ts` charges them from
+   • the management fee and the Ususu share — `managementFeePercent` and
+     `rideCommissionPercent` on this deployment's market in `config/markets.ts`,
+     which is where `payment/ledger.ts` charges them from
 
  `verify-public-pages.py` reads both files and fails if this page and the code
  disagree. A fee published here and a different fee taken from somebody's rent

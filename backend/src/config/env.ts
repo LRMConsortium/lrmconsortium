@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import { z } from 'zod';
 
 import { SECRET_GENERATION_HINT, secretProblem } from './secretHygiene.js';
+import { MARKET_IDS, marketFor, marketProblems } from './markets.js';
 
 dotenv.config();
 
@@ -18,6 +19,9 @@ const envSchema = z.object({
    * `verify.ts` now reads the nginx config and fails if the two disagree. */
   PORT: z.coerce.number().int().positive().default(4000),
   API_PREFIX: z.string().default('/api/v1'),
+  /* Which market this deployment serves. Development defaults to gambia;
+   * production refuses to boot without an explicit one. */
+  LRMC_MARKET: z.string().optional(),
 
   MONGO_URI: z.string().min(1, 'MONGO_URI is required'),
   MONGO_MAX_POOL_SIZE: z.coerce.number().int().positive().default(25),
@@ -77,6 +81,46 @@ export const env = {
    */
   facPepper: raw.FAC_PEPPER ?? `${raw.JWT_SECRET}:fac-pepper`,
 } as const;
+
+/**
+ * Production refuses to boot without an explicit market.
+ *
+ * The US pilot and the Gambia launch are two deployments of one code line, and
+ * the constants that differ between them — country, currency, dialling code,
+ * both fee percentages — are selected by `LRMC_MARKET`. Development defaults to
+ * `gambia` so nothing local needs configuring.
+ *
+ * Production does not default, and that is the point. A silent default is how
+ * the pilot's configuration reaches Banjul: nothing crashes, nothing logs, and
+ * every Gambian tenant is quoted in dollars and told to ring +1. A missing
+ * environment variable should be a boot failure somebody reads, not a currency
+ * nobody notices.
+ */
+if (env.isProduction && !raw.LRMC_MARKET) {
+  throw new Error(
+    `LRMC_MARKET must be set in production. One of: ${MARKET_IDS.join(', ')}.`,
+  );
+}
+
+/**
+ * And production refuses to boot on a market that has not decided its terms.
+ *
+ * `marketProblems` returns the fields nobody has settled — the city every
+ * footer prints, and the two percentages the pricing page publishes and the
+ * ledger charges. They are `null` rather than carried over from another market,
+ * because a fee that arrived by being already typed somewhere is LRMC charging
+ * a rate nobody set. This platform has published a fee it had not agreed once
+ * already; the boot refusal is so it cannot happen quietly.
+ */
+if (env.isProduction) {
+  const undecided = marketProblems(marketFor(raw.LRMC_MARKET));
+  if (undecided.length) {
+    throw new Error(
+      `Market "${raw.LRMC_MARKET}" is not ready to serve anybody:\n`
+      + undecided.map((p) => `  • ${p.field}: ${p.message}`).join('\n'),
+    );
+  }
+}
 
 /**
  * Production refuses to boot on a derived pepper.

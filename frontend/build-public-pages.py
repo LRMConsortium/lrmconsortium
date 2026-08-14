@@ -15,30 +15,61 @@ needing this script re-run.
 Anything LRMC has not told us is marked `data-needs-confirming`. The suite
 counts them, so a placeholder cannot quietly become the published answer.
 """
+import os
 import pathlib
 import re
 
 ROOT = pathlib.Path(__file__).parent
 SRC = (ROOT / 'public/properties.html').read_text()
 
-# ── Published fees are read, never typed ────────────────────────────────────
-# The management fee and the Ususu share were both `data-needs-confirming` until
-# they were decided, and a decided figure typed into this file is the same
-# problem one step later: the page and the ledger would then be two independent
-# claims about what LRMC charges, free to disagree. They are read out of
-# `config/currencies.ts`, which is what `ledger.ts` charges from, so changing the
-# fee is one edit and the marketing page follows it.
-_CURRENCIES = (ROOT.parent / 'backend/src/config/currencies.ts').read_text()
+# ── Published fees are read from this deployment's market, never typed ──────
+# The page and the ledger must not be two independent claims about what LRMC
+# charges. They are read out of `config/markets.ts` — the same registry the
+# backend charges from — so changing a fee is one edit and the marketing page
+# follows it.
+#
+# `LRMC_MARKET` selects the market, matching the backend, and defaults to
+# gambia so a local build needs no configuration. Building the US pilot's pages
+# will fail until that market has decided its fees, which is the point.
+_MARKET_ID = os.environ.get('LRMC_MARKET', 'gambia')
+_MARKETS = (ROOT.parent / 'backend/src/config/markets.ts').read_text()
 
 
-def _percent(name):
-    m = re.search(rf'{name}\s*=\s*(\d+)', _CURRENCIES)
-    assert m, f'{name} is not in config/currencies.ts — the page cannot publish a fee nobody charges'
+def _market_block(market_id):
+    """The literal for one market, out of the MARKETS registry."""
+    m = re.search(rf'\n  {market_id}: \{{(.*?)\n  \}},', _MARKETS, re.S)
+    assert m, f'{market_id} is not in backend/src/config/markets.ts'
     return m.group(1)
 
 
-MANAGEMENT_FEE_PERCENT = _percent('MANAGEMENT_FEE_PERCENT')
-RIDE_COMMISSION_PERCENT = _percent('RIDE_COMMISSION_PERCENT')
+_BLOCK = _market_block(_MARKET_ID)
+
+
+def _percent(name):
+    """A fee this market has actually decided.
+
+    ── Why this refuses rather than defaults ──────────────────────────────
+    The fees moved out of `currencies.ts` when the US pilot and the Gambia
+    launch became two deployments of one code line. A market that has not
+    settled a fee carries `null`, and the backend refuses to boot on one.
+
+    This builder refuses too, and loudly, because the failure it prevents has
+    already happened once here: the pricing page said "management fee to
+    confirm" for four weeks while `ledger.ts` quietly took 15% of every fare.
+    A builder that fell back to another market's number would publish a rate
+    nobody set, and it would look completely normal.
+    """
+    m = re.search(rf'{name}:\s*(\d+)', _BLOCK)
+    assert m, (
+        f'The {_MARKET_ID} market has not decided {name}. '
+        f'Set it in backend/src/config/markets.ts before building this page — '
+        f'a fee borrowed from another market is a rate nobody agreed.'
+    )
+    return m.group(1)
+
+
+MANAGEMENT_FEE_PERCENT = _percent('managementFeePercent')
+RIDE_COMMISSION_PERCENT = _percent('rideCommissionPercent')
 
 # From `<link rel="icon">` onward: everything before it is per-page metadata,
 # which `build()` emits itself. Slicing from the top would have carried the
@@ -245,9 +276,9 @@ build(
    • marketplace commission, escrow release, free cancellation — `DEFAULT_
      MARKETPLACE_COMMISSION_PERCENT`, `AUTO_RELEASE_DAYS` and
      `FREE_CANCELLATION_HOURS` in `modules/marketplace/orderMath.ts`
-   • the management fee and the Ususu share — `MANAGEMENT_FEE_PERCENT` and
-     `RIDE_COMMISSION_PERCENT` in `config/currencies.ts`, which is where
-     `payment/ledger.ts` charges them from
+   • the management fee and the Ususu share — `managementFeePercent` and
+     `rideCommissionPercent` on this deployment's market in `config/markets.ts`,
+     which is where `payment/ledger.ts` charges them from
 
  `verify-public-pages.py` reads both files and fails if this page and the code
  disagree. A fee published here and a different fee taken from somebody's rent
