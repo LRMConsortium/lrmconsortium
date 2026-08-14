@@ -98,7 +98,10 @@ import {
   commissionSplit,
   DEFAULT_RIDE_COMMISSION_PERCENT,
   isPayable,
+  lineStillClaims,
   PAYOUT_KINDS,
+  RETRYABLE_BATCH_STATUSES,
+  spentSourceIds,
   PAYOUT_SOURCES,
   refundableAmount,
   summariseEarnings,
@@ -7795,6 +7798,75 @@ section('Three id spaces, and which one each reference speaks');
   check('payments scope a coordinator to what they recorded',
     /field: 'recordedBy', space: 'user'/.test(statsIdx),
     'Payment has no coordinator column; naming one is a dashboard of zeros');
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+section('Payout batches: a half-paid batch is not a dead end');
+
+/* A batch where one transfer fails and the rest succeed becomes
+ * `partiallySettled`. That status could not be settled again, could not be
+ * cancelled, and — because it is neither `cancelled` nor `failed` — every one
+ * of its lines still counted as a claim on the payments it was built from.
+ *
+ * So the payee whose transfer failed could not be paid by any route. Settling
+ * refused the status, cancelling refused it, and a fresh batch skipped their
+ * rows as already spent. Their rent needed a hand-written database update.
+ *
+ * The tempting fix — release the whole batch — pays the successful lines twice.
+ * The claim is therefore per line, and that rule is pure, so it is exercised
+ * here rather than read. */
+{
+  const batchOf = (...statuses: (string | undefined)[]) => ({
+    lines: statuses.map((s, i) => ({
+      transferStatus: s,
+      sourcePayments: [`pay-${i}`],
+    })),
+  });
+
+  // ── The rule, one line at a time ──
+  check('a failed line releases its sources', !lineStillClaims({ transferStatus: 'failed' }));
+  check('a settled line keeps them', lineStillClaims({ transferStatus: 'settled' }));
+  check('so does one still processing', lineStillClaims({ transferStatus: 'processing' }));
+  check('and so does one never attempted', lineStillClaims({}),
+    'a line in a draft batch has not failed — it has not been tried');
+
+  // ── The half-paid batch ──
+  const half = spentSourceIds([batchOf('settled', 'failed', 'processing')]);
+  check('the paid line stays claimed', half.has('pay-0'),
+    'releasing it would pay that payee a second time');
+  check('the failed line is released', !half.has('pay-1'),
+    'this is the money that could not be paid by any route');
+  check('and the in-flight line stays claimed', half.has('pay-2'),
+    'its outcome is unknown, and unknown is not failed');
+  eq('exactly one of the three is free', 3 - half.size, 1);
+
+  // A batch nobody has settled yet claims everything in it.
+  eq('an untouched draft claims all its lines',
+    spentSourceIds([batchOf(undefined, undefined)]).size, 2);
+
+  // ── The way out ──
+  check('a partially-settled batch can be settled again',
+    (RETRYABLE_BATCH_STATUSES as readonly string[]).includes('partiallySettled'),
+    'without this the batch is a terminal state with no route out');
+  for (const terminal of ['settling', 'settled', 'cancelled', 'failed']) {
+    check(`but "${terminal}" is not retryable`,
+      !(RETRYABLE_BATCH_STATUSES as readonly string[]).includes(terminal));
+  }
+
+  const payoutSrc = readFileSync(
+    resolve(process.cwd(), 'src/modules/payout/index.ts'), 'utf8');
+  check('the handler asks the pure rule rather than re-deriving it',
+    /spentSourceIds\(claimed as never\)/.test(payoutSrc));
+  check('and settling re-drives only what has not settled',
+    /line\.transferStatus === 'settled'/.test(payoutSrc),
+    'a retry must not re-initiate a transfer that already went');
+  /* Cancelling stays refused, because some of the money has left — but the
+   * refusal now names the route that actually pays the people who were missed.
+   * "Cannot be cancelled" with no further advice is what sent somebody to the
+   * database by hand. */
+  check('and cancelling a half-paid batch says what to do instead',
+    /Settle it again to retry the lines that failed/.test(payoutSrc));
 }
 
 

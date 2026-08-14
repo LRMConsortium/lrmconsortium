@@ -234,3 +234,51 @@ export function summariseEarnings(rows: LedgerRow[], currency = 'GMD'): Earnings
     byKind,
   };
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Which ledger rows a live batch still has a claim on
+ *
+ * A payout batch claims the payments it is built from, so a second batch does
+ * not pay the same money again. The question is which claims survive a batch
+ * that only partly succeeded.
+ *
+ * Batch-level was the first answer and it stranded money: a batch where one
+ * transfer failed and the rest succeeded becomes `partiallySettled`, which is
+ * neither cancelled nor failed, so *every* line stayed claimed — including the
+ * one that never paid. That payee could not then be paid by any route.
+ *
+ * Releasing the whole batch is worse: the lines that did pay become claimable
+ * again and those payees are paid twice.
+ *
+ * So the claim is per line. A `failed` line releases its sources; anything else
+ * — settled, processing, or not yet attempted — keeps them.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/** Batch statuses whose lines may still be re-driven by settling again. */
+export const RETRYABLE_BATCH_STATUSES = ['draft', 'approved', 'partiallySettled'] as const;
+
+export interface ClaimingLine {
+  transferStatus?: string | null;
+  sourcePayments?: unknown[];
+}
+
+/** Does this line still hold a claim on the rows it was built from? */
+export function lineStillClaims(line: ClaimingLine): boolean {
+  return line.transferStatus !== 'failed';
+}
+
+/**
+ * Every payment id still claimed by these batches.
+ *
+ * Takes the batches already narrowed to the live ones (not cancelled, not
+ * failed); the per-line question is the one this answers.
+ */
+export function spentSourceIds(batches: { lines?: ClaimingLine[] }[]): Set<string> {
+  return new Set(
+    batches.flatMap((b) =>
+      (b.lines ?? [])
+        .filter(lineStillClaims)
+        .flatMap((l) => (l.sourcePayments ?? []).map((id) => String(id))),
+    ),
+  );
+}
