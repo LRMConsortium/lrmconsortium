@@ -180,8 +180,8 @@ with sync_playwright() as p:
     for roles, expected in [
         (['founder'], '/hq/index.html'),
         (['hqExecutive'], '/hq/index.html'),
-        (['backOfficeStaff'], '/staff/index.html'),
-        (['coordinator'], '/staff/index.html'),
+        (['backOfficeStaff'], '/members/index.html'),
+        (['coordinator'], '/members/index.html'),
         (['merchant'], '/marketplace/index.html'),
         (['buyer'], '/marketplace/index.html'),
         (['landlord'], '/members/index.html'),

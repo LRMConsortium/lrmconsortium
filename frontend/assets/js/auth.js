@@ -41,8 +41,25 @@
   var ROLE_HOME = [
     ['founder',         '/hq/index.html'],
     ['hqExecutive',     '/hq/index.html'],
-    ['backOfficeStaff', '/staff/index.html'],
-    ['coordinator',     '/staff/index.html'],
+    /* ── Both land on the member portal, and that is not a stopgap ────────
+     * These pointed at `/staff/index.html`, and `frontend/staff/` is an empty
+     * directory. Every coordinator and every back-office person — the people
+     * who actually run this platform — signed in successfully and was sent to
+     * a 404. On launch day that is the entire operations team.
+     *
+     * The member portal is one surface read three ways, and `portal.js`
+     * resolves the **coordinator reading** from grants rather than from a role
+     * name. Both of these roles hold `analytics:read`, `property:read` and
+     * `maintenanceRequest:assign`, so both get that reading; both list
+     * `MEMBER_PORTAL` in `allowedZones`, so both may enter. The portal's own
+     * suite covers that reading in 446 assertions.
+     *
+     * A dedicated `/staff/` surface is still worth building — Back Office does
+     * things the portal has no screen for, chiefly document review and
+     * marketplace adjudication. But it is a project, and it must not be what
+     * stands between a coordinator and a working login. */
+    ['backOfficeStaff', '/members/index.html'],
+    ['coordinator',     '/members/index.html'],
     ['merchant',        '/marketplace/index.html'],
     ['seller',          '/marketplace/index.html'],
     ['customer',        '/marketplace/index.html'],

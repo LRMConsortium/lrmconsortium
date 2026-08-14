@@ -5,8 +5,8 @@ pages is a rule that will be forgotten on the thirty-first; these run against
 the whole tree from every suite, so a page added next month is covered by
 checks written today.
 """
-import re
 import pathlib
+import re
 
 # A Tailwind display utility and an LRMC component class have the same CSS
 # specificity (0,1,0), so **load order decides** — and `utilities.css` is
@@ -47,8 +47,40 @@ def display_utility_clashes(root: pathlib.Path):
     return found
 
 
+def role_home_report(root: pathlib.Path):
+    """Every destination in `auth.js`'s ROLE_HOME, and whether it exists.
+
+    ── Why this is its own check ──────────────────────────────────────────
+    `check_links` reads `href` attributes out of HTML. A sign-in destination
+    is not a link — it lives in a table in `auth.js` and is reached by
+    `location.replace`. So `/staff/index.html` sat in that table pointing at an
+    empty directory, and every coordinator and back-office person on the
+    platform signed in successfully and landed on a 404. Nothing noticed,
+    because nothing had been told to look anywhere but the markup.
+
+    A landing page is the one page a member cannot avoid. It is the worst
+    possible page to have missing and the easiest to miss.
+    """
+    auth = (root / 'assets/js/auth.js').read_text()
+    block = re.search(r'var ROLE_HOME = \[(.*?)\];', auth, re.S)
+    if not block:
+        return {'(ROLE_HOME not found)': 'unparsed'}, {}
+    homes = dict(re.findall(r"\['(\w+)',\s*'([^']+)'\]", block.group(1)))
+    missing = {}
+    for role, dest in homes.items():
+        if not (root / dest.lstrip('/')).exists():
+            missing[role] = dest
+    return missing, homes
+
+
 def run_shared_checks(root: pathlib.Path, check):
     """Call from any verifier: `run_shared_checks(ROOT, check)`."""
+    missing_homes, homes = role_home_report(root)
+    check('every role signs in to a page that exists', not missing_homes)
+    for role, dest in sorted(missing_homes.items()):
+        print(f'        {role} -> {dest} (does not exist)')
+    check('and every role has a landing page at all', len(homes) > 0)
+
     clashes = display_utility_clashes(root)
     check('no page puts a display utility on an LRMC component class', not clashes)
     for path, component, display in clashes[:8]:
