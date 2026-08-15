@@ -39,6 +39,19 @@ export interface MarketDefinition {
   id: MarketId;
   /** The country LRMC operates in, and the default on every profile. */
   country: string;
+  /**
+   * The same country, as it reads inside a sentence.
+   *
+   * `The Gambia` and `the United States`. The difference is one word and it is
+   * the reason this field exists separately: `country` is *data* — it is
+   * written to every profile and compared — so it cannot carry a leading
+   * article, and prose built by concatenating it produces "rentals across
+   * United States" on every page of the pilot.
+   *
+   * Must contain `country`, which `marketProblems` checks, so the two cannot
+   * drift into naming different places.
+   */
+  countryInSentence: string;
   /** The city LRMC operates from. `null` until somebody decides. */
   city: string | null;
   /** What this market stores and prints unless told otherwise. */
@@ -106,12 +119,26 @@ export interface MarketDefinition {
    * header warning ignored.
    */
   regions: string[] | null;
+  /**
+   * The national part of a phone number, as a placeholder.
+   *
+   * Zeros, grouped the way that country writes them. The registration form
+   * showed `+220 000 0000` for every market — and the seven-digit grouping is
+   * Gambian. Changing only the dialling code would have given a Casper member
+   * `+1 000 0000`, which is three digits short of a US number and looks
+   * deliberate rather than wrong.
+   *
+   * A hint, never a rule: `PHONE_REGEX` stays broad because a landlord letting
+   * property at home may well have a foreign number.
+   */
+  phoneExample: string;
 }
 
 export const MARKETS: Record<MarketId, MarketDefinition> = {
   gambia: {
     id: 'gambia',
     country: 'The Gambia',
+    countryInSentence: 'The Gambia',
     city: 'Banjul',
     currency: 'GMD',
     diallingCode: '+220',
@@ -125,6 +152,8 @@ export const MARKETS: Record<MarketId, MarketDefinition> = {
       'Banjul', 'Kanifing', 'Brikama', 'Mansakonko',
       'Kerewan', 'Kuntaur', 'Janjanbureh', 'Basse',
     ],
+    /* Seven digits, grouped 3-4. */
+    phoneExample: '000 0000',
   },
   /**
    * The pilot, launching first. Casper, Wyoming.
@@ -144,6 +173,7 @@ export const MARKETS: Record<MarketId, MarketDefinition> = {
   unitedStates: {
     id: 'unitedStates',
     country: 'United States',
+    countryInSentence: 'the United States',
     city: 'Casper, WY',
     currency: 'USD',
     diallingCode: '+1',
@@ -151,12 +181,20 @@ export const MARKETS: Record<MarketId, MarketDefinition> = {
     rideCommissionPercent: 18,
     port: 4100,
     shortName: 'us',
-    /* Undecided, and therefore null. See `regions` on the interface above:
-     * this is what stops the pilot shipping a form that offers a Casper
-     * landlord a choice between Banjul and Brikama. Wyoming counties, Casper
-     * neighbourhoods, or a free-text field — it is a decision, and until it is
-     * made this market refuses to boot in production. */
-    regions: null,
+    /* Decided: Wyoming's five largest cities, Casper first because it is the
+     * pilot and the commonest answer belongs at the top of a phone dropdown.
+     *
+     * Cities rather than counties, which is a deliberate difference from the
+     * Gambian list — Banjul and Kanifing are administrative areas, these are
+     * places a member would actually name. The field is called `regions`
+     * because that is what the profile stores and what the search filters on;
+     * nothing in the platform requires the entries to be administrative
+     * divisions, and requiring it would have meant asking a Casper landlord
+     * for "Natrona County" to satisfy a word. */
+    regions: ['Casper', 'Cheyenne', 'Laramie', 'Gillette', 'Rock Springs'],
+    /* Ten digits: area code and subscriber number, the way a US number is
+     * written. Not the Gambian seven with a different prefix in front. */
+    phoneExample: '000 000 0000',
   },
 };
 
@@ -217,6 +255,22 @@ export function marketProblems(market: MarketDefinition): MarketProblem[] {
       field: 'shortName',
       message: `"${market.shortName}" is not a short lowercase name; it becomes a `
         + 'directory, a process name and a log file.',
+    });
+  }
+
+  if (!market.countryInSentence.toLowerCase().includes(market.country.toLowerCase())) {
+    out.push({
+      field: 'countryInSentence',
+      message: `"${market.countryInSentence}" does not contain "${market.country}"; `
+        + 'the prose form and the stored value would name different places.',
+    });
+  }
+
+  if (!/^[\d][\d ]*[\d]$/.test(market.phoneExample)) {
+    out.push({
+      field: 'phoneExample',
+      message: `"${market.phoneExample}" is not a grouped run of digits; it is `
+        + 'shown in the registration form as the shape of a local number.',
     });
   }
 

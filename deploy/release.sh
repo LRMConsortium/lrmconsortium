@@ -73,8 +73,13 @@ cd "$ROOT/frontend"
 LRMC_MARKET="$MARKET" python3 build-public-pages.py
 
 # ── 3. Verify ───────────────────────────────────────────────────────────────
-say 'Verify'
+# `LRMC_MARKET` is exported, so the suite runs as the market being released and
+# reads the pages that were just built for it. Without it the suite defaults to
+# gambia — and the pilot's release verified Banjul's constants against Casper's
+# pages, reporting success while every footer said "Serving The Gambia".
+say "Verify (as $MARKET)"
 cd "$ROOT/backend"
+export LRMC_MARKET="$MARKET"
 npm run verify
 npm run blueprint >/dev/null
 npm run openapi   >/dev/null

@@ -32,40 +32,41 @@ matching the shell scripts. If you change one, change it there.
 
 ---
 
-## Before the pilot can launch at all
+## Building for a market
 
-**The US market has not decided its `regions`, and until it does it will not
-boot.** This is deliberate and it is not a configuration you can work around on
-the server.
+The public pages are static and built per market. Everything that differs —
+country, city, regions, currency and its symbol, the dialling code and the
+phone-number shape, both fee percentages, and the currency a landlord is
+offered first — comes from `backend/src/config/markets.ts` and is written into
+the pages at build time.
 
-Registration asks a member which region they are in, and the property search
-filters on the same list. That list was hardcoded as The Gambia's eight regions
-in three separate files, so a build for the pilot produced a form offering a
-Casper landlord a choice between Banjul, Kanifing and Brikama — and the build
-reported success. It now comes from `backend/src/config/markets.ts`, the
-builder writes all three places from it, and a market carrying `null` stops:
+```bash
+cd frontend
+LRMC_MARKET=unitedStates python3 build-public-pages.py
+```
+
+`deploy/release.sh` runs this for you, and then runs the suite with
+`LRMC_MARKET` exported so it verifies the pages it just built. Running the
+suite without that exported checks the Gambia market's constants against
+whatever pages happen to be on disk, which is how "Serving The Gambia" once
+survived in the footer of every page of the Casper build.
+
+The build refuses rather than borrowing. A market that has not decided a field
+carries `null`, and:
 
 ```
-$ LRMC_MARKET=unitedStates python3 build-public-pages.py
+$ LRMC_MARKET=<market> python3 build-public-pages.py
 
-  The unitedStates market has not decided its regions.
+  The <market> market has not decided its regions.
   …
   Nothing has been written.
 ```
 
-Decide what a Casper member should pick from — Wyoming counties, Casper
-neighbourhoods, or something else — and set it:
+The same fields refuse a production boot and refuse a release, so an
+unfinished market cannot reach anybody.
 
-```ts
-// backend/src/config/markets.ts
-unitedStates: {
-  …
-  regions: ['Natrona County', …],
-},
-```
-
-Then `npm run verify`, and section 2 works. Nothing else in this runbook is
-blocked on it, and nothing in it will succeed until it is done.
+Both markets are complete today. The pilot's pages say Casper, Cheyenne,
+Laramie, Gillette and Rock Springs; prices in US dollars; `+1 000 000 0000`.
 
 ---
 
@@ -360,7 +361,10 @@ log, which shows the response the endpoint gave.
   and `scripts/bundle.production.sh` before the first real release, or the
   pages load their libraries from a CDN.
 - **Ten public-page values are still marked unconfirmed**, four of them on the
-  legal pages. They need counsel, not a deployment.
+  legal pages. They need counsel, not a deployment. The pilot's terms and
+  privacy notice now say "checked against the law of the United States" where
+  they used to say "Gambian law" — the sentence is parameterised, the wording
+  behind it is still unreviewed.
 - **The Stripe SDK adapter for `createIntent` is not written.** The interface
   is there and the stub *fails closed* — an unconfigured deployment cannot take
   an order and believe it was paid — but until the adapter exists, checkout

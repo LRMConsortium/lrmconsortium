@@ -112,10 +112,134 @@ def _regions():
 LAUNCH_COUNTRY = _string('country')
 LAUNCH_CITY = _string('city')
 DIALLING_CODE = _string('diallingCode')
+PHONE_EXAMPLE = _string('phoneExample')
+COUNTRY_IN_SENTENCE = _string('countryInSentence')
+
+# Every market's country, prose form and stored form, longest first so
+# "the United States" is replaced before "United States" leaves a stray "the".
+_ALL_COUNTRY_FORMS = sorted(
+    {f for mid in re.findall(r'\n  (\w+): \{', _MARKETS)
+     for f in (re.search(r"countryInSentence: '([^']*)'", _market_block(mid)),
+               re.search(r"country: '([^']*)'", _market_block(mid)))
+     if f for f in [f.group(1)]},
+    key=len, reverse=True,
+)
+
+
+# "Banjul, The Gambia" — city and country as one string, in the copyright line
+# of the shared chrome. Substituted as a unit and before the country forms, so
+# the pair moves together rather than half of it.
+def _location_forms():
+    """Every way a market's "city, country" can already be written on disk.
+
+    Both the stored form and the prose one. A build leaves `Casper, WY, the
+    United States` in the file; the next build has to recognise that string as
+    a location or it rewrites only the country inside it and produces
+    `Casper, WY, the the United States`. It did, once.
+    """
+    out = set()
+    for mid in re.findall(r'\n  (\w+): \{', _MARKETS):
+        block = _market_block(mid)
+        city = re.search(r"city: '([^']*)'", block)
+        if not city:
+            continue
+        for field in ('country', 'countryInSentence'):
+            name = re.search(rf"{field}: '([^']*)'", block)
+            if name:
+                out.add(f'{city.group(1)}, {name.group(1)}')
+    return sorted(out, key=len, reverse=True)
+
+
+_ALL_LOCATIONS = _location_forms()
+LAUNCH_LOCATION = f'{LAUNCH_CITY}, {LAUNCH_COUNTRY}'
+
+
+def country(text):
+    """Rewrite any market's country into this market's, in prose.
+
+    ── Why a substitution and not a template ─────────────────────────────
+    "The Gambia" was in the page titles, the meta descriptions, the hero
+    paragraphs, the shared footer, the terms and the privacy notice — eleven
+    places across seven pages, in sentences with different shapes. Templating
+    each one would have meant finding each one, and the previous four rounds of
+    exactly that are why this function exists instead: the region list, then the
+    phone placeholder, then the pricing prose, then the currency dropdown, each
+    discovered separately after the last was called finished.
+
+    Bidirectional, so building gambia after unitedStates restores the source
+    files exactly. `verify.ts` sweeps the shipped pages for any other market's
+    country and fails if one survives.
+    """
+    assert len(_ALL_COUNTRY_FORMS) >= len(re.findall(r'\n  (\w+): \{', _MARKETS)), (
+        f'Only found country forms {_ALL_COUNTRY_FORMS}. A form that is not in '
+        f'this list is not replaced, and the half that is replaced leaves text '
+        f'like "the The Gambia".'
+    )
+    # "Banjul, The Gambia" is a place, not a sentence: it takes no article, and
+    # the country pass would otherwise turn it into "Casper, WY, the United
+    # States". Held aside under a sentinel while the prose is rewritten.
+    _SENTINEL = '\x00LRMC_LOCATION\x00'
+    for pair in _ALL_LOCATIONS:
+        text = text.replace(pair, _SENTINEL)
+    for form in _ALL_COUNTRY_FORMS:
+        text = text.replace(form, COUNTRY_IN_SENTENCE)
+    text = text.replace(_SENTINEL, LAUNCH_LOCATION)
+
+    # ── Two post-conditions, because a half-applied substitution is silent ──
+    # The first build of this function produced "the The Gambia": the article
+    # from one market's prose form left in front of another market's name,
+    # because only the shorter form had matched. It read as a typo on every
+    # page and nothing failed.
+    leftover = [f for f in _ALL_COUNTRY_FORMS
+                if f != COUNTRY_IN_SENTENCE and f not in COUNTRY_IN_SENTENCE
+                and f in text]
+    assert not leftover, (
+        f'{leftover} survived the rewrite to "{COUNTRY_IN_SENTENCE}". '
+        f'Half a page in one market and half in another.'
+    )
+    # Both shapes of doubled article. The first version of this guard skipped
+    # itself whenever the active market's prose form began with "the" — which
+    # is precisely the market that can produce "the the United States".
+    for stutter in (f'the {COUNTRY_IN_SENTENCE}', 'the the '):
+        if stutter.strip() == COUNTRY_IN_SENTENCE.strip():
+            continue
+        assert stutter not in text, (
+            f'"{stutter}" — an article left over from another market\'s prose '
+            f'form in front of this one\'s name.'
+        )
+    return text
+
+
 REGIONS = _regions()
 
 _CURRENCY_NAME = {'GMD': 'dalasi', 'USD': 'US dollars', 'GHS': 'cedis',
                   'NGN': 'naira', 'XOF': 'CFA francs', 'EUR': 'euro', 'GBP': 'pounds'}
+_CURRENCY_NAME_SINGULAR = {'GMD': 'dalasi', 'USD': 'dollar', 'GHS': 'cedi',
+                           'NGN': 'naira', 'XOF': 'CFA franc', 'EUR': 'euro', 'GBP': 'pound'}
+
+
+def _currency_symbol(code):
+    """Out of `CURRENCY_SYMBOLS` in the backend, not a fourth copy of it."""
+    table = (ROOT.parent / 'backend/src/config/currencies.ts').read_text()
+    block = re.search(r'CURRENCY_SYMBOLS: Record<Currency, string> = \{(.*?)\};',
+                      table, re.S)
+    assert block, 'CURRENCY_SYMBOLS is not in backend/src/config/currencies.ts'
+    m = re.search(rf"{code}: '([^']+)'", block.group(1))
+    assert m, f'{code} has no symbol in CURRENCY_SYMBOLS.'
+    return m.group(1)
+
+
+CURRENCY_CODE = _string('currency')
+CURRENCY = _CURRENCY_NAME.get(CURRENCY_CODE, CURRENCY_CODE)
+CURRENCY_ONE = _CURRENCY_NAME_SINGULAR.get(CURRENCY_CODE, CURRENCY_CODE)
+CURRENCY_SYMBOL = _currency_symbol(CURRENCY_CODE)
+
+# What a landlord may price a listing in. Every market offers all of them —
+# somebody letting property at home from abroad is the reason LRMC exists — and
+# the active market's own currency is put first.
+_CURRENCY_OPTIONS = [
+    ('GMD', 'Dalasi (D)'), ('USD', 'US dollar'), ('EUR', 'Euro'), ('GBP', 'Pound'),
+]
 _COUNT_WORD = {1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five',
                6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten'}
 
@@ -129,9 +253,9 @@ def _where_we_operate():
     names = list(REGIONS)
     listed = names[0] if len(names) == 1 else ', '.join(names[:-1]) + ' and ' + names[-1]
     count = _COUNT_WORD.get(len(names), str(len(names)))
-    currency = _CURRENCY_NAME.get(_string('currency'), _string('currency'))
-    return (f'{LAUNCH_COUNTRY} is the launch market, across all {count} regions: '
-            f'{listed}. Prices are in {currency}.')
+    opener = COUNTRY_IN_SENTENCE[0].upper() + COUNTRY_IN_SENTENCE[1:]
+    return (f'{opener} is the launch market, across all {count} regions: '
+            f'{listed}. Prices are in {CURRENCY}.')
 
 
 # From `<link rel="icon">` onward: everything before it is per-page metadata,
@@ -148,6 +272,11 @@ HEADER = re.sub(r'<body class="h-full antialiased flex flex-col"\n      x-data="
                 HEADER, flags=re.S)
 HEADER = HEADER.replace(' aria-current="page"', '')
 HEADER = HEADER.replace('  <script src="/assets/js/properties.js" defer></script>\n', '')
+
+# The footer says which country LRMC serves, and it is baked into every
+# generated page. Rewritten here so all five carry this market's.
+HEADER = country(HEADER)
+FOOTER = country(FOOTER)
 
 TAIL = '''<div id="lrmc-toasts" aria-live="polite" class="fixed top-4 right-4 z-50 flex flex-col gap-2 items-end"></div>
 
@@ -241,7 +370,7 @@ build(
  ═══════════════════════════════════════════════════════════════════════════''',
     hero('One institution, answerable for all of it.',
          'LRMC manages rentals, maintenance, a marketplace and Ususu rideshare '
-         'across The Gambia — on one account, with one record of who did what.')
+         'across ' + COUNTRY_IN_SENTENCE + ' — on one account, with one record of who did what.')
     + '''
   <section class="max-w-3xl mx-auto px-4 lg:px-6 py-12" aria-labelledby="what-heading">
     <h2 id="what-heading" class="text-2xl font-bold text-slate-900 mb-4">What LRMC is</h2>
@@ -348,7 +477,7 @@ build(
  one step later — two independent claims about what LRMC charges, free to drift.
  ═══════════════════════════════════════════════════════════════════════════''',
     hero('What LRMC charges',
-         'Stated up front, in dalasi, with no fee that appears at the end.')
+         'Stated up front, in ' + CURRENCY + ', with no fee that appears at the end.')
     + '''
   <section class="max-w-4xl mx-auto px-4 lg:px-6 py-12" aria-labelledby="tenants-heading">
     <h2 id="tenants-heading" class="text-2xl font-bold text-slate-900 mb-6">If you are renting</h2>
@@ -389,8 +518,8 @@ build(
     <div class="lrmc-card">
       <p class="lrmc-stat-value mb-1" data-commission>8%</p>
       <p class="text-slate-600 mb-4">
-        Commission on the goods, never on delivery — you keep every dalasi a customer
-        pays to have something carried. A refund returns the commission with it,
+        Commission on the goods, never on delivery — you keep every ''' + CURRENCY_ONE + ''' a
+        customer pays to have something carried. A refund returns the commission with it,
         proportionally.
       </p>
       <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
@@ -433,8 +562,9 @@ build(
       <li>Being told why an application was refused.</li>
     </ul>
     <p class="text-sm text-slate-500 mt-6">
-      All figures in Gambian dalasi (D). Fees are taken from money LRMC already holds,
-      so nothing is ever separately invoiced to you.
+      All figures in ''' + CURRENCY + ' (' + CURRENCY_SYMBOL + ''').
+      Fees are taken from money LRMC already holds, so nothing is ever
+      separately invoiced to you.
     </p>
   </section>
 
@@ -605,7 +735,7 @@ LEGAL_NOTE = '''  <div class="max-w-3xl mx-auto px-4 lg:px-6 pt-8">
       <span>
         <strong>Draft, pending legal review.</strong> This describes accurately how the
         LRMC platform behaves, which is the useful half of the work — but it has not
-        been settled by a lawyer against Gambian law and must not be relied on as a
+        been settled by a lawyer against the law of ''' + COUNTRY_IN_SENTENCE + ''' and must not be relied on as a
         contract until it has.
       </span>
     </div>
@@ -631,7 +761,7 @@ build(
  a lawyer would otherwise have to reverse-engineer, and getting it in front of
  one is the point.
 
- What it is not: enforceable wording, checked against Gambian law.
+ What it is not: enforceable wording, checked against the law of that market.
  ═══════════════════════════════════════════════════════════════════════════''',
     hero('Terms of service', 'The basis on which LRMC provides this platform.')
     + LEGAL_NOTE + '''
@@ -911,6 +1041,39 @@ def rewrite(rel, pattern, replacement, what):
 
 print()
 
+
+def rewrite_country(rel):
+    """Put this market's country into a page that is not generated.
+
+    Unlike `rewrite()` this is not a match-exactly-once rule — a page may name
+    the country in a title, a description and a paragraph, and a page may name
+    it not at all. What is asserted instead is the invariant that matters: when
+    this returns, no *other* market's country survives in the file. `verify.ts`
+    sweeps the same files for the same thing.
+    """
+    path = ROOT / rel
+    before = path.read_text()
+    after = country(before)
+    others = [f for f in _ALL_COUNTRY_FORMS
+              if f not in (COUNTRY_IN_SENTENCE,) and f in after
+              and f not in COUNTRY_IN_SENTENCE]
+    assert not others, (
+        f'{rel} still names {others} after the rewrite. A page half in one '
+        f'market and half in another is the failure the registry exists to stop.'
+    )
+    if after != before:
+        path.write_text(after)
+        print(f'  set the country in {rel}')
+
+
+# Every file that names where LRMC is. The chrome ones carry "Banjul, The
+# Gambia" in a copyright line; `verify.ts` reads the same list.
+for _page in ('public/index.html', 'public/properties.html',
+              'public/register.html', 'layouts/public.html',
+              'components/footer.html', 'layouts/dashboard.html',
+              'layouts/auth.html', 'marketplace/index.html', 'hq/index.html'):
+    rewrite_country(_page)
+
 _lines = []
 for _i in range(0, len(REGIONS), 4):
     _lines.append('  ' + ', '.join(f"'{r}'" for r in REGIONS[_i:_i + 4]) + ',')
@@ -924,8 +1087,8 @@ rewrite(
 )
 rewrite(
     'public/register.html',
-    r'placeholder="\+[\d]+ 000 0000"',
-    f'placeholder="{DIALLING_CODE} 000 0000"',
+    r'placeholder="\+[\d ]+"',
+    f'placeholder="{DIALLING_CODE} {PHONE_EXAMPLE}"',
     'the phone placeholder',
 )
 rewrite(
@@ -934,11 +1097,24 @@ rewrite(
     "  var REGIONS = [\n" + '\n'.join('  ' + l for l in _lines) + "\n  ];",
     'the region list',
 )
+# A currency dropdown whose first option is the other market's is a landlord
+# listing Casper rent in dalasi because they did not think to change it. The
+# list stays — LRMC exists partly for somebody letting property abroad — but
+# this market's currency is what the field opens on.
+rewrite(
+    'assets/js/properties.js',
+    r"currencies: function \(\) \{ return \[.*?\]; \},",
+    'currencies: function () { return ['
+    + ', '.join(f"['{c}', '{n}']" for c, n in
+                sorted(_CURRENCY_OPTIONS, key=lambda kv: kv[0] != CURRENCY_CODE))
+    + ']; },',
+    "the listing currency order",
+)
 rewrite(
     'public/properties.html',
     r'<meta name="description" content="Search homes to rent across [^"]*" />',
     '<meta name="description" content="Search homes to rent across '
-    + LAUNCH_COUNTRY + ' \u2014 ' + ', '.join(REGIONS[:3])
+    + COUNTRY_IN_SENTENCE + ' \u2014 ' + ', '.join(REGIONS[:3])
     + ' and beyond. Rent held in escrow, vendors vetted, every payment on the record." />',
     'the search page description',
 )

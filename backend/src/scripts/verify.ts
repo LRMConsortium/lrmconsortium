@@ -2269,7 +2269,12 @@ section('Ledger: commission, payouts, refunds');
 const split = commissionSplit(100, 15);
 eq('a 15% fee on 100 is 15', split.platformFee, 15);
 eq('and the net is the remainder', split.net, 85);
-eq('the default ride commission is 15%', DEFAULT_RIDE_COMMISSION_PERCENT, 15);
+/* The ledger's default is the active market's, which is the whole point of the
+ * registry: a US ride splits at 18 and a Gambian one at 15, with no branch. */
+eq('the default ride commission is the active market\'s',
+  DEFAULT_RIDE_COMMISSION_PERCENT, MARKET.rideCommissionPercent);
+eq('and Gambia\'s is still 15%', MARKETS.gambia.rideCommissionPercent, 15);
+eq('while the pilot\'s is 18%', MARKETS.unitedStates.rideCommissionPercent, 18);
 
 // The remainder discipline: gross must always equal fee plus net, at any price.
 // The values matter. A split that rounds the fee and the net *independently*
@@ -3713,7 +3718,8 @@ section('Currency');
   check('the OpenAPI currency enum includes GMD', CURRENCY.includes('GMD'));
   eq('and leads with it', CURRENCY[0], 'GMD');
 
-  eq('the launch currency is named once, not guessed', LAUNCH_CURRENCY, 'GMD');
+  eq('the launch currency is named once, not guessed', LAUNCH_CURRENCY, MARKET.currency);
+  eq('and Gambia\'s is still the dalasi', MARKETS.gambia.currency, 'GMD');
   eq('and the Dalasi is written with a D', CURRENCY_SYMBOLS.GMD, 'D');
   check('every recognised currency has a symbol',
     CURRENCIES.every((c) => typeof CURRENCY_SYMBOLS[c] === 'string' && CURRENCY_SYMBOLS[c].length > 0));
@@ -7053,11 +7059,31 @@ section('Where LRMC actually is');
 // said "Accra, Ghana". A tenant registering in Banjul was silently recorded as
 // resident in another country, and no check had ever been told otherwise.
 {
-  eq('LRMC launches in The Gambia', LAUNCH_COUNTRY, 'The Gambia');
-  eq('from Banjul', LAUNCH_CITY, 'Banjul');
-  eq('and the two are written together', LAUNCH_LOCATION, 'Banjul, The Gambia');
-  eq('in dalasi', LAUNCH_CURRENCY, 'GMD');
-  eq('on +220', LAUNCH_DIALLING_CODE, '+220');
+  /* ── Pinned to the registry, not to Banjul ────────────────────────────
+   * These read `LAUNCH_COUNTRY` and its four siblings, which are derived from
+   * whichever market `LRMC_MARKET` selects. Pinning them to The Gambia meant
+   * the suite could only ever be run as Banjul — so `deploy/release.sh`, which
+   * runs it during the pilot's release, was verifying the wrong market's
+   * pages. "Serving The Gambia" survived in the footer of every page of the
+   * Casper build with the suite reporting success.
+   *
+   * The two questions are now asked separately: the derived constants must
+   * equal the *active* market's registry entry (the wiring), and Gambia's own
+   * entry is pinned to the values it has always had (the regression guard).
+   * Both are stronger than the version that could only pass one way. */
+  eq('LRMC launches where the active market says', LAUNCH_COUNTRY, MARKET.country);
+  eq('from its city', LAUNCH_CITY, MARKET.city);
+  eq('and the two are written together', LAUNCH_LOCATION, `${MARKET.city}, ${MARKET.country}`);
+  eq('in its currency', LAUNCH_CURRENCY, MARKET.currency);
+  eq('on its dialling code', LAUNCH_DIALLING_CODE, MARKET.diallingCode);
+
+  /* The regression guard. Gambia's values were wrong for four weeks; these are
+   * what they were corrected to, and they are asked of the registry directly
+   * so they hold whichever market this build serves. */
+  eq('Gambia is still The Gambia', MARKETS.gambia.country, 'The Gambia');
+  eq('still from Banjul', MARKETS.gambia.city, 'Banjul');
+  eq('still in dalasi', MARKETS.gambia.currency, 'GMD');
+  eq('still on +220', MARKETS.gambia.diallingCode, '+220');
 
   // The bug itself: a default that disagreed with the launch currency.
   const fragments = readFileSync(
@@ -7110,7 +7136,11 @@ section('Where LRMC actually is');
   // everywhere — and only the selection is configuration. The suite runs
   // unconfigured, so it sees `gambia`, and every assertion below about "the
   // launch" is an assertion about that market.
-  eq('the suite runs against the Gambia market', MARKET.id, 'gambia');
+  /* Not pinned. `LRMC_MARKET` selects it, `deploy/release.sh` exports the
+   * market being released, and a suite that could only run as one market is a
+   * suite the other market's release cannot use. */
+  check('the suite runs against a real market',
+    (MARKET_IDS as readonly string[]).includes(MARKET.id), MARKET.id);
   eq('and every market is a real one', MARKET_IDS.length, 2);
 
   for (const id of MARKET_IDS) {
@@ -7163,6 +7193,34 @@ section('Where LRMC actually is');
       for (const p of problems) console.log(`        ${id}.${p.field} — ${p.message}`);
     }
   }
+  /* ── Contradictions, which are not the same as undecided ──────────────
+   * Readiness above is soft for a market this build does not serve, because a
+   * market is added to the registry before its fields are settled. A field
+   * that *contradicts another field* is different: nobody is part-way through
+   * deciding it, it is simply wrong, and it stays wrong until somebody looks.
+   * `countryInSentence: 'the USA'` beside `country: 'United States'` survived
+   * a mutation run for exactly this reason — reported as tracked debt on a
+   * market the suite was not serving, and printed rather than failed.
+   *
+   * So these are asked of every market, always. */
+  for (const id of MARKET_IDS) {
+    const m = MARKETS[id];
+    check(`${id}'s prose country contains its stored country`,
+      m.countryInSentence.toLowerCase().includes(m.country.toLowerCase()),
+      `"${m.countryInSentence}" vs "${m.country}" — the page and the profile `
+      + 'would name different places');
+    check(`${id}'s short name is a directory-safe token`,
+      /^[a-z]{2,6}$/.test(m.shortName), m.shortName);
+    check(`${id}'s port is usable and its own`,
+      Number.isInteger(m.port) && m.port > 1023 && m.port < 65536
+      && MARKET_IDS.filter((o) => MARKETS[o].port === m.port).length === 1,
+      String(m.port));
+    check(`${id}'s phone example is a grouped run of digits`,
+      /^\d[\d ]*\d$/.test(m.phoneExample), m.phoneExample);
+    check(`${id} names a currency the platform recognises`,
+      (CURRENCIES as readonly string[]).includes(m.currency), m.currency);
+  }
+
   /* Whatever a market has not decided, it must not have *guessed*. Every field
    * is either settled or null; a market cannot be half-ready with a plausible
    * value standing in. */
@@ -7225,9 +7283,13 @@ section('Where LRMC actually is');
   }
   eq('and a real one resolves', marketFor('unitedStates').currency, 'USD');
 
-  // ── Gambia's values are exactly what they were before the move ──
-  eq('the management fee is 10%', MANAGEMENT_FEE_PERCENT, 10);
-  eq('and Ususu takes 15%', RIDE_COMMISSION_PERCENT, 15);
+  // ── The published fees are the active market's, and Gambia's are unchanged ──
+  eq('the published management fee is the active market\'s',
+    MANAGEMENT_FEE_PERCENT, MARKET.managementFeePercent);
+  eq('and the published Ususu share is too',
+    RIDE_COMMISSION_PERCENT, MARKET.rideCommissionPercent);
+  eq('Gambia still charges 10% of rent', MARKETS.gambia.managementFeePercent, 10);
+  eq('and Ususu still takes 15% there', MARKETS.gambia.rideCommissionPercent, 15);
   eq('which is the number the ledger actually splits on',
     DEFAULT_RIDE_COMMISSION_PERCENT, RIDE_COMMISSION_PERCENT,
     );
@@ -7817,6 +7879,15 @@ section('Sessions, credentials, and the things one command can undo');
   }
   const step = (needle: string) => releaseCode.indexOf(needle);
 
+  check('release.sh verifies as the market it is releasing',
+    /export LRMC_MARKET="\$MARKET"/.test(releaseCode)
+    && releaseCode.indexOf('export LRMC_MARKET') < releaseCode.indexOf('npm run verify'),
+    'without it the suite defaults to gambia, and the pilot\'s release checks '
+    + 'Banjul\'s constants against Casper\'s pages');
+  check('and builds the pages before it verifies them',
+    releaseCode.indexOf('build-public-pages.py') < releaseCode.indexOf('npm run verify'),
+    'verifying pages the build has not written yet checks the previous release');
+
   check('release.sh stops at the first failure',
     /^set -euo pipefail$/m.test(releaseSh),
     'without it a failed build is a warning and the cutover happens anyway');
@@ -7904,9 +7975,16 @@ section('Sessions, credentials, and the things one command can undo');
   // The builder now writes all three from `markets.ts`. These assertions are
   // what stop somebody editing one of them back by hand — the committed state
   // is the gambia build, because gambia is what the builder defaults to.
-  const gm = MARKETS.gambia;
+  /* Against the **active** market, not gambia. The pages on disk were built by
+   * `build-public-pages.py` for whichever market `LRMC_MARKET` names, and so
+   * was this suite's `MARKET`. Pinning these to gambia would have meant the US
+   * pilot's release verified the Gambia market's pages — which is how "Serving
+   * The Gambia" survived in the footer of every page of the Casper build while
+   * the suite reported success. `deploy/release.sh` exports `LRMC_MARKET` for
+   * exactly this reason. */
+  const gm = MARKET;
   const gmRegions = gm.regions ?? [];
-  check('the default market has regions to build from', gmRegions.length > 0);
+  check('the active market has regions to build from', gmRegions.length > 0);
 
   const regionSites: [string, RegExp][] = [
     ['../frontend/public/register.html', /var REGIONS = \[\n((?:.*\n)*?)\];/],
@@ -7923,9 +8001,90 @@ section('Sessions, credentials, and the things one command can undo');
 
   const registerHtml = readFileSync(
     resolve(process.cwd(), '../frontend/public/register.html'), 'utf8');
-  check('the phone placeholder uses the market\'s dialling code',
-    registerHtml.includes(`placeholder="${gm.diallingCode} 000 0000"`),
-    'a US member prompted for a +220 number is the registry ignored');
+  /* Code *and* shape. Changing only the code would give Casper `+1 000 0000`,
+   * three digits short of a US number and looking deliberate rather than
+   * wrong. */
+  check('the phone placeholder uses the market\'s dialling code and digit grouping',
+    registerHtml.includes(`placeholder="${gm.diallingCode} ${gm.phoneExample}"`),
+    'a US member prompted for a +220 number, or for seven digits, is the '
+    + 'registry ignored');
+
+  /* The currency a landlord is offered first. A dropdown opening on the other
+   * market's currency is Casper rent listed in dalasi by somebody who did not
+   * think to change it — money, silently wrong, from a default. */
+  const propertiesJs = readFileSync(
+    resolve(process.cwd(), '../frontend/assets/js/properties.js'), 'utf8');
+  const firstCurrency = propertiesJs
+    .match(/currencies: function \(\) \{ return \[\['(\w+)'/)?.[1];
+  eq('the listing currency dropdown opens on this market\'s currency',
+    firstCurrency, gm.currency);
+
+  /* And the pricing page says which currency its figures are in, using this
+   * market's name and symbol. */
+  const pricingHtml = readFileSync(
+    resolve(process.cwd(), '../frontend/public/pricing.html'), 'utf8');
+  check('the pricing page states the market\'s currency and symbol',
+    pricingHtml.includes(`(${CURRENCY_SYMBOLS[gm.currency]}).`)
+    && new RegExp(`All figures in [^(]+\\(\\${CURRENCY_SYMBOLS[gm.currency]}\\)`)
+      .test(pricingHtml),
+    'the page publishes what LRMC charges; a currency from another market makes '
+    + 'every number on it a different amount');
+
+  /* ── The sweep, which is what would have found all of the above at once ──
+   * Each of these was a separate discovery: the region list, then the phone
+   * placeholder, then the pricing prose, then the currency dropdown. Four
+   * rounds of "and also this one", which is the signature of checking rather
+   * than sweeping.
+   *
+   * So: no shipped page or script may name the *other* market's country, its
+   * dialling code, or any of its regions, outside a comment. Comments are
+   * excluded because this codebase explains itself in prose and a negative
+   * assertion over prose is a trap this project has already sprung six times.
+   *
+   * The currency *names* are deliberately not swept — every market offers all
+   * four currencies to a landlord letting property abroad, and that list is
+   * correct in both. */
+  const SHIPPED = [
+    'public/register.html', 'public/properties.html', 'public/index.html',
+    'public/pricing.html', 'public/about.html', 'public/contact.html',
+    'public/terms.html', 'public/privacy.html',
+    'assets/js/properties.js', 'assets/js/ui.js', 'assets/js/auth.js',
+  ];
+  const stripAllComments = (s: string) => s
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/[^\n]*/gm, '');
+  const otherMarkets = marketList.filter((m) => m.id !== gm.id);
+  /* Read without a try/catch. The first draft of this loop had one, and it
+   * swallowed a `ReferenceError` on an out-of-scope path variable — every file
+   * was skipped, every assertion passed, and the sweep proved nothing while
+   * reporting eleven successes. A sweep that can quietly cover nothing is
+   * worse than no sweep. */
+  const shippedRoot = resolve(process.cwd(), '../frontend');
+  for (const file of SHIPPED) {
+    const body = stripAllComments(readFileSync(`${shippedRoot}/${file}`, 'utf8'));
+    /* The positive control. A sweep's whole value is that it read the file, and
+     * nothing else here can tell the difference between "no leaks" and "no
+     * bytes" — which is exactly how the first draft passed eleven times while
+     * reading nothing. Every one of these files is thousands of characters;
+     * five hundred is far below any of them and far above empty. */
+    check(`${file} was actually read`, body.length > 500,
+      `${body.length} characters after stripping comments — a sweep over an `
+      + 'empty string reports success and proves nothing');
+    const leaks: string[] = [];
+    for (const other of otherMarkets) {
+      for (const term of [other.country, ...(other.regions ?? [])]) {
+        if (body.includes(term)) leaks.push(`${other.id}: "${term}"`);
+      }
+      /* A dialling code as *displayed* — the code, a space, then a digit.
+       * A bare `includes('+1')` would match `i+1` in any script, and an
+       * assertion that fires on arithmetic is one somebody deletes. */
+      const shown = new RegExp(`\\${other.diallingCode} \\d`);
+      if (shown.test(body)) leaks.push(`${other.id}: "${other.diallingCode} …"`);
+    }
+    check(`${file} carries no other market's places or dialling code`,
+      leaks.length === 0, leaks.join(', '));
+  }
   const aboutHtml = readFileSync(
     resolve(process.cwd(), '../frontend/public/about.html'), 'utf8');
   check('the about page names the market\'s country and every region',
