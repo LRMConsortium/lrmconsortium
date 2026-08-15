@@ -640,7 +640,19 @@ function generateModules(emittedInputs: Set<string>): {
 } {
   const grouped = new Map<string, ModuleOp[]>();
 
+  /* ── Paths the SDK deliberately does not expose ─────────────────────────
+   * A gateway webhook is called by Stripe and by nothing else. Generating a
+   * client method for it would put `Lrmc.payments.webhooksStripe()` in every
+   * consumer's autocomplete — an endpoint that authenticates by signature over
+   * a raw body, which no SDK caller can produce and none should try. Surface
+   * that exists only to be misused.
+   *
+   * It stays in the blueprint and the OpenAPI document, because it is real and
+   * an integrator needs to read about it. It just has no client binding. */
+  const NOT_FOR_CLIENTS = [/^\/payments\/webhooks\//];
+
   for (const [path, methods] of Object.entries(spec.paths)) {
+    if (NOT_FOR_CLIENTS.some((rx) => rx.test(path))) continue;
     for (const [method, op] of Object.entries(methods)) {
       const mod = moduleFor(op.tags[0]!, path);
       const list = grouped.get(mod) ?? [];

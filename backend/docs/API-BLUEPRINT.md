@@ -7,7 +7,7 @@
 
 All paths are relative to `API_PREFIX` (default `/api/v1`).
 
-**362 endpoints** — 141 from the generic profile surface across 16 collections, 221 hand-mounted.
+**363 endpoints** — 141 from the generic profile surface across 16 collections, 222 hand-mounted.
 
 ---
 
@@ -889,6 +889,7 @@ get the clauses below, OR-ed together.
 | `GET` | `/api/v1/payment/:paymentId` | C · Back Office | `payment:read`<br>`payment:readOwn` | scoped | — | FN EX BO |
 | `GET` | `/api/v1/payments/:userId/history` | D · Member | `payment:readOwn`<br>`payment:read` | scoped | query: `listQuery` | _all except_ SE BU PU |
 | `GET` | `/api/v1/payments/:userId/summary` | D · Member | `payment:readOwn`<br>`payment:read` | scoped | — | _all except_ SE BU PU |
+| `POST` | `/api/v1/payments/webhooks/stripe` | E · Public | _none_ | — | — | _anyone_ |
 | `POST` | `/api/v1/payments/record` | D · Member | `payment:record` | — | body: `recordPaymentSchema` | FN EX BO CO |
 | `GET` | `/api/v1/tenant/me/payments` | D · Member | `payment:readOwn`<br>`payment:read` | self | query: `listQuery` | _all except_ SE BU PU |
 | `GET` | `/api/v1/landlord/me/payments` | D · Member | `payment:readOwn`<br>`payment:read` | self | query: `listQuery` | _all except_ SE BU PU |
@@ -901,6 +902,7 @@ get the clauses below, OR-ed together.
 - **`GET /api/v1/payment/:paymentId`** — `providerReference` is `select: false` and never leaves the server on a read.
 - **`GET /api/v1/payments/:userId/history`** — A person always sees their own. Back Office, HQ and the founder see anyone's. A COORDINATOR SEES ONLY THE RECEIPTS THEY WROTE THEMSELVES — recording a payment and reading a year of somebody's finances are different powers, and holding the first does not grant the second. Anyone else is refused rather than answered with an empty list: "you may not see this" and "there is nothing here" are different facts.
 - **`GET /api/v1/payments/:userId/summary`** — Computed over the whole history, never a page. `onTimeRate` is (onTime / (onTime + late)) * 100 and is NULL when nothing has settled — never 0, which would tell somebody on their first day that none of their payments were on time. NOTE this is not the same figure as `paymentReliability` in an application assessment, which also counts missed instalments in the denominator; the two are labelled differently on purpose and must not be reconciled by relabelling one. `scope` and `partial` say whose rows the totals cover, so a coordinator reading their own receipts does not mistake them for the whole.
+- **`POST /api/v1/payments/webhooks/stripe`** — THE ONLY THING ON THIS PLATFORM THAT MAY MOVE AN ORDER TO PAID. Unauthenticated because Stripe holds no LRMC session; the authentication is the HMAC-SHA256 signature over the RAW body, verified constant-time against STRIPE_WEBHOOK_SECRET with a 300-second replay window. `app.ts` mounts express.raw for this path alone, before the JSON parser, because a re-serialised body does not verify and the tempting fix for that is to weaken the check. Idempotent by a unique index on the event id: the event is CLAIMED before any work and stamped applied after, so a crash in between is retryable and a duplicate delivery does nothing — Stripe retries anything non-2xx for days and delivers duplicates in ordinary operation, so a handler that books income per delivery pays a merchant twice. Every settlement is reconciled against the order for subject, amount and currency, exactly — an overpayment is a support conversation, not a settlement. Answers 200 to duplicates, unhandled types and unknown orders because retrying cannot fix any of them; the only 4xx is a bad signature, which is never Stripe. Side effects (stock, notification) run AFTER the ledger row, so a failed notification can never unwind a payment.
 - **`POST /api/v1/payments/record`** — The ledger is otherwise written only by the flows that cause it. This exists because The Gambia runs on cash and mobile money, and refusing to record a cash rent payment would leave a tenant who has paid on time for two years with `hasRecord: false` in their evidence — pushing the informal economy out of the scoring engine entirely. Fenced accordingly: ONLY rent and deposits (never a payout, which would mark money as sent that was never sent); NOBODY may record a payment they are party to as payer or payee; `recordedBy` comes from the token and can not be supplied; `status` is always succeeded and can not be supplied; the reference is derived from payer, subject, kind, amount and day so a double tap on a bad connection collides instead of doubling a tenant's rent — the collision is returned as a 409 for a person to resolve, never swallowed.
 
 

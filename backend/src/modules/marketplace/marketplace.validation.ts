@@ -129,9 +129,19 @@ export const placeOrderSchema = z
  * knows what the order costs; letting the client restate it would mean
  * deciding which of the two numbers to believe.
  */
-export const payOrderSchema = z
-  .object({ paymentRef: z.string().trim().min(3).max(120) })
-  .strict();
+/**
+ * Asking to pay takes no arguments.
+ *
+ * It took `paymentRef` — a string the caller chose, on the strength of which
+ * the order moved to `paid`. Nothing verified that money had arrived. The field
+ * is **removed rather than ignored**: `.strict()` means a client still sending
+ * one is told, instead of believing it worked and waiting for goods that a
+ * gateway was never asked to pay for.
+ *
+ * What settles an order now is a signed webhook, reconciled against the
+ * gateway's own amount and currency. See `settleOrderPaid`.
+ */
+export const payOrderSchema = z.object({}).strict();
 
 export const fulfilOrderSchema = z
   .object({ note: z.string().trim().max(500).optional() })

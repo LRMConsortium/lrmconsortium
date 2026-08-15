@@ -26,6 +26,21 @@ import { DriverProfile } from '../driver/driver.model.js';
 import { LandlordProfile } from '../landlord/landlord.model.js';
 import { TenantProfile } from '../tenant/tenant.model.js';
 import { Payment, type IPayment } from './payment.model.js';
+import { env } from '../../config/env.js';
+import { logger } from '../../config/logger.js';
+import type { Currency } from '../../config/currencies.js';
+import { toMinorUnits, verifyWebhookSignature } from '../../shared/providers/checkout.js';
+import { Order } from '../marketplace/marketplace.model.js';
+import { settleOrderPaid } from '../marketplace/index.js';
+import { ProcessedWebhookEvent } from './webhookEvent.model.js';
+import {
+  intakeDecision,
+  isAcknowledgeOnly,
+  isHandledEvent,
+  maySettle,
+  reconcile,
+  type ClaimRecord,
+} from './webhookEvents.js';
 
 export const paymentService = new BaseService<IPayment>(Payment, {
   label: 'Payment',
@@ -351,6 +366,184 @@ historyRouter.post(
   }),
 );
 
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * The gateway's webhook
+ *
+ * The only thing on this platform that may move an order to `paid`.
+ *
+ * Four things have to be true before a single row is written, and each one has
+ * been somebody's breach somewhere:
+ *
+ *   1. The signature verifies over the **raw** body. `app.ts` mounts
+ *      `express.raw` for this path alone, before the JSON parser, so the bytes
+ *      survive. A re-serialised body does not verify, and the tempting fix for
+ *      that is to weaken the check.
+ *   2. The event is **claimed** by a unique index before any work happens.
+ *      Stripe retries anything that is not 2xx, for days, and delivers
+ *      duplicates in ordinary operation. A handler that books income per
+ *      delivery pays a merchant twice on a slow afternoon.
+ *   3. The intent is **reconciled** against the order — amount, currency,
+ *      subject. An authentic event about somebody else's order, or about this
+ *      order at the wrong price, settles nothing.
+ *   4. Side effects happen **after** the money is recorded, never before.
+ *
+ * It answers 200 to almost everything on purpose. A 4xx tells Stripe to retry,
+ * and retrying will not fix a duplicate, an unhandled type, or an event about
+ * an order that no longer exists. The one thing that gets a 4xx is a bad
+ * signature, because that is not Stripe.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+const webhookRouter = Router();
+
+webhookRouter.post(
+  '/webhooks/stripe',
+  /* Audited like every other mutation on this platform. There is no actor —
+   * a gateway is not a person — and `auditTrail` already tolerates that,
+   * recording the request without putting a name against a decision nobody
+   * made. Money moving with no audit entry is not answerable, and this route
+   * moves more of it than any other. */
+  auditTrail('payment'),
+  asyncHandler(async (req, res) => {
+    const raw = (req as unknown as { body?: unknown }).body;
+    const rawBody: Uint8Array | string =
+      raw instanceof Uint8Array ? raw : typeof raw === 'string' ? raw : '';
+
+    const check = verifyWebhookSignature(
+      rawBody,
+      req.header('stripe-signature'),
+      env.STRIPE_WEBHOOK_SECRET,
+      Math.floor(Date.now() / 1000),
+    );
+    if (!check.ok) {
+      /* The only 4xx here. Deliberately says nothing about which of the five
+       * ways it failed — a caller probing for the difference between "no
+       * secret configured" and "signature mismatch" learns something worth
+       * knowing, and Stripe itself never sees this branch. */
+      logger.warn('Stripe webhook rejected', { reason: check.failure });
+      throw ApiError.unauthenticated('Signature verification failed');
+    }
+
+    let event: { id?: string; type?: string; data?: { object?: Record<string, unknown> } };
+    try {
+      /* `TextDecoder` is a runtime global the sandbox's trimmed `@types/node`
+       * omits; reached through globalThis rather than widening the suite's
+       * typecheck filter for one line. */
+      const decode = (bytes: Uint8Array) =>
+        new (globalThis as unknown as {
+          TextDecoder: new () => { decode(b: Uint8Array): string };
+        }).TextDecoder().decode(bytes);
+      event = JSON.parse(typeof rawBody === 'string' ? rawBody : decode(rawBody));
+    } catch {
+      /* Signed, and not JSON. Nothing to retry. */
+      return ok(res, { received: true, outcome: 'unparseable' });
+    }
+
+    const eventId = String(event.id ?? '');
+    const type = String(event.type ?? '');
+    if (!eventId) return ok(res, { received: true, outcome: 'noEventId' });
+
+    if (!isHandledEvent(type)) {
+      return ok(res, { received: true, outcome: 'ignoredType', type });
+    }
+
+    /* ── Claim it ────────────────────────────────────────────────────────
+     * The unique index does the work. A duplicate key means somebody else has
+     * this event, and the honest answer is 200 with nothing done. */
+    const now = new Date();
+    let existing: ClaimRecord | null = null;
+    try {
+      await ProcessedWebhookEvent.create({
+        eventId, source: 'stripe', type, claimedAt: now,
+      });
+    } catch (err) {
+      if ((err as { code?: number }).code !== 11000) throw err;
+      const row = await ProcessedWebhookEvent.findOne({ eventId }).lean().exec();
+      existing = row
+        ? { eventId, appliedAt: row.appliedAt ?? null, claimedAt: row.claimedAt ?? null }
+        : null;
+    }
+
+    const decision = intakeDecision(type, existing, Date.now());
+    if (isAcknowledgeOnly(decision)) {
+      return ok(res, { received: true, outcome: decision, eventId });
+    }
+
+    /* ── Reconcile against the order ─────────────────────────────────────── */
+    const object = (event.data?.object ?? {}) as Record<string, unknown>;
+    const metadata = (object.metadata ?? {}) as Record<string, unknown>;
+    const orderId = String(metadata.orderId ?? '');
+    const order = orderId
+      ? await Order.findOne({ _id: orderId, deletedAt: null }).lean().exec()
+      : null;
+
+    if (!order) {
+      await ProcessedWebhookEvent.updateOne({ eventId },
+        { $set: { appliedAt: new Date(), outcome: 'no such order' } }).exec();
+      return ok(res, { received: true, outcome: 'unknownOrder', eventId });
+    }
+
+    if (type !== 'payment_intent.succeeded') {
+      /* Failures and refunds are recorded and left for a person. Moving an
+       * order on a failed intent is how a buyer loses goods they did pay for
+       * when a first attempt was declined and a second succeeded. */
+      await ProcessedWebhookEvent.updateOne({ eventId },
+        { $set: { appliedAt: new Date(), order: order._id, outcome: `recorded ${type}` } }).exec();
+      logger.warn('Stripe reported a payment problem', { eventId, type, orderId });
+      return ok(res, { received: true, outcome: 'recorded', type, eventId });
+    }
+
+    const currency = order.currency as Currency;
+    const problems = reconcile(
+      {
+        orderId: String(order._id),
+        total: order.total,
+        currency,
+        status: order.status,
+      },
+      {
+        orderId,
+        amountMinor: typeof object.amount_received === 'number'
+          ? object.amount_received
+          : (object.amount as number | undefined),
+        currency: typeof object.currency === 'string'
+          ? (object.currency.toUpperCase() as Currency)
+          : undefined,
+        status: String(object.status ?? ''),
+      },
+      toMinorUnits(order.total, currency),
+    );
+
+    if (!maySettle(problems)) {
+      /* Applied, because re-running will not change the answer, and recorded
+       * in full so a person can see why LRMC holds money it did not settle. */
+      const detail = problems.map((p) => p.code).join(', ');
+      await ProcessedWebhookEvent.updateOne({ eventId },
+        { $set: { appliedAt: new Date(), order: order._id, outcome: `refused: ${detail}` } }).exec();
+      logger.error('A signed payment did not reconcile', {
+        eventId, orderId, problems: problems.map((p) => p.message),
+      });
+      return ok(res, { received: true, outcome: 'refused', problems, eventId });
+    }
+
+    const settled = await settleOrderPaid(
+      order as never,
+      /* No actor. The gateway is not a person, and recording one would put a
+       * name against a decision nobody made. */
+      String(order.customer),
+      String(object.id ?? eventId),
+    );
+
+    await ProcessedWebhookEvent.updateOne({ eventId },
+      { $set: { appliedAt: new Date(), order: order._id, outcome: 'settled' } }).exec();
+
+    logger.info('Order settled from a verified webhook', {
+      eventId, orderId, reference: settled.reference,
+    });
+    return ok(res, { received: true, outcome: 'settled', eventId });
+  }),
+);
+
 export const paymentModule = {
   collectionPath: 'payments',
   itemPath: 'payment',
@@ -361,6 +554,7 @@ export const paymentModule = {
   mounts: [
     { path: 'payments', router: collectionRouter },
     { path: 'payments', router: historyRouter },
+    { path: 'payments', router: webhookRouter },
     { path: 'payment', router: itemRouter },
     { path: 'tenant', router: tenantRouter },
     { path: 'landlord', router: landlordRouter },

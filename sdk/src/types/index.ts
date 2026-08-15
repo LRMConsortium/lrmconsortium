@@ -3647,6 +3647,17 @@ export interface VisibilityMatrixRow {
   adminAccess: "full" | "partial" | "limited" | "none";
 }
 
+export interface WebhookAck {
+  /** Always true when the signature verified. */
+  received: boolean;
+  /** What was done: settled, alreadyApplied, inFlight, retryStale, ignoredType, unknownOrder, refused, recorded, unparseable or noEventId. */
+  outcome: string;
+  /** The gateway's event id, echoed for correlation. */
+  eventId?: string;
+  /** The event type, when it was not acted on. */
+  type?: string;
+}
+
 export interface ZoneDirectory {
   zones?: HQZoneDescriptor[];
   yourZones?: string[];

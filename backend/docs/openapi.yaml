@@ -8778,6 +8778,24 @@ components:
           type: string
           minLength: 10
           description: 'The session''s refresh token. Send it: revoking it is what makes signing out mean anything server-side. Omitted, the reply says nothing was revoked.'
+    WebhookAck:
+      type: object
+      properties:
+        received:
+          type: boolean
+          description: Always true when the signature verified.
+        outcome:
+          type: string
+          description: 'What was done: settled, alreadyApplied, inFlight, retryStale, ignoredType, unknownOrder, refused, recorded, unparseable or noEventId.'
+        eventId:
+          type: string
+          description: The gateway's event id, echoed for correlation.
+        type:
+          type: string
+          description: The event type, when it was not acted on.
+      required:
+        - received
+        - outcome
     SignOutOutcome:
       type: object
       properties:
@@ -17512,6 +17530,66 @@ paths:
             'application/json':
               schema:
                 '$ref': '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found, or not visible at this actor’s scope.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error.
+          content:
+            'application/json':
+              schema:
+                '$ref': '#/components/schemas/ErrorResponse'
+  '/payments/webhooks/stripe':
+    post:
+      operationId: postPaymentsWebhooksStripe
+      summary: Stripe payment events
+      tags:
+        - payment
+      description: 'THE ONLY THING ON THIS PLATFORM THAT MAY MOVE AN ORDER TO PAID. Unauthenticated because Stripe holds no LRMC session; the authentication is the HMAC-SHA256 signature over the RAW body, verified constant-time against STRIPE_WEBHOOK_SECRET with a 300-second replay window. `app.ts` mounts express.raw for this path alone, before the JSON parser, because a re-serialised body does not verify and the tempting fix for that is to weaken the check. Idempotent by a unique index on the event id: the event is CLAIMED before any work and stamped applied after, so a crash in between is retryable and a duplicate delivery does nothing — Stripe retries anything non-2xx for days and delivers duplicates in ordinary operation, so a handler that books income per delivery pays a merchant twice. Every settlement is reconciled against the order for subject, amount and currency, exactly — an overpayment is a support conversation, not a settlement. Answers 200 to duplicates, unhandled types and unknown orders because retrying cannot fix any of them; the only 4xx is a bad signature, which is never Stripe. Side effects (stock, notification) run AFTER the ledger row, so a failed notification can never unwind a payment.'
+      x-zone: PUBLIC_PORTAL
+      x-roles:
+        - founder
+        - hqExecutive
+        - backOfficeStaff
+        - coordinator
+        - vendor
+        - landlord
+        - tenant
+        - airbnbHost
+        - hotelManager
+        - resortManager
+        - rentalCarCompany
+        - driver
+        - rider
+        - advertiser
+        - merchant
+        - seller
+        - customer
+        - buyer
+        - publicUser
+      x-permissions: []
+      x-ownership: none
+      x-audited: true
+      security: []
+      responses:
+        '201':
+          description: Stripe payment events
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  data:
+                    '$ref': '#/components/schemas/WebhookAck'
+                required:
+                  - success
+                  - data
         '404':
           description: Not found, or not visible at this actor’s scope.
           content:

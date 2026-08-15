@@ -3810,6 +3810,31 @@ const RESOURCES: Record<string, JsonSchema> = {
     },
   },
 
+  /**
+   * What LRMC tells a payment gateway.
+   *
+   * Read by Stripe and by nobody else, which is why it carries no order and no
+   * money: a webhook response is an acknowledgement, and anything more in it is
+   * information handed to whoever can reach the endpoint.
+   *
+   * `received: true` accompanies almost every outcome on purpose — a non-2xx
+   * tells Stripe to retry, and retrying cannot fix a duplicate, an unhandled
+   * event type, or an event about an order that does not exist.
+   */
+  WebhookAck: {
+    type: 'object',
+    properties: {
+      received: bool({ description: 'Always true when the signature verified.' }),
+      outcome: str({
+        description:
+          'What was done: settled, alreadyApplied, inFlight, retryStale, ignoredType, unknownOrder, refused, recorded, unparseable or noEventId.',
+      }),
+      eventId: str({ description: "The gateway's event id, echoed for correlation." }),
+      type: str({ description: 'The event type, when it was not acted on.' }),
+    },
+    required: ['received', 'outcome'],
+  },
+
   SignOutOutcome: {
     type: 'object',
     properties: {

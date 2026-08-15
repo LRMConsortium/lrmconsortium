@@ -30,6 +30,12 @@ import { BaseService } from '../../shared/BaseService.js';
 import { asyncHandler, created, ok, paginated } from '../../shared/http.js';
 import { defineProfileModule, namedIdParam } from '../../shared/moduleFactory.js';
 import { dispatchNotification } from '../notification/dispatch.js';
+import { Payment } from '../payment/payment.model.js';
+import type { Currency } from '../../config/currencies.js';
+import {
+  checkoutProvider,
+  isExpressible,
+} from '../../shared/providers/checkout.js';
 import {
   CustomerProfile,
   Listing,
@@ -756,7 +762,25 @@ orderRouter.get(
   }),
 );
 
-/** Pay. Money moves from the buyer to LRMC, not to the merchant. */
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Payment
+ *
+ * Two halves, and the split is the whole point.
+ *
+ * `POST /order/:orderId/pay` **asks for an intent**. It takes no reference from
+ * the caller, and it does not move the order. Previously it accepted a
+ * `paymentRef` string and moved the order to `paid` on the strength of it —
+ * nothing verified that money had arrived, nothing checked the amount, and the
+ * module imported no payment provider at all. Any buyer could post any string
+ * and receive goods.
+ *
+ * `settleOrderPaid` is the other half, and only the **webhook** calls it, after
+ * verifying Stripe's signature over the raw body and reconciling the amount and
+ * currency against the order. A client never asserts that money moved. The
+ * payment module's own header has said so since week one; it was true there and
+ * absent here.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
 orderRouter.post(
   '/:orderId/pay',
   authenticate,
@@ -771,47 +795,125 @@ orderRouter.post(
     const side = await actorSideFor(req, order as IOrder);
     if (side !== 'buyer') throw ApiError.forbidden('Only the buyer may pay for this order');
 
-    const { paymentRef } = req.body as { paymentRef: string };
-    const now = new Date();
-
-    const updated = await transition(order as IOrder, 'paid', 'buyer', req.actor!.userId,
-      { paidAt: now, paymentRef }, 'Payment captured');
-
-    // Stock comes down when the money is committed, not when the order is
-    // drafted — an unpaid order holding stock is how a catalogue empties
-    // without a single sale.
-    for (const line of updated.lines) {
-      const listing = await Listing.findById(line.listing).lean().exec();
-      if (!listing) continue;
-      const next = stockAfterOrder(toListingShape(listing as IListing, true), line.quantity);
-      const patch: Record<string, unknown> = { $inc: { totalOrdered: line.quantity } };
-      if (next !== null) {
-        patch.$set = {
-          stock: next,
-          ...(autoUnpublish({ ...toListingShape(listing as IListing, true), stock: next })
-            ? { status: 'draft' }
-            : {}),
-        };
-      }
-      await Listing.findByIdAndUpdate(line.listing, patch).exec();
+    if (!canTransition(order.status as OrderStatus, 'paid', 'buyer')) {
+      throw ApiError.conflict(`An order in status "${order.status}" cannot be paid`);
     }
 
-    try {
-      const merchant = await MerchantProfile.findById(updated.merchant).select('user').lean().exec();
-      if (merchant) {
-        await dispatchNotification({
-          recipient: String(merchant.user),
-          category: 'order',
-          channel: 'inApp',
-          title: `New paid order ${updated.reference}`,
-          body: `${updated.currency} ${updated.total} is held by LRMC pending your acceptance.`,
-        });
-      }
-    } catch { /* best effort */ }
+    const currency = order.currency as Currency;
+    if (!isExpressible(order.total, currency)) {
+      throw ApiError.validation('That total cannot be charged', [
+        { field: 'total', message: `${order.total} is not expressible in ${currency}` },
+      ]);
+    }
 
-    return ok(res, { ...updated, statusLabel: describeStatus(updated.status), escrowHeld: true });
+    const intent = await checkoutProvider().createIntent({
+      amount: order.total,
+      currency,
+      orderId: String(order._id),
+      /* The order's own id. Stable across a double-tapped button, so the buyer
+       * gets one intent rather than two charges they then have to dispute. */
+      idempotencyKey: `order:${String(order._id)}`,
+      description: `LRMC order ${order.reference}`,
+    });
+
+    if (!intent.ok) {
+      throw ApiError.policy(intent.error ?? 'Payment could not be started.');
+    }
+
+    /* The client secret and nothing else. The order does not move here, and
+     * saying so in the response is what stops a browser assuming it did. */
+    return ok(res, {
+      orderId: String(order._id),
+      reference: order.reference,
+      amount: order.total,
+      currency,
+      clientSecret: intent.clientSecret,
+      provider: intent.provider,
+      settled: false,
+      note: 'The order settles when the gateway confirms payment, not when this returns.',
+    });
   }),
 );
+
+/**
+ * Settle an order that has genuinely been paid.
+ *
+ * Called **only** from the verified webhook. Every caller-supplied value is
+ * absent by design: the amount, the currency and the reference all come from
+ * the gateway's own object.
+ *
+ * Ordering matters and is the opposite of the obvious one. The order moves and
+ * the ledger row is written *first*; stock and the merchant notification come
+ * after. A delivery notification that throws must not roll back a payment —
+ * that is exactly how the other LRMC codebase turns an ordinary Stripe retry
+ * into a second payout.
+ */
+export async function settleOrderPaid(
+  order: IOrder,
+  actorId: string,
+  providerReference: string,
+): Promise<IOrder> {
+  const now = new Date();
+
+  const updated = await transition(order, 'paid', 'buyer', actorId,
+    { paidAt: now, paymentRef: providerReference }, 'Payment captured');
+
+  /* The ledger row for money LRMC now holds. `order` did not exist as a payment
+   * kind, which is why escrow used to hold money with no record of it and the
+   * payout batcher had no source it could pay a merchant from. */
+  await Payment.create({
+    kind: 'order',
+    subjectKind: 'Order',
+    subject: updated._id,
+    payer: updated.customer,
+    payerKind: 'CustomerProfile',
+    payee: updated.merchant,
+    payeeKind: 'MerchantProfile',
+    amount: updated.total,
+    currency: updated.currency,
+    reference: providerReference,
+    providerName: 'stripe',
+    paidAt: now,
+    status: 'succeeded',
+    createdBy: actorId,
+  });
+
+  /* ── Side effects, after the money is recorded ────────────────────────── */
+
+  // Stock comes down when the money is committed, not when the order is
+  // drafted — an unpaid order holding stock is how a catalogue empties
+  // without a single sale.
+  for (const line of updated.lines) {
+    const listing = await Listing.findById(line.listing).lean().exec();
+    if (!listing) continue;
+    const next = stockAfterOrder(toListingShape(listing as IListing, true), line.quantity);
+    const patch: Record<string, unknown> = { $inc: { totalOrdered: line.quantity } };
+    if (next !== null) {
+      patch.$set = {
+        stock: next,
+        ...(autoUnpublish({ ...toListingShape(listing as IListing, true), stock: next })
+          ? { status: 'draft' }
+          : {}),
+      };
+    }
+    await Listing.findByIdAndUpdate(line.listing, patch).exec();
+  }
+
+  try {
+    const merchant = await MerchantProfile.findById(updated.merchant).select('user').lean().exec();
+    if (merchant) {
+      await dispatchNotification({
+        recipient: String(merchant.user),
+        category: 'order',
+        channel: 'inApp',
+        title: `New paid order ${updated.reference}`,
+        body: `${updated.currency} ${updated.total} is held by LRMC pending your acceptance.`,
+      });
+    }
+  } catch { /* best effort — never unwind a settled payment over a notification */ }
+
+  return updated;
+}
 
 /** Merchant accepts. */
 orderRouter.post(

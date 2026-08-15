@@ -8,8 +8,15 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { PHONE_REGEX } from '../config/contact.js';
+import {
+  fromMinorUnits, isExpressible, SIGNATURE_TOLERANCE_SECONDS, toMinorUnits,
+  verifyWebhookSignature,
+} from '../shared/providers/checkout.js';
+import {
+  CLAIM_STALE_AFTER_MS, intakeDecision, isAcknowledgeOnly, maySettle, reconcile,
+} from '../modules/payment/webhookEvents.js';
 import {
   MARKET_IDS, MARKETS, marketFor, marketIsDeployable, marketProblems,
   type MarketDefinition,
@@ -103,6 +110,7 @@ import {
   DEFAULT_RIDE_COMMISSION_PERCENT,
   isPayable,
   lineStillClaims,
+  PAYMENT_KINDS,
   PAYOUT_KINDS,
   RETRYABLE_BATCH_STATUSES,
   spentSourceIds,
@@ -1559,8 +1567,13 @@ for (const spec of OPERATIONAL_MODULES) {
   // explicitly. Prose parsing is fine for the generic CRUD surface; a hand-
   // mounted roll-up is exactly where it silently degrades to `{type: object}`.
   for (const ep of own) {
-    // A 204 has no body to type; everything else must name its component.
-    if (!ep.responseShape.startsWith('204')) {
+    /* A gateway callback answers the gateway, not a client of this API. Its
+     * body is an acknowledgement Stripe reads and nobody else, so there is no
+     * generated client to keep honest and no component to name. */
+    if (ep.zone === 'PUBLIC_PORTAL') {
+      check(`${ep.method} ${ep.path}: acknowledges rather than returning a resource`,
+        ep.responseShape.includes('WebhookAck'));
+    } else if (!ep.responseShape.startsWith('204')) {
       check(
         `${ep.method} ${ep.path}: declares an explicit responseSchema`,
         typeof ep.responseSchema === 'string' && ep.responseSchema.length > 0,
@@ -1575,7 +1588,25 @@ for (const spec of OPERATIONAL_MODULES) {
         ep.responseSchema === undefined,
       );
     }
-    // These are member and back-office surfaces; none of them is anonymous.
+    /* ── One narrow carve-out, and what it costs ────────────────────────
+     * These are member and back-office surfaces and none of them is anonymous
+     * — with one exception: a payment gateway's callback. Stripe holds no LRMC
+     * session, so `auth: 'required'` is not a thing it can satisfy, and a route
+     * it cannot reach settles no orders.
+     *
+     * The exemption is bought, not given. A PUBLIC_PORTAL route in an
+     * operational module must say in the contract what stands in for
+     * authentication, because a reader of the contract alone would otherwise
+     * conclude the route is simply open. Anything that does not carry a
+     * signature claim fails here — so a future public route cannot inherit this
+     * hole by being put in the same zone. */
+    if (ep.zone === 'PUBLIC_PORTAL') {
+      check(`${ep.method} ${ep.path}: is anonymous only because it is a gateway callback`,
+        /signature/i.test(ep.notes ?? ''),
+        'a public route in an operational module must name what authenticates it');
+      check(`${ep.method} ${ep.path}: and grants nothing by role`, ep.permissions.length === 0);
+      continue;
+    }
     eq(`${ep.method} ${ep.path}: requires authentication`, ep.auth, 'required');
     check(
       `${ep.method} ${ep.path}: carries a zone gate`,
@@ -1693,12 +1724,56 @@ for (const ep of blueprint) {
 const paymentWrites = blueprint.filter(
   (e) => e.module === 'payment' && e.method !== 'GET',
 );
-eq('the payments ledger has exactly one write route', paymentWrites.length, 1);
-eq('and it is the in-person receipt', paymentWrites[0]?.path, '/payments/record');
-check('which is audited', paymentWrites[0]?.audited === true,
+/* ── And now there are two, which is the second deliberate relaxation ──────
+ * The comment above says a second write route must make this check fail so
+ * somebody comes and reads it. It did. This is that reading.
+ *
+ * The second door is the Stripe webhook, and it exists because the first
+ * version of marketplace payment had no door at all: `POST /order/:id/pay`
+ * took a `paymentRef` string from the buyer and moved the order to `paid` on
+ * the strength of it. Any buyer could post any string and receive goods.
+ *
+ * A webhook is a *narrower* door than that, not a wider one. It is
+ * unauthenticated because Stripe holds no LRMC session — and the
+ * authentication is the HMAC signature over the raw body, which is a stronger
+ * claim than a bearer token, because it also proves the amount.
+ *
+ * Both doors are named here, and every fence around each is asserted below. A
+ * third still fails this check. */
+const WRITE_DOORS = ['/payments/record', '/payments/webhooks/stripe'];
+eq('the payments ledger has exactly two write routes', paymentWrites.length, 2);
+eq('and they are the two that are meant to exist',
+  paymentWrites.map((e) => e.path).sort().join(','), [...WRITE_DOORS].sort().join(','));
+for (const door of WRITE_DOORS) {
+  const e = blueprint.find((x) => x.path === door && x.method !== 'GET');
+  check(`${door} is audited`, e?.audited === true,
+    'money moving with no audit entry is not answerable');
+}
+
+// ── The webhook's own fences ──
+{
+  const hook = blueprint.find((e) => e.path === '/payments/webhooks/stripe');
+  eq('the webhook is unauthenticated, because a gateway holds no session',
+    hook?.auth, 'none');
+  eq('and therefore carries no permissions', (hook?.permissions ?? []).length, 0);
+  eq('and lives in the public zone', hook?.zone, 'PUBLIC_PORTAL');
+  /* The contract has to say what stands in for authentication here, or a
+   * reader of it alone would conclude this route is simply open. */
+  for (const claim of [
+    /RAW body/i, /constant-time/i, /replay window|300-second/i,
+    /unique index on the event id/i, /reconciled against the order/i,
+    /only 4xx is a bad signature/i,
+  ]) {
+    check(`and its notes state: ${claim.source.slice(0, 34)}`, claim.test(hook?.notes ?? ''),
+      'a reader of the contract alone must not think this route is open');
+  }
+}
+
+const rec0 = blueprint.find((e) => e.path === '/payments/record');
+check('the in-person receipt is still audited', rec0?.audited === true,
   'a hand-written money record with no audit entry is not answerable');
 check('and behind the member gate, not the public one',
-  paymentWrites[0]?.auth === 'required' && paymentWrites[0]?.zone === 'MEMBER_PORTAL');
+  rec0?.auth === 'required' && rec0?.zone === 'MEMBER_PORTAL');
 
 // ── The grant, and the bug the contract found ──────────────────────────────
 //
@@ -1714,7 +1789,7 @@ check('and behind the member gate, not the public one',
 // `payment:record`: a distinct action, because "start a payment" and "assert
 // money changed hands in a room" are distinct powers.
 {
-  const rec = paymentWrites[0];
+  const rec = blueprint.find((e) => e.path === '/payments/record');
   eq('recording is its own grant, not create', (rec?.permissions ?? []).join(','), 'payment:record');
   const who = [...(rec?.roles ?? [])].sort();
   eq('and exactly four roles hold it', who.join(','),
@@ -7899,6 +7974,177 @@ section('Three id spaces, and which one each reference speaks');
     'Payment has no coordinator column; naming one is a dashboard of zeros');
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+section('Taking money: the signature, the replay, and the amount');
+
+/* `POST /order/:orderId/pay` accepted a `paymentRef` string from the buyer and
+ * moved the order to `paid` on the strength of it. Nothing verified money had
+ * arrived, nothing checked the amount, and the marketplace module imported no
+ * payment provider at all. Any buyer could post any string and receive goods.
+ *
+ * Everything below runs without a network, a gateway account or the `stripe`
+ * package, because the two things that must be right — the minor-unit
+ * conversion and the signature — are arithmetic and HMAC, and writing them
+ * rather than trusting a library call is what makes them assertable here. */
+{
+  // ── Minor units ──
+  // A hard-coded `* 100` is the obvious implementation and it overcharges every
+  // XOF payment by a factor of a hundred.
+  eq('19.99 USD is 1999 cents', toMinorUnits(19.99, 'USD'), 1999);
+  eq('and comes back whole', fromMinorUnits(1999, 'USD'), 19.99);
+  eq('1000 XOF is 1000 minor units, not 100000', toMinorUnits(1000, 'XOF'), 1000);
+  eq('and GMD has two places like USD', toMinorUnits(12.5, 'GMD'), 1250);
+  for (const currency of CURRENCIES) {
+    const back = fromMinorUnits(toMinorUnits(123.45 * (currency === 'XOF' ? 100 : 1), currency), currency);
+    check(`${currency} survives a round trip`, Math.abs(back - (currency === 'XOF' ? 12345 : 123.45)) < 1e-9);
+  }
+  /* The float trap, named: `19.99 * 100` is 1998.9999999999998 and truncating
+   * it is a cent short on every price ending in .99. */
+  check('the .99 float trap is handled', toMinorUnits(19.99, 'USD') !== 1998);
+  check('an inexpressible amount is refused', !isExpressible(10.005, 'USD'));
+  check('but a legitimate one is not', isExpressible(10.01, 'USD'));
+  check('and XOF refuses any fraction', !isExpressible(10.5, 'XOF'));
+
+  // ── The signature ──
+  // Built with the same primitive Stripe uses, so this exercises the real
+  // scheme rather than a description of it.
+  const secret = 'whsec_assertion';
+  const body = '{"id":"evt_a","type":"payment_intent.succeeded"}';
+  const ts = 1_700_000_000;
+  /* The same primitive Stripe signs with, so this exercises the real scheme
+   * rather than a description of it. */
+  const sign = (payload: string, at: number, key: string) =>
+    createHmac('sha256', key).update(`${at}.${payload}`).digest('hex');
+  const good = `t=${ts},v1=${sign(body, ts, secret)}`;
+
+  check('a genuine signature verifies',
+    verifyWebhookSignature(body, good, secret, ts).ok);
+  check('one byte more in the body does not',
+    !verifyWebhookSignature(`${body} `, good, secret, ts).ok);
+  check('nor does another secret',
+    !verifyWebhookSignature(body, good, 'whsec_other', ts).ok);
+  eq('a replay outside the window is refused for being stale',
+    verifyWebhookSignature(body, good, secret, ts + 601).failure, 'staleTimestamp');
+  check('but a slow delivery inside it is accepted',
+    verifyWebhookSignature(body, good, secret, ts + 120).ok);
+  eq('an absent header is refused',
+    verifyWebhookSignature(body, undefined, secret, ts).failure, 'noHeader');
+  eq('and an unconfigured endpoint secret refuses everything',
+    verifyWebhookSignature(body, good, '', ts).failure, 'noSecret');
+  /* Two `v1`s appear while a secret is being rotated and both are valid.
+   * Accepting only the first breaks every rotation. */
+  check('a secret rotation does not break verification',
+    verifyWebhookSignature(body, `t=${ts},v1=deadbeef,v1=${sign(body, ts, secret)}`, secret, ts).ok);
+  eq('the replay window is Stripe\'s own five minutes', SIGNATURE_TOLERANCE_SECONDS, 300);
+
+  /* ── Structural, and deliberately so ──────────────────────────────────
+   * Constant-time comparison has no observable behaviour a functional test can
+   * reach: `===` returns exactly the same booleans for every input above, and a
+   * mutation swapping one for the other passed all of them. The only honest
+   * proxy is that the implementation reaches for the primitive — the same
+   * reasoning, and the same compromise, as the FAC code comparison. */
+  const checkoutSrc = readFileSync(
+    resolve(process.cwd(), 'src/shared/providers/checkout.ts'), 'utf8');
+  check('the signature comparison is constant-time',
+    /timingSafeEqual\(left, right\)/.test(checkoutSrc),
+    'a === on a hex digest leaks the correct signature a byte at a time');
+  check('and a length mismatch still does equal work',
+    /timingSafeEqual\(left, left\)/.test(checkoutSrc),
+    'returning early on length is itself a timing signal');
+  check('the HMAC covers the timestamp as well as the body',
+    /\.update\(`\$\{timestamp\}\.`, 'utf8'\)/.test(checkoutSrc),
+    'a signature over the body alone is valid forever, and a replay is free goods');
+  /* No negative assertion here. The first draft checked that `JSON.stringify`
+   * appeared nowhere in the file, and failed — because the header warns against
+   * exactly that call by name. Sixth time this session; the rule stands.
+   * Positive instead: the raw bytes reach the HMAC untouched. */
+  check('the raw bytes reach the HMAC without being decoded and re-encoded',
+    /\.update\(body\)/.test(checkoutSrc),
+    'anything between the wire and the digest is a chance to change the bytes');
+
+  // ── Idempotency ──
+  // Stripe retries anything non-2xx for days and delivers duplicates in
+  // ordinary operation. This is the main path, not the edge case.
+  const applied = { eventId: 'e', appliedAt: new Date(1000), claimedAt: new Date(900) };
+  const fresh = { eventId: 'e', appliedAt: null, claimedAt: new Date(1000) };
+  const stale = { eventId: 'e', appliedAt: null, claimedAt: new Date(0) };
+
+  eq('a first delivery is processed',
+    intakeDecision('payment_intent.succeeded', null, 2000), 'process');
+  eq('a redelivery of applied work does nothing',
+    intakeDecision('payment_intent.succeeded', applied, 2000), 'alreadyApplied');
+  eq('a delivery racing a live handler does nothing',
+    intakeDecision('payment_intent.succeeded', fresh, 1500), 'inFlight');
+  eq('but one whose handler died is retried',
+    intakeDecision('payment_intent.succeeded', stale, CLAIM_STALE_AFTER_MS + 1), 'retryStale');
+  eq('and an event type LRMC does not act on is ignored',
+    intakeDecision('customer.created', null, 2000), 'ignoreUnhandled');
+
+  for (const d of ['alreadyApplied', 'inFlight', 'ignoreUnhandled'] as const) {
+    check(`${d} answers 200 with no work`, isAcknowledgeOnly(d));
+  }
+  for (const d of ['process', 'retryStale'] as const) {
+    check(`${d} does the work`, !isAcknowledgeOnly(d));
+  }
+
+  // ── Reconciliation ──
+  // A signed event is authentic. It is still not the authority on whether *this
+  // order* is settled.
+  const order = { orderId: 'o1', total: 40, currency: 'USD' as const, status: 'placed' };
+  const cents = toMinorUnits(order.total, 'USD');
+  const intent = { orderId: 'o1', amountMinor: cents, currency: 'USD' as const, status: 'succeeded' };
+
+  check('a matching intent settles', maySettle(reconcile(order, intent, cents)));
+  eq('an intent for another order does not',
+    reconcile(order, { ...intent, orderId: 'o2' }, cents)[0]?.code, 'wrongOrder');
+  /* And it says nothing else. Reporting an amount mismatch against somebody
+   * else's order is a confusing way to say "this is not your payment". */
+  eq('and reports only that', reconcile(order, { ...intent, orderId: 'o2' }, cents).length, 1);
+  check('underpayment is refused',
+    !maySettle(reconcile(order, { ...intent, amountMinor: cents - 1 }, cents)));
+  check('and so is overpayment, which is a conversation not a settlement',
+    !maySettle(reconcile(order, { ...intent, amountMinor: cents + 1 }, cents)));
+  check('the wrong currency is refused',
+    !maySettle(reconcile(order, { ...intent, currency: 'GMD' }, cents)));
+  check('an unsucceeded intent is refused',
+    !maySettle(reconcile(order, { ...intent, status: 'processing' }, cents)));
+  check('and an order already settled is refused again',
+    !maySettle(reconcile({ ...order, status: 'paid' }, intent, cents)));
+
+  // ── The vocabulary that was missing ──
+  check('an order is a payment kind', (PAYMENT_KINDS as readonly string[]).includes('order'));
+  check('and a merchant payout is one too',
+    (PAYMENT_KINDS as readonly string[]).includes('merchantPayout'));
+  eq('a merchant is paid from orders', PAYOUT_SOURCES.merchantPayout.join(','), 'order');
+  check('and the batcher has a kind for them',
+    (PAYOUT_KINDS as readonly string[]).includes('merchantPayout'),
+    'without this escrow held money nothing could ever pay out');
+
+  // ── The route, and the two things a source read can still establish ──
+  const appSrc = readFileSync(resolve(process.cwd(), 'src/app.ts'), 'utf8');
+  check('the webhook path keeps its raw bytes',
+    /payments\/webhooks\/stripe`,\s*\n?\s*rawBody/.test(appSrc)
+    || /rawBody\)/.test(appSrc),
+    'a re-serialised body does not verify, and the tempting fix is to weaken the check');
+  check('and the raw parser is mounted before the JSON one',
+    appSrc.indexOf('webhooks/stripe') < appSrc.indexOf("express.json({ limit: '2mb' })"),
+    'mounted after, express.json consumes the stream and the bytes are gone');
+
+  const payValidation = readFileSync(
+    resolve(process.cwd(), 'src/modules/marketplace/marketplace.validation.ts'), 'utf8');
+  check('asking to pay takes no client-supplied reference',
+    /payOrderSchema = z\.object\(\{\}\)\.strict\(\)/.test(payValidation),
+    'the field it took is the whole defect: any string moved the order to paid');
+
+  const marketSrc2 = readFileSync(
+    resolve(process.cwd(), 'src/modules/marketplace/index.ts'), 'utf8');
+  const settleAt = marketSrc2.indexOf('await Payment.create({');
+  const stockAt = marketSrc2.indexOf('Stock comes down when the money is committed');
+  check('the ledger row is written before the side effects',
+    settleAt > 0 && stockAt > settleAt,
+    'a notification that throws must never unwind a payment — that is how a Stripe retry pays twice');
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 section('Payout batches: a half-paid batch is not a dead end');

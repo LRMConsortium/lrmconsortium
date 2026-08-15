@@ -8,17 +8,12 @@ import {
   type TimestampShape,
 } from '../../shared/schemaFragments.js';
 
-export const PAYMENT_KINDS = [
-  'rent',
-  'deposit',
-  'ride',
-  'driverPayout',
-  'landlordPayout',
-  'adSpend',
-  'vendorInvoice',
-  'managementFee',
-  'refund',
-] as const;
+/* Canonical in `ledger.ts`, which is Mongoose-free and so can be asserted
+ * without a database — the same reason the statuses live in lifecycles.ts.
+ * `PAYOUT_SOURCES` there names these very strings, so a kind added here and
+ * not there would be a payout source pointing at nothing. */
+export { PAYMENT_KINDS } from './ledger.js';
+import { PAYMENT_KINDS } from './ledger.js';
 
 /* The vocabulary is canonical in config/lifecycles.ts, which is Mongoose-free
  * and so can be asserted against without a database. Re-exported here because

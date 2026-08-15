@@ -24,13 +24,38 @@ import { RIDE_COMMISSION_PERCENT } from '../../config/currencies.js';
 export const DEFAULT_RIDE_COMMISSION_PERCENT = RIDE_COMMISSION_PERCENT;
 
 /** Kinds that move money *to* a member. These are what a payout batch settles. */
-export const PAYOUT_KINDS = ['driverPayout', 'landlordPayout', 'refund'] as const;
+export const PAYMENT_KINDS = [
+  'rent',
+  'deposit',
+  'ride',
+  'driverPayout',
+  'landlordPayout',
+  'adSpend',
+  'vendorInvoice',
+  'managementFee',
+  'refund',
+  /* Marketplace. `order` is money taken from a buyer and held by LRMC;
+   * `merchantPayout` is what leaves for the merchant once escrow releases.
+   * Both were absent, which is why escrow released with no ledger row at all —
+   * the money was held and never settled, and the payout batcher had no kind it
+   * could pay a merchant with. */
+  'order',
+  'merchantPayout',
+] as const;
+
+export type PaymentKind = (typeof PAYMENT_KINDS)[number];
+
+export const PAYOUT_KINDS = ['driverPayout', 'landlordPayout', 'merchantPayout', 'refund'] as const;
 export type PayoutKind = (typeof PAYOUT_KINDS)[number];
 
 /** Which ledger kinds each payout kind is computed from. */
 export const PAYOUT_SOURCES: Record<PayoutKind, readonly string[]> = {
   driverPayout: ['ride'],
   landlordPayout: ['rent', 'deposit'],
+  /* A merchant is paid from the orders LRMC took money for and has released.
+   * Without this the batcher had no source for them: escrow held the money and
+   * nothing could ever pay it out. */
+  merchantPayout: ['order'],
   refund: ['adSpend'],
 };
 

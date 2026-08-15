@@ -46,6 +46,14 @@ const envSchema = z.object({
    */
   FAC_PEPPER: z.string().min(32, 'FAC_PEPPER must be at least 32 chars').optional(),
 
+  /* Stripe. Absent in development, where `checkoutProvider()` stays the stub
+   * that refuses — an unconfigured deployment must not be able to take an order
+   * and believe it was paid. */
+  STRIPE_SECRET_KEY: z.string().optional(),
+  /* The endpoint secret for `POST /payments/webhooks/stripe`. This is the only
+   * thing standing between the internet and marking any order paid. */
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+
   CORS_ORIGINS: z.string().default('*'),
 
   AD_DEFAULT_SLOT_COUNT: z.coerce.number().int().positive().default(3),

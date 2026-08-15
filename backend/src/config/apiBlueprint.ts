@@ -1921,6 +1921,21 @@ const customEndpoints: Omit<EndpointSpec, 'surface'>[] = [
   },
   {
     method: 'POST',
+    path: '/payments/webhooks/stripe',
+    responseSchema: 'WebhookAck',
+    module: 'payment',
+    summary: 'Stripe payment events',
+    zone: 'PUBLIC_PORTAL',
+    auth: 'none',
+    permissions: [],
+    ownership: 'none',
+    responseShape: '{ success, data: WebhookAck }',
+    audited: true,
+    notes:
+      'THE ONLY THING ON THIS PLATFORM THAT MAY MOVE AN ORDER TO PAID. Unauthenticated because Stripe holds no LRMC session; the authentication is the HMAC-SHA256 signature over the RAW body, verified constant-time against STRIPE_WEBHOOK_SECRET with a 300-second replay window. `app.ts` mounts express.raw for this path alone, before the JSON parser, because a re-serialised body does not verify and the tempting fix for that is to weaken the check. Idempotent by a unique index on the event id: the event is CLAIMED before any work and stamped applied after, so a crash in between is retryable and a duplicate delivery does nothing — Stripe retries anything non-2xx for days and delivers duplicates in ordinary operation, so a handler that books income per delivery pays a merchant twice. Every settlement is reconciled against the order for subject, amount and currency, exactly — an overpayment is a support conversation, not a settlement. Answers 200 to duplicates, unhandled types and unknown orders because retrying cannot fix any of them; the only 4xx is a bad signature, which is never Stripe. Side effects (stock, notification) run AFTER the ledger row, so a failed notification can never unwind a payment.',
+  },
+  {
+    method: 'POST',
     path: '/payments/record',
     responseSchema: 'Payment',
     module: 'payment',

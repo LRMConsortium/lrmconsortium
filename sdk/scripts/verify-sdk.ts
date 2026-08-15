@@ -576,10 +576,32 @@ async function main(): Promise<void> {
     }
   }
 
+  /* ── One deliberate gap between the spec and the client ────────────────
+   * Every operation in the spec has a generated function, with one exception:
+   * a gateway webhook. Stripe calls it, nothing else can — it authenticates by
+   * HMAC over a raw body, which no SDK caller can produce — and generating
+   * `payments.webhooksStripe()` would put an endpoint in every consumer's
+   * autocomplete that exists only to be misused.
+   *
+   * Named here rather than silently subtracted, so the coverage rule stays
+   * absolute for everything else. A second entry in this list needs a reason
+   * as good as this one. */
+  const NOT_FOR_CLIENTS = [/^POST \/payments\/webhooks\//];
+
   const specOps = new Set<string>();
+  const withheld: string[] = [];
   for (const [path, methods] of Object.entries(spec.paths)) {
-    for (const method of Object.keys(methods)) specOps.add(`${method.toUpperCase()} ${path}`);
+    for (const method of Object.keys(methods)) {
+      const op = `${method.toUpperCase()} ${path}`;
+      if (NOT_FOR_CLIENTS.some((rx) => rx.test(op))) { withheld.push(op); continue; }
+      specOps.add(op);
+    }
   }
+  eq('exactly one operation is withheld from the client', withheld.length, 1);
+  eq('and it is the gateway webhook', withheld[0], 'POST /payments/webhooks/stripe');
+  /* It is still in the contract, because an integrator has to read about it. */
+  check('which is still declared in the spec',
+    spec.paths['/payments/webhooks/stripe'] !== undefined);
 
   const EXPECTED_MODULES = [
     'founders', 'hqExecutives', 'staff', 'coordinators', 'vendors', 'landlords',
