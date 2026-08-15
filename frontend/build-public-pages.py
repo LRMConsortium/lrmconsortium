@@ -71,6 +71,69 @@ def _percent(name):
 MANAGEMENT_FEE_PERCENT = _percent('managementFeePercent')
 RIDE_COMMISSION_PERCENT = _percent('rideCommissionPercent')
 
+
+def _string(name):
+    """A string field this market has decided."""
+    m = re.search(rf"{name}:\s*'([^']*)'", _BLOCK)
+    assert m, f'The {_MARKET_ID} market has no {name} in markets.ts.'
+    return m.group(1)
+
+
+def _regions():
+    """The regions a member picks from, out of the registry.
+
+    ── Why this refuses rather than falling back ──────────────────────────
+    It used to be three hardcoded copies of The Gambia's eight regions: the
+    `REGIONS` array in `public/register.html`, the same array in
+    `assets/js/properties.js`, and the prose in the about page. None of them
+    knew what market they were being built for.
+
+    So `LRMC_MARKET=unitedStates python3 build-public-pages.py` succeeded, and
+    produced a registration form offering a Casper landlord a choice between
+    Banjul, Kanifing and Brikama. Nothing failed. The pages looked finished.
+
+    A market that has not decided its regions carries `null`, and this stops.
+    The alternative — carrying the other market's list over — is the exact
+    failure the market registry was written to end.
+    """
+    m = re.search(r'regions:\s*\[(.*?)\]', _BLOCK, re.S)
+    if not m:
+        assert re.search(r'regions:\s*null', _BLOCK), (
+            f'The {_MARKET_ID} market has no regions field in markets.ts.')
+        raise SystemExit(
+            f'\n  The {_MARKET_ID} market has not decided its regions.\n\n'
+            f'  Registration cannot collect one and the property search cannot\n'
+            f'  filter on one. Set them in backend/src/config/markets.ts.\n\n'
+            f'  Nothing has been written.\n'
+        )
+    return re.findall(r"'([^']+)'", m.group(1))
+
+
+LAUNCH_COUNTRY = _string('country')
+LAUNCH_CITY = _string('city')
+DIALLING_CODE = _string('diallingCode')
+REGIONS = _regions()
+
+_CURRENCY_NAME = {'GMD': 'dalasi', 'USD': 'US dollars', 'GHS': 'cedis',
+                  'NGN': 'naira', 'XOF': 'CFA francs', 'EUR': 'euro', 'GBP': 'pounds'}
+_COUNT_WORD = {1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five',
+               6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten'}
+
+
+def _where_we_operate():
+    """The about page's "Where LRMC operates" paragraph, from the registry.
+
+    Written out rather than templated in place because the sentence has to read
+    naturally in a market with eight regions and in one with two.
+    """
+    names = list(REGIONS)
+    listed = names[0] if len(names) == 1 else ', '.join(names[:-1]) + ' and ' + names[-1]
+    count = _COUNT_WORD.get(len(names), str(len(names)))
+    currency = _CURRENCY_NAME.get(_string('currency'), _string('currency'))
+    return (f'{LAUNCH_COUNTRY} is the launch market, across all {count} regions: '
+            f'{listed}. Prices are in {currency}.')
+
+
 # From `<link rel="icon">` onward: everything before it is per-page metadata,
 # which `build()` emits itself. Slicing from the top would have carried the
 # properties page's title onto all five.
@@ -238,11 +301,7 @@ build(
 
   <section class="max-w-3xl mx-auto px-4 lg:px-6 py-12" aria-labelledby="where-heading">
     <h2 id="where-heading" class="text-2xl font-bold text-slate-900 mb-4">Where LRMC operates</h2>
-    <p class="text-slate-600 mb-4">
-      The Gambia is the launch market, across all eight regions: Banjul, Kanifing,
-      Brikama, Mansakonko, Kerewan, Kuntaur, Janjanbureh and Basse. Prices are in
-      dalasi.
-    </p>
+    <p class="text-slate-600 mb-4">''' + _where_we_operate() + '''</p>
     <p class="text-slate-600">
       Registered office: ''' + needs('address to confirm') + '''
     </p>
@@ -815,5 +874,73 @@ build(
     </p>
   </section>
 ''')
+
+# ══════════════════════════════════════════════════════════════════════════════
+# The three files that are *not* generated, but hold market data anyway
+#
+# `public/register.html` and `assets/js/properties.js` are hand-written pages,
+# not templates. Each carried its own copy of The Gambia's eight regions, and
+# `register.html` carried `+220 000 0000` as its phone placeholder. A build for
+# another market left all of it in place, and nothing failed: the pilot's pages
+# offered a Casper landlord Banjul, Kanifing and Brikama.
+#
+# So the build rewrites those regions in place, from the registry. Two rules
+# make an in-place rewrite safe to run repeatedly:
+#
+#   - the pattern must match **exactly once**, or the build stops. A rewrite
+#     that silently matches nothing is worse than no rewrite, because the page
+#     keeps the old market's data and the build still says "done".
+#   - the result is idempotent. Building gambia after unitedStates restores the
+#     Gambian list exactly; the files are tracked, and `git status` after a
+#     same-market build is clean.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def rewrite(rel, pattern, replacement, what):
+    """Replace exactly one match in a tracked source file, or stop."""
+    path = ROOT / rel
+    text = path.read_text()
+    hits = len(re.findall(pattern, text))
+    assert hits == 1, (
+        f'{rel}: {what} matched {hits} times, expected 1. '
+        f'A rewrite that matches nothing leaves the other market data in place '
+        f'and the build still reports success.'
+    )
+    path.write_text(re.sub(pattern, replacement.replace('\\', '\\\\'), text, count=1))
+    print(f'  rewrote {what} in {rel}')
+
+
+print()
+
+_lines = []
+for _i in range(0, len(REGIONS), 4):
+    _lines.append('  ' + ', '.join(f"'{r}'" for r in REGIONS[_i:_i + 4]) + ',')
+_REGION_LITERAL = '\n'.join(_lines)
+
+rewrite(
+    'public/register.html',
+    r"var REGIONS = \[\n(?:.*\n)*?\];",
+    "var REGIONS = [\n" + _REGION_LITERAL + "\n];",
+    'the region list',
+)
+rewrite(
+    'public/register.html',
+    r'placeholder="\+[\d]+ 000 0000"',
+    f'placeholder="{DIALLING_CODE} 000 0000"',
+    'the phone placeholder',
+)
+rewrite(
+    'assets/js/properties.js',
+    r"  var REGIONS = \[\n(?:.*\n)*?  \];",
+    "  var REGIONS = [\n" + '\n'.join('  ' + l for l in _lines) + "\n  ];",
+    'the region list',
+)
+rewrite(
+    'public/properties.html',
+    r'<meta name="description" content="Search homes to rent across [^"]*" />',
+    '<meta name="description" content="Search homes to rent across '
+    + LAUNCH_COUNTRY + ' \u2014 ' + ', '.join(REGIONS[:3])
+    + ' and beyond. Rent held in escrow, vendors vetted, every payment on the record." />',
+    'the search page description',
+)
 
 print('\ndone')

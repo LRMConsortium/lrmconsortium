@@ -55,6 +55,57 @@ export interface MarketDefinition {
   managementFeePercent: number | null;
   /** Ususu's share of each fare, as a percentage. `null` until decided. */
   rideCommissionPercent: number | null;
+  /**
+   * The port this market's process listens on.
+   *
+   * Here rather than only in a `.env` because it has to agree with
+   * `deploy/nginx.conf`, and the two files are individually correct when they
+   * disagree — the symptom is a 502 on every API call with nothing anywhere
+   * saying why. `verify.ts` reads the nginx config and checks both markets'
+   * ports appear in it; `npm run preflight` checks the deployment's `.env`
+   * matches this. Two markets sharing one would mean the second process simply
+   * never starts.
+   */
+  port: number;
+  /**
+   * The short name the deployment machinery uses.
+   *
+   * `us`, `gm`. It appears in the PM2 process name (`lrmc-us`), the release
+   * directory (`/srv/lrmc/us/releases`), the log files, the nginx `root`, and
+   * the `case` arms in `release.sh` and `rollback.sh` — six places, none of
+   * which can see the others.
+   *
+   * Written down here so `verify.ts` can check that all six agree. The failure
+   * it prevents is not a crash: a `rollback.sh` whose case arm says `gm` for
+   * `unitedStates` reads Casper's release list from Banjul's directory, finds
+   * releases, and relinks the wrong market's code.
+   */
+  shortName: string;
+  /**
+   * The administrative regions a member picks from when registering, and a
+   * tenant filters on when searching. `null` until somebody decides.
+   *
+   * ── Why this is here rather than in the page that shows it ──────────────
+   * It was in three files: the `REGIONS` array in `public/register.html`, the
+   * same array in `assets/js/properties.js` (whose comment claimed it mirrored
+   * `config/registration.ts`, which has never held a region list), and the
+   * prose in the about page's "Where LRMC operates".
+   *
+   * Three copies is drift waiting to happen, but that is not what made this
+   * urgent. Running `LRMC_MARKET=unitedStates python3 build-public-pages.py`
+   * produced pages offering a Casper landlord a choice between Banjul,
+   * Kanifing and Brikama, and a phone field reading `+220 000 0000`. Nothing
+   * failed. The build succeeded and the pages looked finished.
+   *
+   * So it moves here, the builder writes all three from it, and a market that
+   * has not decided its regions carries `null` — which `marketProblems()`
+   * reports, `npm run preflight` refuses a release on, and production refuses
+   * to boot with. The US pilot carries `null` today, deliberately: a
+   * registration form that cannot collect a member's region is not a form,
+   * and inventing a list of Wyoming counties here would be this file's own
+   * header warning ignored.
+   */
+  regions: string[] | null;
 }
 
 export const MARKETS: Record<MarketId, MarketDefinition> = {
@@ -66,6 +117,14 @@ export const MARKETS: Record<MarketId, MarketDefinition> = {
     diallingCode: '+220',
     managementFeePercent: 10,
     rideCommissionPercent: 15,
+    port: 4000,
+    shortName: 'gm',
+    /* Ordered by population, so the commonest answers sit at the top of a
+     * phone dropdown. */
+    regions: [
+      'Banjul', 'Kanifing', 'Brikama', 'Mansakonko',
+      'Kerewan', 'Kuntaur', 'Janjanbureh', 'Basse',
+    ],
   },
   /**
    * The pilot, launching first. Casper, Wyoming.
@@ -90,6 +149,14 @@ export const MARKETS: Record<MarketId, MarketDefinition> = {
     diallingCode: '+1',
     managementFeePercent: 10,
     rideCommissionPercent: 18,
+    port: 4100,
+    shortName: 'us',
+    /* Undecided, and therefore null. See `regions` on the interface above:
+     * this is what stops the pilot shipping a form that offers a Casper
+     * landlord a choice between Banjul and Brikama. Wyoming counties, Casper
+     * neighbourhoods, or a free-text field — it is a decision, and until it is
+     * made this market refuses to boot in production. */
+    regions: null,
   },
 };
 
@@ -120,6 +187,12 @@ export function marketProblems(market: MarketDefinition): MarketProblem[] {
     'No management fee. The pricing page publishes this and the ledger charges it.');
   need('rideCommissionPercent', market.rideCommissionPercent,
     'No ride commission. Ususu splits every fare on it.');
+  need('regions', market.regions,
+    'No regions. Registration cannot collect one and the property search '
+    + 'cannot filter on one.');
+  if (market.regions !== null && market.regions.length === 0) {
+    out.push({ field: 'regions', message: 'An empty list is a dropdown with nothing in it.' });
+  }
 
   /* A percentage outside 0–100 is not a fee, and a 0 is a decision somebody
    * should have to write down rather than reach by leaving a field blank. */
@@ -130,6 +203,21 @@ export function marketProblems(market: MarketDefinition): MarketProblem[] {
     if (value !== null && (!Number.isFinite(value) || value < 0 || value > 100)) {
       out.push({ field, message: `${value} is not a percentage.` });
     }
+  }
+
+  if (!Number.isInteger(market.port) || market.port < 1024 || market.port > 65535) {
+    out.push({ field: 'port', message: `${market.port} is not a usable port.` });
+  }
+
+  /* It becomes a directory name, a PM2 process name and a log filename. A
+   * shortName with a slash or a space in it is a release script writing
+   * somewhere nobody meant. */
+  if (!/^[a-z]{2,6}$/.test(market.shortName)) {
+    out.push({
+      field: 'shortName',
+      message: `"${market.shortName}" is not a short lowercase name; it becomes a `
+        + 'directory, a process name and a log file.',
+    });
   }
 
   if (!market.diallingCode.startsWith('+')) {

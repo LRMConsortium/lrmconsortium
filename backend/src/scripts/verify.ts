@@ -15,7 +15,8 @@ import {
   verifyWebhookSignature,
 } from '../shared/providers/checkout.js';
 import {
-  CLAIM_STALE_AFTER_MS, intakeDecision, isAcknowledgeOnly, maySettle, reconcile,
+  CLAIM_STALE_AFTER_MS, HANDLED_EVENT_TYPES, intakeDecision, isAcknowledgeOnly,
+  maySettle, reconcile,
 } from '../modules/payment/webhookEvents.js';
 import {
   MARKET_IDS, MARKETS, marketFor, marketIsDeployable, marketProblems,
@@ -7128,11 +7129,49 @@ section('Where LRMC actually is');
     }
   }
 
-  // ── Every real market is ready to serve people ──
+  /* ── Readiness, and why this is no longer a hard failure for every market ──
+   * It was: "the <id> market is ready to serve people", for every market. That
+   * read as thoroughness and behaved as a trap. A market is added to this
+   * registry the day somebody starts *planning* it, and its fields are decided
+   * over the following weeks; a suite that fails on the first day means the
+   * only way to keep it green is to type plausible values into fields nobody
+   * has decided — which is the exact failure `marketProblems` exists to stop,
+   * reached by the route of trying to satisfy the check about it.
+   *
+   * So the market this build serves must be ready — that one is a hard
+   * failure, because it is what is about to be deployed — and any other
+   * market's undecided fields are printed as tracked debt, the way unfetched
+   * vendor assets and unconfirmed page values are. `env.ts` still refuses to
+   * boot on one and `npm run preflight` still refuses to release one, so an
+   * unfinished market cannot reach anybody. It just does not stop work on the
+   * finished one.
+   *
+   * The US pilot carries this today: `regions` is null. */
+  const activeProblems = marketProblems(MARKET);
+  check(`the ${MARKET.id} market this build serves is ready`, activeProblems.length === 0,
+    activeProblems.map((p) => `${p.field}: ${p.message}`).join('; '));
+
+  const notReady = MARKET_IDS
+    .filter((id) => id !== MARKET.id)
+    .map((id) => [id, marketProblems(MARKETS[id])] as const)
+    .filter(([, problems]) => problems.length > 0);
+  if (notReady.length) {
+    const total = notReady.reduce((n, [, p]) => n + p.length, 0);
+    console.log(`        (${total} undecided field(s) in ${notReady.length} `
+      + 'other market(s) — they cannot boot or be released until decided)');
+    for (const [id, problems] of notReady) {
+      for (const p of problems) console.log(`        ${id}.${p.field} — ${p.message}`);
+    }
+  }
+  /* Whatever a market has not decided, it must not have *guessed*. Every field
+   * is either settled or null; a market cannot be half-ready with a plausible
+   * value standing in. */
   for (const id of MARKET_IDS) {
-    const problems = marketProblems(MARKETS[id]);
-    check(`the ${id} market is ready to serve people`, problems.length === 0,
-      problems.map((p) => `${p.field}: ${p.message}`).join('; '));
+    const m = MARKETS[id];
+    check(`${id} has not borrowed another market's regions`,
+      m.regions === null || m.id === 'gambia'
+      || JSON.stringify(m.regions) !== JSON.stringify(MARKETS.gambia.regions),
+      'a region list carried over is a form a member cannot complete honestly');
   }
 
   /* ── The refusal, exercised against a market built to fail ─────────────
@@ -7148,7 +7187,8 @@ section('Where LRMC actually is');
   const undecided = (patch: Partial<MarketDefinition>): MarketDefinition =>
     ({ ...MARKETS.gambia, ...patch });
 
-  for (const field of ['city', 'managementFeePercent', 'rideCommissionPercent'] as const) {
+  for (const field of
+    ['city', 'managementFeePercent', 'rideCommissionPercent', 'regions'] as const) {
     const problems = marketProblems(undecided({ [field]: null } as never));
     check(`a market with no ${field} is refused`, problems.some((p) => p.field === field),
       'a value carried over from another market is a rate nobody set');
@@ -7160,6 +7200,14 @@ section('Where LRMC actually is');
     marketProblems(undecided({ rideCommissionPercent: -1 })).length > 0);
   check('a dialling code without its + is refused',
     marketProblems(undecided({ diallingCode: '220' })).length > 0);
+  /* An empty list satisfies "not null" and is still a dropdown with nothing in
+   * it — the shape a `.filter()` or a bad merge leaves behind. */
+  check('an empty region list is refused too',
+    marketProblems(undecided({ regions: [] })).some((p) => p.field === 'regions'),
+    'null is caught by the need() above; [] would pass it and render nothing');
+  check('a short name that is not a directory-safe token is refused',
+    marketProblems(undecided({ shortName: 'US pilot' })).some((p) => p.field === 'shortName'),
+    'it becomes a directory, a PM2 process name and a log filename');
 
   // ── The two markets genuinely differ, which is the point of the registry ──
   eq('the pilot charges its own Ususu share', MARKETS.unitedStates.rideCommissionPercent, 18);
@@ -7566,10 +7614,15 @@ section('Sessions, credentials, and the things one command can undo');
     seedSrc.indexOf('env.isProduction') < seedSrc.indexOf('async function seed('),
     'a guard inside seed() is a guard an import can walk past');
 
-  // ── The port the two halves of the deployment agree on ──
+  // ── The ports the two halves of the deployment agree on ──
   // Individually correct files, collectively a 502 on every API call, with
   // nothing anywhere saying why. Exactly the kind of thing a per-file suite
   // cannot see.
+  //
+  // This used to assert *one* upstream. Two markets makes that assertion wrong
+  // in the direction that matters: it would have passed on the day somebody
+  // added the pilot's block with Banjul's port in it, because one port is
+  // exactly what that mistake produces.
   const envSrc = readFileSync(resolve(process.cwd(), 'src/config/env.ts'), 'utf8');
   const appPort = envSrc.match(/PORT: z\.coerce\.number\(\)\.int\(\)\.positive\(\)\.default\((\d+)\)/)?.[1];
   const nginx = readFileSync(
@@ -7577,13 +7630,111 @@ section('Sessions, credentials, and the things one command can undo');
   const upstreams = [...new Set(
     [...nginx.matchAll(/proxy_pass\s+http:\/\/127\.0\.0\.1:(\d+)/g)].map((m) => m[1]!),
   )];
-  eq('nginx proxies to exactly one upstream port', upstreams.length, 1);
-  eq('and the application listens on it', appPort, upstreams[0]);
+
+  /* Distinct first. Two markets on one port is not a config error that shows
+   * up as a warning — the second process binds, fails, and PM2 retries it ten
+   * times while the first one serves both hostnames from one database. */
+  const marketList = MARKET_IDS.map((id) => MARKETS[id]);
+  const portsDeclared = marketList.map((m) => m.port);
+  eq('every market declares its own port',
+    new Set(portsDeclared).size, portsDeclared.length);
+
+  for (const market of marketList) {
+    check(`nginx proxies to ${market.id} on ${market.port}`,
+      upstreams.includes(String(market.port)),
+      `the registry puts ${market.id} on ${market.port}; nginx proxies to `
+      + `${upstreams.join(', ')}`);
+  }
+  /* And the other direction. An upstream belonging to no market is a block
+   * pointed at a process nothing starts. */
+  const orphanUpstreams = upstreams.filter(
+    (p) => !portsDeclared.includes(Number(p)));
+  check('and to nothing else', orphanUpstreams.length === 0,
+    `nginx proxies to ${orphanUpstreams.join(', ')}, which no market declares`);
+
+  /* `env.ts`'s default is the market a developer gets without an env var, and
+   * `marketFor` defaults to gambia. The two defaults have to be the same one. */
+  eq('the PORT default is the default market\'s', appPort, String(MARKETS.gambia.port));
 
   const envExample = readFileSync(resolve(process.cwd(), '.env.example'), 'utf8');
   check('the example file agrees too',
-    new RegExp(`^PORT=${upstreams[0]}$`, 'm').test(envExample),
+    new RegExp(`^PORT=${MARKETS.gambia.port}$`, 'm').test(envExample),
     'the example is what somebody copies on deployment day');
+
+  // ── The short name, in the six places it is written by hand ──
+  // `us` and `gm` name a PM2 process, a release directory, two log files, an
+  // nginx root and a `case` arm in each shell script. None of those files can
+  // see any other. A `case` arm that maps unitedStates to `gm` does not fail:
+  // it reads Banjul's release list, finds releases, and relinks Banjul's code
+  // when somebody asked to roll back Casper.
+  const ecosystem = readFileSync(
+    resolve(process.cwd(), '../deploy/ecosystem.config.cjs'), 'utf8');
+  const releaseSh = readFileSync(resolve(process.cwd(), '../deploy/release.sh'), 'utf8');
+  const rollbackSh = readFileSync(resolve(process.cwd(), '../deploy/rollback.sh'), 'utf8');
+
+  const shortNames = marketList.map((m) => m.shortName);
+  eq('every market has its own short name', new Set(shortNames).size, shortNames.length);
+
+  for (const market of marketList) {
+    const { id, shortName } = market;
+    check(`PM2 names ${id} lrmc-${shortName}`,
+      new RegExp(`app\\('${id}',\\s*'${shortName}'\\)`).test(ecosystem),
+      'the ecosystem file is what --only refers to');
+    for (const [file, src] of [
+      ['release.sh', releaseSh], ['rollback.sh', rollbackSh],
+    ] as [string, string][]) {
+      check(`${file} maps ${id} to ${shortName}`,
+        new RegExp(`${id}\\)\\s*SHORT=${shortName}\\s`).test(src),
+        'a case arm pointing at the other market\'s release directory finds '
+        + 'releases there and relinks them');
+    }
+    check(`nginx serves ${id} from its release directory`,
+      nginx.includes(`root /srv/lrmc/${shortName}/current/frontend;`),
+      'a root outside the release serves whatever was copied there by hand — '
+      + 'the other market\'s currency, and a rollback does not undo it');
+  }
+
+  // ── The two market blocks have not drifted apart ──
+  // The pilot's block is a copy of Banjul's with one number changed. The thing
+  // copies do is diverge: somebody tightens a header on the block they were
+  // looking at. Every header is asserted below against the *other* block rather
+  // than against a list here, so a header added to one is required in both
+  // without anybody remembering to add it to this file.
+  const serverBlocks = nginx.split(/\nserver \{/).slice(1);
+  const blockFor = new Map<string, string>();
+  for (const block of serverBlocks) {
+    const root = block.match(/root \/srv\/lrmc\/(\w+)\/current\/frontend;/);
+    if (root) blockFor.set(root[1]!, block);
+  }
+  eq('each market has exactly one server block', blockFor.size, marketList.length);
+
+  const directives = (block: string, name: string) =>
+    new Set([...block.matchAll(new RegExp(`^\\s*${name}\\s+(\\S+)`, 'gm'))]
+      .map((m) => m[1]!));
+
+  const [first, ...rest] = marketList;
+  for (const other of rest) {
+    const a = blockFor.get(first!.shortName) ?? '';
+    const b = blockFor.get(other.shortName) ?? '';
+    for (const directive of ['add_header', 'proxy_set_header']) {
+      const inA = directives(a, directive);
+      const inB = directives(b, directive);
+      const onlyA = [...inA].filter((h) => !inB.has(h));
+      const onlyB = [...inB].filter((h) => !inA.has(h));
+      check(`${first!.shortName} and ${other.shortName} set the same ${directive}s`,
+        onlyA.length === 0 && onlyB.length === 0,
+        `${first!.shortName} only: ${onlyA.join(', ') || 'none'}; `
+        + `${other.shortName} only: ${onlyB.join(', ') || 'none'}`);
+    }
+    /* The fallback rule is the one this file's own header warns about, and it
+     * is per-block. One block with a catch-all is one market where every dead
+     * link is a 200. */
+    for (const [name, block] of [[first!.shortName, a], [other.shortName, b]] as [string, string][]) {
+      check(`${name} still has no catch-all fallback`,
+        !/try_files[^;]*\/index\.html;/.test(block.replace(/\$uri\/index\.html/g, '')),
+        'a blanket fallback turns every typo into a 200 serving the wrong page');
+    }
+  }
 
   // ── Indexes exist where they are load-bearing ──
   // `autoIndex: !env.isProduction` is right, and for weeks nothing then built
@@ -7617,6 +7768,277 @@ section('Sessions, credentials, and the things one command can undo');
   check('the boot check only looks',
     !/syncIndexes/.test(serverSrc),
     'syncIndexes drops indexes no longer declared — that is a migration, not a boot step');
+
+  // ── The release: the order is the whole design ──
+  // Every one of these is a step somebody could move, and moving any of them
+  // turns a refused release into a broken one. `verify` after the cutover means
+  // members find the failure. `migrate` after it means the new code boots
+  // against indexes it does not have — and `assertIndexesBuilt` refuses, which
+  // is the *good* case. The bad case is a release that skipped step 6 entirely
+  // and reports success while the service is down.
+  /* Against the code, not the prose. `release.sh` opens with a numbered
+   * description of these very steps in the right order, so an ordering
+   * assertion that greps the whole file passes by reading the comment that
+   * says what the script *should* do. That is the third time this codebase has
+   * been caught asserting against its own documentation. */
+  const releaseCode = releaseSh.split('\n')
+    .filter((l) => !l.trimStart().startsWith('#')).join('\n');
+
+  /* Each step is located by a pattern that must match **once**. `npm run
+   * verify` appears twice — the backend's and the SDK's — and an `indexOf` on
+   * it silently measures whichever comes first. A mutation that moved the
+   * backend's verify past the cutover survived this suite for exactly that
+   * reason: the assertion was still reading the SDK line, in its original
+   * place, and passing. Ambiguity in a needle is the assertion measuring
+   * something other than what it names. */
+  const stepAt = (label: string, pattern: RegExp): number => {
+    const hits = [...releaseCode.matchAll(new RegExp(pattern.source, 'gm'))];
+    check(`release.sh names "${label}" exactly once`, hits.length === 1,
+      `${hits.length} matches — an ordering assertion cannot say which one it measured`);
+    return hits.length === 1 ? hits[0]!.index! : -1;
+  };
+  const ORDER: [string, RegExp, string][] = [
+    ['preflight', /^npm run preflight -- "\$MARKET"$/,
+      'configuration is read before anything is built'],
+    ['build', /^npm run build$/, 'the build happens before the suites run against it'],
+    ['verify', /^npm run verify$/, 'the suites run before a release is staged'],
+    ['stage', /^mkdir -p "\$TARGET"$/, 'the release is staged before the database is touched'],
+    ['migrate', /dist\/scripts\/migrate\.js/, 'indexes exist before the new code serves traffic'],
+    ['cut over', /^ln -sfn "\$TARGET" "\$CURRENT"$/, 'the cutover is the last thing that can fail'],
+    ['health', /curl [^\n]*\/healthz/, 'and health is checked after it'],
+  ];
+  const positions = ORDER.map(([label, pattern]) => stepAt(label, pattern));
+  for (let i = 1; i < ORDER.length; i += 1) {
+    const [label, , why] = ORDER[i]!;
+    const [beforeLabel] = ORDER[i - 1]!;
+    check(`release.sh: ${why}`,
+      positions[i - 1]! >= 0 && positions[i]! > positions[i - 1]!,
+      `"${beforeLabel}" must come before "${label}" in deploy/release.sh`);
+  }
+  const step = (needle: string) => releaseCode.indexOf(needle);
+
+  check('release.sh stops at the first failure',
+    /^set -euo pipefail$/m.test(releaseSh),
+    'without it a failed build is a warning and the cutover happens anyway');
+  check('and rolls back by itself when health never comes',
+    /healthy" -ne 1/.test(releaseSh) && /ln -sfn "\$PREVIOUS" "\$CURRENT"/.test(releaseSh),
+    'a deploy script that ends at "reload" reports success while the service is down');
+  check('the public pages are built for the market being released',
+    /LRMC_MARKET="\$MARKET" python3 build-public-pages\.py/.test(releaseSh),
+    'skipping it serves the other market\'s currency and fee from static files');
+  check('and the market is written into the release',
+    /echo "\$MARKET" > "\$TARGET\/MARKET"/.test(releaseSh),
+    'without it nothing downstream can tell which market a release was built for');
+  check('which is what rollback.sh refuses on',
+    /BUILT_FOR="\$\(cat "\$TARGET\/MARKET"/.test(rollbackSh)
+    && /if \[ "\$BUILT_FOR" != "\$MARKET" \]/.test(rollbackSh),
+    'relinking the other market\'s release quotes Casper in dalasi');
+  check('rollback.sh checks health too',
+    /\/healthz/.test(rollbackSh),
+    'a rollback that does not come up is a rollback nobody was told about');
+  /* Positive, on prose: the one thing a rollback script must say out loud is
+   * the thing it cannot do. */
+  check('and says plainly that it does not undo the database',
+    /does \*\*not\*\* undo the database/.test(rollbackSh),
+    'a rollback script that implies the database came with it is worse than none');
+
+  // ── PM2 holds the process to what the process asked for ──
+  const shutdownMs = Number(serverSrc.match(/\}, (\d+)_?(\d*)\);/)?.[0]
+    ?.replace(/\D/g, '') ?? 0);
+  const killTimeout = Number(ecosystem.match(/kill_timeout: (\d+)/)?.[1] ?? 0);
+  check('PM2 waits longer than the process takes to give up',
+    killTimeout > shutdownMs,
+    `kill_timeout ${killTimeout}ms vs a forced exit at ${shutdownMs}ms — SIGKILL `
+    + 'first means in-flight requests are cut rather than drained');
+  check('one instance per market, not a cluster',
+    /instances: 1/.test(ecosystem) && /exec_mode: 'fork'/.test(ecosystem),
+    'the rate limiter, the abuse ring buffer and the error store are in-process; '
+    + 'under cluster mode each worker sees a fraction of the traffic');
+  check('and PM2 gives up rather than looping on a permanent refusal',
+    /max_restarts: \d+/.test(ecosystem),
+    'the boot refusals are permanent — restarting will not fix a bad secret');
+  check('secrets reach PM2 from a file that is not committed',
+    /env_file: `\.env\.\$\{marketId\}`/.test(ecosystem)
+    && !/JWT_SECRET|MONGO_URI|STRIPE_SECRET/.test(ecosystem),
+    'an `env` block with a secret in it is a secret in the repository');
+
+  // ── Preflight asks about everything a boot would refuse on ──
+  // The boot refusals are correct and they arrive after the symlink has moved.
+  // Preflight asks the same questions first — so anything env.ts learns to
+  // refuse, preflight has to learn to ask.
+  const preflightSrc = readFileSync(
+    resolve(process.cwd(), 'src/scripts/preflight.ts'), 'utf8');
+  for (const key of ['LRMC_MARKET', 'MONGO_URI', 'JWT_SECRET', 'FAC_PEPPER',
+    'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'PORT', 'NODE_ENV']) {
+    check(`preflight requires ${key}`,
+      new RegExp(`'${key}'`).test(preflightSrc.slice(
+        preflightSrc.indexOf('const REQUIRED'),
+        preflightSrc.indexOf('function checkOne'))),
+      'a variable the process refuses to boot without, discovered after the cutover');
+  }
+  /* The check no single process can make. Each deployment is blind to the
+   * other, so a copied `.env` is silent in both. */
+  for (const key of ['MONGO_URI', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET',
+    'JWT_SECRET', 'FAC_PEPPER', 'PORT']) {
+    check(`preflight refuses the markets sharing ${key}`,
+      new RegExp(`\\['${key}',`).test(preflightSrc),
+      'the second .env is always made from the first, and every one of these '
+      + 'is silent when copied');
+  }
+  check('preflight reads configuration and changes nothing',
+    !/writeFileSync|mkdirSync|rmSync|unlinkSync/.test(preflightSrc),
+    'a check that repairs is a check that hides what it repaired');
+  check('and release.sh runs it before it builds',
+    step('npm run preflight') >= 0 && step('npm run preflight') < step('npm run build'),
+    'the point of preflight is that nothing has moved yet');
+
+  // ── Market data in files that are not generated ──
+  // Three files held their own copy of The Gambia's eight regions and one held
+  // `+220` as a phone placeholder. None of them knew which market they were
+  // built for, so `LRMC_MARKET=unitedStates python3 build-public-pages.py`
+  // succeeded and produced a registration form offering a Casper landlord a
+  // choice between Banjul, Kanifing and Brikama. Nothing failed. The pages
+  // looked finished. That is the whole reason this registry exists, arriving
+  // from a direction it had not been pointed at.
+  //
+  // The builder now writes all three from `markets.ts`. These assertions are
+  // what stop somebody editing one of them back by hand — the committed state
+  // is the gambia build, because gambia is what the builder defaults to.
+  const gm = MARKETS.gambia;
+  const gmRegions = gm.regions ?? [];
+  check('the default market has regions to build from', gmRegions.length > 0);
+
+  const regionSites: [string, RegExp][] = [
+    ['../frontend/public/register.html', /var REGIONS = \[\n((?:.*\n)*?)\];/],
+    ['../frontend/assets/js/properties.js', /var REGIONS = \[\n((?:.*\n)*?)\s*\];/],
+  ];
+  for (const [rel, pattern] of regionSites) {
+    const src = readFileSync(resolve(process.cwd(), rel), 'utf8');
+    const body = src.match(pattern)?.[1] ?? '';
+    const found = [...body.matchAll(/'([^']+)'/g)].map((m) => m[1]!);
+    check(`${rel.split('/').pop()} lists the market's regions, in order`,
+      found.length === gmRegions.length && found.every((r, i) => r === gmRegions[i]),
+      `found [${found.join(', ')}]; the registry says [${gmRegions.join(', ')}]`);
+  }
+
+  const registerHtml = readFileSync(
+    resolve(process.cwd(), '../frontend/public/register.html'), 'utf8');
+  check('the phone placeholder uses the market\'s dialling code',
+    registerHtml.includes(`placeholder="${gm.diallingCode} 000 0000"`),
+    'a US member prompted for a +220 number is the registry ignored');
+  const aboutHtml = readFileSync(
+    resolve(process.cwd(), '../frontend/public/about.html'), 'utf8');
+  check('the about page names the market\'s country and every region',
+    aboutHtml.includes(`${gm.country} is the launch market`)
+    && gmRegions.every((r) => aboutHtml.includes(r)),
+    'the "Where LRMC operates" paragraph is generated; a hand edit is a page '
+    + 'that disagrees with the form beside it');
+
+  /* And the builder must refuse rather than borrow. This is the assertion the
+   * whole section exists for: a builder that fell back to another market's
+   * list would publish a form nobody could complete, and the build would say
+   * "done". */
+  const builderSrc = readFileSync(
+    resolve(process.cwd(), '../frontend/build-public-pages.py'), 'utf8');
+  check('the page builder reads the regions from the registry',
+    /regions:\\s\*\\\[/.test(builderSrc) || /regions:/.test(builderSrc),
+    'a hardcoded list in the builder is a fourth copy');
+  check('and stops when a market has not decided them',
+    /raise SystemExit/.test(builderSrc) && /has not decided its regions/.test(builderSrc),
+    'a build that succeeds with the other market\'s regions is the failure this '
+    + 'registry was written to end');
+  check('every in-place rewrite must match exactly once',
+    /assert hits == 1/.test(builderSrc),
+    'a rewrite that matches nothing leaves the old market\'s data and still '
+    + 'reports success');
+
+  // ── The template the runbook tells you to copy has to be in the repository ──
+  // `.env.example.market` is un-ignored in the root `.gitignore`. That was not
+  // enough: `backend/.gitignore` also says `.env.*`, a nested ignore file wins
+  // for everything beneath it, and the negation was in the wrong one. The file
+  // sat untracked and invisible — an ignored file does not appear in
+  // `git status` — so the first person to clone this on a server would have
+  // followed section 0 of the runbook to a file that was not there.
+  const rootIgnore = readFileSync(resolve(process.cwd(), '../.gitignore'), 'utf8');
+  const backendIgnore = readFileSync(resolve(process.cwd(), '.gitignore'), 'utf8');
+  const marketTemplate = readFileSync(
+    resolve(process.cwd(), '.env.example.market'), 'utf8');
+  check('the per-market env template exists', marketTemplate.length > 0);
+  check('and nothing ignores it',
+    /^!\.env\.example\.market$/m.test(backendIgnore),
+    'the root .gitignore un-ignores it and backend/.gitignore re-ignores it; the '
+    + 'nested file wins, and an ignored file is not in git status either');
+  /* And the negations that matter are in both, for the same reason. */
+  for (const pattern of ['!.env.example', '!.env.example.market']) {
+    check(`both ignore files agree on ${pattern}`,
+      rootIgnore.includes(pattern) && backendIgnore.includes(pattern),
+      'a negation in the outer file is undone by a pattern in the inner one');
+  }
+  /* The template must not carry anything real. It is the file people copy. */
+  for (const forbidden of [/sk_live_[A-Za-z0-9]{6,}/, /mongodb(\+srv)?:\/\/[^\s]*@/]) {
+    check(`the template holds no ${forbidden.source.slice(0, 12)}… value`,
+      !forbidden.test(marketTemplate),
+      'a real key in a tracked example is a key in the git history');
+  }
+
+  // ── The runbook is read at 3am, so it is checked like code ──
+  // It opens with a table of ports, process names, release directories and
+  // currencies — which is the registry, copied out by hand. A runbook that is
+  // wrong is worse than no runbook: it is followed. So every cell in that table
+  // is asserted against `markets.ts`, and the columns are in `MARKET_IDS`
+  // order, which is the order the table is written in.
+  const runbook = readFileSync(resolve(process.cwd(), '../docs/RUNBOOK.md'), 'utf8');
+  const row = (label: string): string[] => {
+    const line = runbook.split('\n').find((l) => l.startsWith(`| ${label} |`));
+    if (!line) return [];
+    return line.split('|').slice(2, -1).map((c) => c.trim());
+  };
+  const TABLE: [string, (m: MarketDefinition) => string][] = [
+    ['market id', (m) => `\`${m.id}\``],
+    ['short name', (m) => `\`${m.shortName}\``],
+    ['port', (m) => String(m.port)],
+    ['PM2 process', (m) => `\`lrmc-${m.shortName}\``],
+    ['releases', (m) => `\`/srv/lrmc/${m.shortName}/releases\``],
+    ['live symlink', (m) => `\`/srv/lrmc/${m.shortName}/current\``],
+    ['env file', (m) => `\`backend/.env.${m.id}\``],
+    ['logs', (m) => `\`/var/log/lrmc/${m.shortName}.*.log\``],
+  ];
+  for (const [label, expected] of TABLE) {
+    const cells = row(label);
+    check(`the runbook's "${label}" row is the registry's`,
+      cells.length === marketList.length
+      && marketList.every((m, i) => cells[i] === expected(m)),
+      `runbook says [${cells.join(' | ')}]; the registry says `
+      + `[${marketList.map(expected).join(' | ')}]`);
+  }
+  /* Bolded in the table, so the cell is `**USD**` rather than `USD`. */
+  const currencyRow = row('currency');
+  check('the runbook names each market\'s currency',
+    currencyRow.length === marketList.length
+    && marketList.every((m, i) => (currencyRow[i] ?? '').includes(m.currency)),
+    `runbook says [${currencyRow.join(' | ')}]`);
+  const commissionRow = row('ride commission');
+  check('and each market\'s ride commission',
+    commissionRow.length === marketList.length
+    && marketList.every((m, i) => (commissionRow[i] ?? '') === `${m.rideCommissionPercent}%`),
+    'the 18/15 split is the reason the registry exists; a runbook that states it '
+    + 'wrongly is a runbook somebody reconfigures from');
+
+  /* The webhook endpoint an operator pastes into the Stripe dashboard. Wrong by
+   * one segment and every event 404s, which looks exactly like Stripe being
+   * down. */
+  const appSrc = readFileSync(resolve(process.cwd(), 'src/app.ts'), 'utf8');
+  const prefix = envSrc.match(/API_PREFIX: z\.string\(\)\.default\('([^']+)'\)/)?.[1];
+  check('the runbook gives the webhook path the app actually mounts',
+    typeof prefix === 'string'
+    && runbook.includes(`${prefix}/payments/webhooks/stripe`)
+    && appSrc.includes(`\${env.API_PREFIX}/payments/webhooks/stripe`),
+    'a wrong path 404s every event and looks like Stripe being down');
+  for (const type of HANDLED_EVENT_TYPES) {
+    check(`the runbook tells the operator to subscribe ${type}`,
+      runbook.includes(type),
+      'an event the code handles and nobody subscribed is an order that never settles');
+  }
 }
 
 
