@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto';
 import { PHONE_REGEX } from '../config/contact.js';
 import {
   MARKET_IDS, MARKETS, marketFor, marketIsDeployable, marketProblems,
+  type MarketDefinition,
 } from '../config/markets.js';
 import { resolve } from 'node:path';
 /* `BaseService` is the one Mongoose-adjacent import here, and it is safe: the
@@ -7052,21 +7053,45 @@ section('Where LRMC actually is');
     }
   }
 
-  // ── Gambia is decided; the pilot is not, and says so ──
-  check('the Gambia market is ready to serve people', marketIsDeployable(MARKETS.gambia),
-    marketProblems(MARKETS.gambia).map((p) => p.field).join(', '));
-  const pilot = marketProblems(MARKETS.unitedStates);
-  check('the US pilot is not yet, and names what is missing', pilot.length > 0);
-  for (const field of ['city', 'managementFeePercent', 'rideCommissionPercent']) {
-    check(`  the pilot still needs a ${field}`, pilot.some((p) => p.field === field),
+  // ── Every real market is ready to serve people ──
+  for (const id of MARKET_IDS) {
+    const problems = marketProblems(MARKETS[id]);
+    check(`the ${id} market is ready to serve people`, problems.length === 0,
+      problems.map((p) => `${p.field}: ${p.message}`).join('; '));
+  }
+
+  /* ── The refusal, exercised against a market built to fail ─────────────
+   * This used to assert that the US pilot was incomplete, which was true and
+   * was the wrong assertion: it tied the mechanism's proof to a market
+   * happening to be unfinished, so the day somebody decided those three values
+   * the check would fail for the best possible reason. It did, this morning.
+   *
+   * The mechanism is what needs proving, so it is proved against a market
+   * constructed here to be missing each field in turn. That assertion is true
+   * now, stays true when a third market is added, and cannot be satisfied by
+   * filling anything in. */
+  const undecided = (patch: Partial<MarketDefinition>): MarketDefinition =>
+    ({ ...MARKETS.gambia, ...patch });
+
+  for (const field of ['city', 'managementFeePercent', 'rideCommissionPercent'] as const) {
+    const problems = marketProblems(undecided({ [field]: null } as never));
+    check(`a market with no ${field} is refused`, problems.some((p) => p.field === field),
       'a value carried over from another market is a rate nobody set');
+    check(`  and the refusal says why`, problems.some((p) => p.field === field && p.message.length > 20));
   }
-  /* Tracked debt, printed the way unfetched vendor assets and unconfirmed
-   * public-page values are — so it cannot be forgotten between now and the
-   * pilot's first paying member. */
-  if (pilot.length) {
-    console.log(`        (US pilot: ${pilot.map((p) => p.field).join(', ')} still undecided)`);
-  }
+  check('a fee outside 0–100 is not a fee',
+    marketProblems(undecided({ managementFeePercent: 140 })).length > 0);
+  check('nor is a negative one',
+    marketProblems(undecided({ rideCommissionPercent: -1 })).length > 0);
+  check('a dialling code without its + is refused',
+    marketProblems(undecided({ diallingCode: '220' })).length > 0);
+
+  // ── The two markets genuinely differ, which is the point of the registry ──
+  eq('the pilot charges its own Ususu share', MARKETS.unitedStates.rideCommissionPercent, 18);
+  eq('and Banjul charges its own', MARKETS.gambia.rideCommissionPercent, 15);
+  check('so a market cannot borrow the other\'s rate by accident',
+    MARKETS.unitedStates.rideCommissionPercent !== MARKETS.gambia.rideCommissionPercent,
+    'the first number that actually differs, and the reason this is a registry');
 
   // ── A market cannot be selected by accident ──
   for (const bad of ['', 'Gambia', 'us', 'GAMBIA', undefined, null]) {

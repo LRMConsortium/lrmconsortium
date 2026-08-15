@@ -68,22 +68,28 @@ export const MARKETS: Record<MarketId, MarketDefinition> = {
     rideCommissionPercent: 15,
   },
   /**
-   * The pilot. Launching first, and deliberately incomplete.
+   * The pilot, launching first. Casper, Wyoming.
    *
-   * The country, currency and dialling code are facts. The city and both fee
-   * percentages are decisions nobody has made, so they are `null` and this
-   * market cannot boot in production until they are. A fee carried over from
-   * Gambia because it was already typed somewhere would be LRMC charging a US
-   * landlord a rate nobody set.
+   * ── The Ususu share is 18 here and 15 in Banjul ────────────────────────
+   * Worth pausing on, because it is the first number that genuinely differs
+   * between the two markets and it is the reason this registry exists rather
+   * than a second `LAUNCH_*` constant. Anything that reads a fee now gets its
+   * own market's, and a deployment cannot borrow the other's by accident.
+   *
+   * `ledger.ts` takes `DEFAULT_RIDE_COMMISSION_PERCENT` from here, so a US ride
+   * splits at 18 and a Gambian one at 15 with no branch anywhere. A ride that
+   * carries its own `platformCommission` still overrides both — the rate agreed
+   * when a trip was booked is the rate that trip settles at, whatever the
+   * market later changes to.
    */
   unitedStates: {
     id: 'unitedStates',
     country: 'United States',
-    city: null,
+    city: 'Casper, WY',
     currency: 'USD',
     diallingCode: '+1',
-    managementFeePercent: null,
-    rideCommissionPercent: null,
+    managementFeePercent: 10,
+    rideCommissionPercent: 18,
   },
 };
 
