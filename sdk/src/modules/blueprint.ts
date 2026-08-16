@@ -18,9 +18,9 @@ import { client, withMeta, type ListOptions, type RequestOptions } from './_runt
 
 /** Zone, roles and permissions for each operation, straight from the spec. */
 export const META = {
-  contract: { operationId: 'get_blueprint', method: 'GET' as const, pathTemplate: '/_blueprint', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'optional' as const },
-  index: { operationId: 'getRoot', method: 'GET' as const, pathTemplate: '/', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'none' as const },
-  openapi: { operationId: 'getOpenapi.json', method: 'GET' as const, pathTemplate: '/openapi.json', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'none' as const },
+  contract: { operationId: 'get_blueprint', method: 'GET' as const, pathTemplate: '/_blueprint', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'optional' as const },
+  index: { operationId: 'getRoot', method: 'GET' as const, pathTemplate: '/', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'none' as const },
+  openapi: { operationId: 'getOpenapi.json', method: 'GET' as const, pathTemplate: '/openapi.json', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'none' as const },
 } satisfies Record<string, OperationMeta>;
 
 export const blueprint = {
@@ -31,7 +31,7 @@ export const blueprint = {
    *
    * `GET /_blueprint`
    * Zone: —
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, publicUser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer, publicUser
    * Ownership: none
    */
   contract(options?: RequestOptions): Promise<BlueprintResponse> {
@@ -43,7 +43,7 @@ export const blueprint = {
    *
    * `GET /`
    * Zone: —
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, publicUser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer, publicUser
    * Ownership: none
    */
   index(options?: RequestOptions): Promise<PlatformIndex> {
@@ -57,7 +57,7 @@ export const blueprint = {
    *
    * `GET /openapi.json`
    * Zone: —
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, publicUser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer, publicUser
    * Ownership: none
    */
   openapi(options?: RequestOptions): Promise<OpenApiDocument> {

@@ -41,7 +41,12 @@ export const startRideSchema = z
 export const completeRideSchema = z
   .object({
     finalFare: zMoney,
-    currency: zCurrency.optional(),
+    /* No `currency`. It was accepted here and used as `body.currency ??
+     * ride.currency`, which let the caller name the denomination of a fare that
+     * had already been quoted in another one — and this platform holds no
+     * exchange rate with which to notice. The ride's own currency is the only
+     * answer, so the field is refused rather than silently ignored: `.strict()`
+     * means a client still sending it is told, instead of believing it worked. */
     distanceKm: z.number().min(0).max(2000).optional(),
     durationMin: z.number().min(0).max(1440).optional(),
     notes: zText(2000).optional(),

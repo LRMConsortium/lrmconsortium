@@ -18,6 +18,27 @@ export interface ListParams {
   sort?: string;
   search?: string;
   filters?: Record<string, unknown>;
+  /**
+   * A filter the *server* computed, which is not subject to `filterableFields`.
+   *
+   * ── Why this is a separate parameter and not just `filters` ───────────────
+   * `filters` is the client's. It is passed through an allowlist precisely so a
+   * caller cannot query on a field nobody meant to expose. That allowlist did
+   * exactly what it was built to do to three authorization clauses: a handler
+   * computed `{ $or: [{ payer: ... }, { payee: ... }] }`, handed it to `list()`
+   * as a filter, and `$or` — not being a listed field — was dropped. What
+   * reached Mongo was `{ deletedAt: null }`, and `GET /payments/:userId/history`
+   * answered with the whole platform's ledger. Leases and maintenance had the
+   * same defect from the same cause.
+   *
+   * The lesson is not "add `$or` to the allowlist". It is that an allowlist for
+   * untrusted input must never be on the path of trusted input, because the
+   * failure mode is silent and it fails *open*. So: two doors. Anything through
+   * this one is composed with `$and` and never filtered.
+   *
+   * An empty object here throws rather than widening — see `buildFilter`.
+   */
+  serverFilters?: Record<string, unknown>;
   includeDeleted?: boolean;
 }
 
@@ -110,11 +131,33 @@ export class BaseService<T extends PersistedDocument> {
       filter.$or = searchable.map((f) => ({ [f]: rx }));
     }
 
-    const scope = this.scopeFor(actor);
-    if (Object.keys(scope).length > 0) {
-      return { $and: [filter, scope] } as FilterQuery<T>;
+    /* ── Composition, not merging ────────────────────────────────────────
+     * Everything below is `$and`-ed rather than spread into one object. A
+     * spread loses a key when two clauses share it, and the key they share is
+     * always `$or`: the client's `?search=` builds one, `scopeFor` builds one,
+     * and an authorization filter builds one. Spreading any two of those keeps
+     * the last and silently discards the rest — and the one discarded is the
+     * one that was restricting the query. */
+    const clauses: FilterQuery<T>[] = [filter as FilterQuery<T>];
+
+    if (params.serverFilters !== undefined) {
+      /* An empty server filter can only be a mistake, and it is the mistake
+       * that leaks: the handler meant to restrict the query and computed
+       * nothing. Refusing loudly here turns a silent full-collection read into
+       * a 500 in a test run. Deliberate "match nothing" is `{ _id: null }`. */
+      if (Object.keys(params.serverFilters).length === 0) {
+        throw ApiError.internal(
+          `${this.opts.label}: an empty serverFilters is a query nobody restricted`,
+        );
+      }
+      clauses.push(params.serverFilters as FilterQuery<T>);
     }
-    return filter as FilterQuery<T>;
+
+    const scope = this.scopeFor(actor);
+    if (Object.keys(scope).length > 0) clauses.push(scope);
+
+    if (clauses.length === 1) return clauses[0]!;
+    return { $and: clauses } as FilterQuery<T>;
   }
 
   async list(params: ListParams = {}, actor?: AuthenticatedActor): Promise<ListResult<T>> {

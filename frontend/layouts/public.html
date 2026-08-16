@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<!--
+ LEGACY RENTAL MANAGEMENT CONSORTIUM (LRMC) — PUBLIC LAYOUT
+
+ For pages anyone can reach: the marketing site, pricing, contact. No
+ authentication, no sidebar, no data-zone. A visitor is not an actor.
+
+ Copy this, fill the SLOTs, done.
+-->
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Legacy Rental Management Consortium</title>
+  <meta name="description" content="Legacy Rental Management Consortium — institutional property and mobility management in The Gambia." />
+
+  <link rel="icon" href="/assets/img/lrmc-favicon.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/assets/img/lrmc-apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: {
+      colors: {
+        /* LRMC branding-locked palette */
+        lrmc: { blue:'#1E3A8A', gold:'#D4AF37', slate:'#334155' },
+        blue: { 100:'#DBEAFE', 300:'#93C5FD', 500:'#3B82F6', 600:'#2563EB', 700:'#1D4ED8', 800:'#1E3A8A', 900:'#172554' },
+        slate:{ 50:'#F8FAFC', 100:'#F1F5F9', 200:'#E2E8F0', 300:'#CBD5E1', 400:'#94A3B8', 500:'#64748B', 700:'#334155', 800:'#1E293B', 900:'#0F172A' },
+        emerald:{ 50:'#ECFDF5', 100:'#D1FAE5', 500:'#10B981', 600:'#059669', 700:'#047857' },
+        amber:{ 50:'#FFFBEB', 100:'#FEF3C7', 500:'#F59E0B', 600:'#D97706', 700:'#B45309' },
+        rose:{ 50:'#FFF1F2', 100:'#FFE4E6', 600:'#E11D48', 700:'#BE123C' },
+        gold: { 100:'#FBF6E5', 500:'#D4AF37', 700:'#8A6D1C' },
+      },
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+    } } };
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/theme.css" />
+  <link rel="stylesheet" href="/assets/css/utilities.css" />
+
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="/assets/js/sdk.js" defer></script>
+  <script src="/assets/js/auth.js" defer></script>
+  <script src="/assets/js/ui.js" defer></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+  <style>[x-cloak] { display: none !important; }</style>
+</head>
+
+<body class="h-full antialiased flex flex-col" x-data="{ menu: false }">
+
+<a href="#lrmc-main" class="lrmc-skip-link">Skip to main content</a>
+
+<header class="border-b border-slate-200 bg-white backdrop-blur sticky top-0 z-20">
+  <div class="max-w-7xl mx-auto px-4 lg:px-6 h-16 flex items-center gap-4">
+    <a href="/public/index.html" class="flex items-center gap-3 min-w-0">
+      <img src="/assets/img/lrmc-mark.png" alt=""
+           class="w-9 h-9 flex-shrink-0 object-contain" />
+      <!-- Blue, not gold. LRMC Gold is 2.1:1 on white — a wordmark nobody can
+           read is not a wordmark. Gold belongs on the blue, where it measures
+           4.9:1 and does the job it was chosen for. -->
+      <span class="text-sm font-extrabold text-blue-800 tracking-wide hidden sm:inline">LRMC</span>
+      <span class="lrmc-sr-only">Legacy Rental Management Consortium — home</span>
+    </a>
+
+    <nav class="hidden md:flex items-center gap-1 ml-6 flex-1" aria-label="Main">
+      <a href="/public/index.html"   class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Home</a>
+      <a href="/public/about.html"   class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">About</a>
+      <a href="/public/pricing.html" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Pricing</a>
+      <a href="/public/contact.html" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Contact</a>
+    </nav>
+
+    <div class="ml-auto flex items-center gap-2">
+      <!-- Somebody already signed in does not need to be sold an account.
+           Filled in by the page script; the signed-out pair is what ships in
+           the markup, so it is what a visitor with no JavaScript sees. -->
+      <span class="hidden sm:inline-flex"><a id="lrmc-nav-signin"  href="/public/login.html"    class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm">Sign in</a></span>
+      <a id="lrmc-nav-cta"     href="/public/register.html" class="lrmc-btn lrmc-btn-primary lrmc-btn-sm">Get started</a>
+
+      <!-- Without this the whole of the navigation is unreachable on a phone,
+           which is the device most of the launch market will arrive on. -->
+      <span class="md:hidden"><button type="button" class="lrmc-btn lrmc-btn-ghost !min-h-0 !p-2"
+              @click="menu = !menu"
+              :aria-expanded="menu ? 'true' : 'false'"
+              aria-controls="lrmc-public-menu" aria-label="Menu">
+        <i data-lucide="menu" class="w-5 h-5" x-show="!menu"></i>
+        <i data-lucide="x" class="w-5 h-5" x-show="menu" x-cloak></i>
+      </button></span>
+    </div>
+  </div>
+
+  <nav id="lrmc-public-menu" class="md:hidden border-t border-slate-200 bg-white px-4 py-2"
+       x-show="menu" x-cloak aria-label="Main">
+    <a href="/public/index.html"    class="lrmc-menu-item">Home</a>
+    <a href="/public/about.html"    class="lrmc-menu-item">About</a>
+    <a href="/public/pricing.html"  class="lrmc-menu-item">Pricing</a>
+    <a href="/public/contact.html"  class="lrmc-menu-item">Contact</a>
+    <a href="/public/login.html"    class="lrmc-menu-item">Sign in</a>
+    <a href="/public/register.html" class="lrmc-menu-item">Get started</a>
+  </nav>
+</header>
+
+<main id="lrmc-main" class="flex-1">
+  <!-- SLOT: page content -->
+</main>
+
+<footer class="border-t border-slate-200 mt-16">
+  <div class="max-w-7xl mx-auto px-4 lg:px-6 py-8">
+    <div class="flex items-center gap-3 mb-4">
+      <img src="/assets/img/lrmc-mark.png" alt="" class="w-8 h-8 object-contain" />
+      <p class="text-sm font-bold text-blue-800">Legacy Rental Management Consortium</p>
+    </div>
+    <!-- The market LRMC serves, not a registered address. Both are facts, but
+         only one of them is known here — see the note in
+         `claude/frontend-build-status.md`. Change it in this file and every
+         public page follows. -->
+    <p class="text-xs text-slate-500 max-w-md">
+      Institutional property and mobility management. Serving The Gambia.
+    </p>
+    <p class="text-[11px] text-slate-500 mt-6">
+      © <span class="lrmc-year"></span> Legacy Rental Management Consortium. All rights reserved.
+    </p>
+  </div>
+</footer>
+
+<div id="lrmc-toasts" aria-live="polite" class="fixed top-4 right-4 z-50 flex flex-col gap-2 items-end"></div>
+
+<script>
+  document.querySelectorAll('.lrmc-year').forEach(function (el) { el.textContent = new Date().getFullYear(); });
+  document.addEventListener('DOMContentLoaded', function () { if (window.lucide) window.lucide.createIcons(); });
+  document.body.addEventListener('htmx:afterSwap', function () { if (window.lucide) window.lucide.createIcons(); });
+</script>
+</body>
+</html>

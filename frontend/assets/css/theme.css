@@ -1,0 +1,131 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+ * LEGACY RENTAL MANAGEMENT CONSORTIUM (LRMC) — DESIGN TOKENS
+ *
+ * Branding-locked. These values are the LRMC identity; do not substitute them.
+ * Everything else in the platform resolves to a variable declared here, so the
+ * brand lives in one file rather than across two hundred pages.
+ *
+ * The system is light: white surfaces on a pale slate page, LRMC Blue for
+ * structure and action, LRMC Gold for institutional accent. Institutional and
+ * financial rather than fashionable — this is read for eight hours a day by
+ * people handling other people's money.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Primary ────────────────────────────────────────────────────────── */
+  --lrmc-blue:  #1E3A8A;   /* LRMC Blue  — structure, primary action */
+  --lrmc-gold:  #D4AF37;   /* LRMC Gold  — institutional accent, the seal */
+  --lrmc-slate: #334155;   /* LRMC Slate — secondary action, strong text */
+
+  /* ── Secondary / status ─────────────────────────────────────────────────
+   * These four mean *state* and nothing else. They are never chart series
+   * colours, and they never travel without a word beside them — run as a
+   * categorical palette, emerald against amber sits at ΔE 8.9 for a
+   * protanope, which is a pass by a margin too thin to bet a ledger on.
+   */
+  --lrmc-emerald: #10B981;
+  --lrmc-amber:   #F59E0B;
+  --lrmc-rose:    #E11D48;
+
+  /* Tints, for badge and banner backgrounds. */
+  --lrmc-emerald-tint: #ECFDF5;
+  --lrmc-amber-tint:   #FFFBEB;
+  --lrmc-rose-tint:    #FFF1F2;
+  --lrmc-blue-tint:    #EFF6FF;
+
+  /* ── Grays ──────────────────────────────────────────────────────────── */
+  --lrmc-gray-50:  #F8FAFC;   /* page background */
+  --lrmc-gray-200: #E2E8F0;   /* borders, dividers */
+  --lrmc-gray-400: #94A3B8;   /* muted text, disabled */
+  --lrmc-gray-500: #64748B;   /* secondary text */
+  --lrmc-gray-900: #1E293B;   /* primary text */
+  --lrmc-white:    #FFFFFF;   /* card surface */
+
+  /* ── Blue ramp ──────────────────────────────────────────────────────────
+   * Derived from LRMC Blue for hover states and chart marks. Monotone in
+   * lightness, which is what makes it a legitimate sequential scale.
+   */
+  --lrmc-blue-100: #DBEAFE;
+  --lrmc-blue-300: #93C5FD;
+  --lrmc-blue-500: #3B82F6;
+  --lrmc-blue-600: #2563EB;
+  --lrmc-blue-700: #1D4ED8;
+  --lrmc-blue-900: #172554;
+
+  /* ── Chart marks ────────────────────────────────────────────────────────
+   * Single hue, light to dark. Both steps clear 3:1 against white.
+   *
+   * LRMC Gold is deliberately **not** here. At 2.1:1 on white it is unreadable
+   * as a data mark — it belongs on the logo and the seal, where it is
+   * decoration beside text rather than the thing carrying the number.
+   */
+  --lrmc-mark:           #3B82F6;
+  --lrmc-mark-emphasis:  #1E3A8A;
+  --lrmc-grid:           #E2E8F0;
+
+  /* ── Shape ────────────────────────────────────────────────────────────
+   * rounded-xl and shadow-md, per the locked system.
+   */
+  --lrmc-radius-sm: 0.5rem;    /* rounded-lg — controls */
+  --lrmc-radius:    0.75rem;   /* rounded-xl — cards */
+  --lrmc-radius-lg: 0.75rem;
+  --lrmc-radius-full: 9999px;
+
+  --lrmc-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --lrmc-shadow:    0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --lrmc-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --lrmc-shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+
+  /* ── Type ───────────────────────────────────────────────────────────── */
+  --lrmc-font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Layout constants the sidebar and topbar agree on. */
+  --lrmc-sidebar-w: 264px;
+  --lrmc-topbar-h: 64px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * BASE
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  background: var(--lrmc-gray-50);
+  color: var(--lrmc-gray-900);
+  font-family: var(--lrmc-font);
+  /* Ledgers align. Always. */
+  font-feature-settings: 'tnum' 1;
+  margin: 0;
+  min-height: 100vh;
+}
+
+.lrmc-num { font-variant-numeric: tabular-nums; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--lrmc-gray-50); }
+::-webkit-scrollbar-thumb { background: var(--lrmc-gray-200); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--lrmc-gray-400); }
+
+/* Keyboard users must be able to see where they are. Never remove this. */
+:focus-visible {
+  outline: 2px solid var(--lrmc-blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * MOTION
+ *
+ * Respected, not decorative. Somebody with vestibular sensitivity should be
+ * able to work a collections queue without feeling ill.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

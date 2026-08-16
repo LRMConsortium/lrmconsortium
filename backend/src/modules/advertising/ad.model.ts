@@ -140,7 +140,7 @@ const adSchema = new Schema<IAd>(
     clickCap: { type: Number, min: 1 },
     dailyImpressionCap: { type: Number, min: 1 },
     budgetAmount: { type: Number, min: 0 },
-    budgetCurrency: { type: String, enum: CURRENCIES, default: 'GHS' },
+    budgetCurrency: { type: String, enum: CURRENCIES, default: 'GMD' },
     spend: { type: Number, min: 0, default: 0 },
 
     impressions: { type: Number, min: 0, default: 0 },

@@ -22,7 +22,7 @@ export const META = {
   delete: { operationId: 'deletePropertyByPropertyId', method: 'DELETE' as const, pathTemplate: '/property/{propertyId}', zone: 'MEMBER_PORTAL' as const, roles: ["founder"] as Role[], permissions: ["property:delete"], ownership: 'scoped' as const, auth: 'required' as const },
   getById: { operationId: 'getPropertyByPropertyId', method: 'GET' as const, pathTemplate: '/property/{propertyId}', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager"] as Role[], permissions: ["property:read","property:readOwn"], ownership: 'scoped' as const, auth: 'required' as const },
   list: { operationId: 'getProperties', method: 'GET' as const, pathTemplate: '/properties', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager"] as Role[], permissions: ["property:read","property:readOwn"], ownership: 'scoped' as const, auth: 'required' as const },
-  searchPublic: { operationId: 'getPropertiesPublic', method: 'GET' as const, pathTemplate: '/properties/public', zone: 'PUBLIC_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'optional' as const },
+  searchPublic: { operationId: 'getPropertiesPublic', method: 'GET' as const, pathTemplate: '/properties/public', zone: 'PUBLIC_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'optional' as const },
   update: { operationId: 'patchPropertyByPropertyId', method: 'PATCH' as const, pathTemplate: '/property/{propertyId}', zone: 'MEMBER_PORTAL' as const, roles: ["founder","backOfficeStaff","coordinator","landlord","airbnbHost","hotelManager","resortManager"] as Role[], permissions: ["property:update","property:updateOwn"], ownership: 'scoped' as const, auth: 'required' as const },
 } satisfies Record<string, OperationMeta>;
 
@@ -88,7 +88,7 @@ export const properties = {
    *
    * `GET /properties/public`
    * Zone: PUBLIC_PORTAL
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, publicUser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer, publicUser
    * Ownership: none
    */
   searchPublic(options?: ListOptions): Promise<Page<PublicListing>> {

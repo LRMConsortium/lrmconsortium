@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 import {
   authenticate,
   auditTrail,
@@ -34,10 +34,22 @@ import {
 } from './rentSchedule.js';
 import {
   createLeaseSchema,
+  leaseActionSchema,
+  leaseTerminateSchema,
+  memberCreateLeaseSchema,
   recordRentPaymentSchema,
   runRentRemindersSchema,
   updateLeaseSchema,
 } from './lease.validation.js';
+import {
+  creationProblems,
+  leaseScope,
+  transitionProblems,
+  type LeaseStatus,
+} from './leaseLifecycle.js';
+import { LAUNCH_CURRENCY } from '../../config/currencies.js';
+import { Property } from '../property/property.model.js';
+import { User } from '../../models/User.js';
 
 /** Reduce a lease document to the fields the rent arithmetic needs. */
 function termsOf(lease: ILease): RentTerms {
@@ -70,6 +82,27 @@ export const leaseService = new BaseService<ILease>(Lease, {
 });
 
 const controller = createCrudController(leaseService);
+
+/**
+ * The person behind a tenant profile.
+ *
+ * `Notification.recipient` is a **User** — you notify a person, not one of the
+ * roles they hold — while `Lease.tenant` is a TenantProfile id. Both dispatches
+ * below passed the profile id straight through, so `GET /notifications/me`
+ * (which filters on `recipient: actor.userId`) matched nothing and
+ * `dispatch.targetsFor` found no push tokens.
+ *
+ * Every rent receipt and every rent reminder LRMC has ever sent went to an id
+ * that belongs to no user. Nothing failed; the rows were written and delivered
+ * to nobody.
+ */
+async function tenantUserFor(tenantProfileId: unknown): Promise<string | null> {
+  const profile = await TenantProfile.findOne({ _id: tenantProfileId as never, deletedAt: null })
+    .select('user')
+    .lean()
+    .exec();
+  return profile?.user ? String(profile.user) : null;
+}
 
 const collectionRouter = Router();
 const itemRouter = Router();
@@ -240,8 +273,10 @@ itemRouter.post(
     // Receipt to the tenant. Best-effort: a provider outage must not fail a
     // payment that has already been recorded.
     try {
+      const tenantUser = await tenantUserFor(lease.tenant);
+      if (!tenantUser) throw ApiError.internal('No user behind this tenant profile');
       await dispatchNotification({
-        recipient: String(lease.tenant),
+        recipient: tenantUser,
         category: 'rentReceipt',
         channel: 'inApp',
         title: `Rent received — ${lease.reference}`,
@@ -394,6 +429,12 @@ collectionRouter.post(
       due += 1;
       if (dryRun) continue;
 
+      /* A reminder with nobody to send it to is not sent. Skipped rather than
+       * dispatched to an empty string, which would write a notification row
+       * addressed to nothing and count it as delivered. */
+      const dueUser = await tenantUserFor(lease.tenant);
+      if (!dueUser) continue;
+
       const title =
         verdict.reason === 'inArrears'
           ? `Rent overdue — ${lease.reference}`
@@ -405,7 +446,7 @@ collectionRouter.post(
 
       outcomes.push(
         await dispatchNotification({
-          recipient: String(lease.tenant),
+          recipient: dueUser,
           category: 'rentDue',
           channel: 'push',
           title,
@@ -470,6 +511,267 @@ landlordScopedRouter.get(
   }),
 );
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * The member-portal surface.
+ *
+ * `/leases` and `/lease/:leaseId` above are the Back Office collection — the
+ * whole platform's tenancies, paged and filterable, plus the rent ledger and
+ * the schedule that hang off each one. What follows is the same records seen
+ * from inside a tenancy: the four lifecycle acts, and the three reads a member
+ * portal needs.
+ *
+ * Every rule lives in `leaseLifecycle.ts`, which has no Mongoose and is
+ * asserted without a database. This section resolves ids and writes rows. It
+ * decides nothing.
+ *
+ * ── The asymmetry worth knowing about ─────────────────────────────────────
+ * A landlord activates and completes. A landlord does **not** terminate —
+ * ending a tenancy early is eviction by another name, and LRMC carries the
+ * tenancy, holds the deposit and answers for the outcome. A coordinator does
+ * it, and has to say why. Same principle as a landlord not approving their own
+ * applicant.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+const memberRouter = Router();
+const leaseUserIdParam = namedIdParam('userId');
+const leasePropertyIdParam = namedIdParam('propertyId');
+const leaseMember = [authenticate, enterZone('MEMBER_PORTAL'), auditTrail('lease')] as const;
+
+/**
+ * The users behind a lease's three parties.
+ *
+ * The lease points at *profiles* — a TenantProfile, a LandlordProfile — because
+ * one person can be both a tenant and a landlord and their two positions are
+ * genuinely different. Deciding who somebody is to a lease needs user ids, so
+ * this is the join, done once per request rather than guessed at per check.
+ */
+async function partiesOf(lease: ILease): Promise<{
+  landlordUser: string | null;
+  tenantUser: string | null;
+  coordinatorUser: string | null;
+}> {
+  const [landlord, tenant] = await Promise.all([
+    lease.landlord
+      ? LandlordProfile.findById(lease.landlord).select('user').lean().exec()
+      : null,
+    lease.tenant
+      ? TenantProfile.findById(lease.tenant).select('user').lean().exec()
+      : null,
+  ]);
+  return {
+    landlordUser: landlord?.user ? String(landlord.user) : null,
+    tenantUser: tenant?.user ? String(tenant.user) : null,
+    coordinatorUser: lease.coordinator ? String(lease.coordinator) : null,
+  };
+}
+
+/** Every profile id this user owns, for matching against a lease's parties. */
+async function leaseProfileIds(userId: string): Promise<string[]> {
+  const user = await User.findOne({ _id: userId, deletedAt: null })
+    .select('profiles')
+    .lean()
+    .exec();
+  return (user?.profiles ?? []).map((p) => String(p.profileId));
+}
+
+/**
+ * One lifecycle act, written once.
+ *
+ * Activate, complete and terminate differ only in the status they aim at and
+ * whether they need a reason — so they are one function with a parameter rather
+ * than three handlers that agree today and drift next quarter. The permission
+ * check is `leaseLifecycle.transitionProblems`, which is the same table the
+ * suite asserts against.
+ */
+function lifecycleAct(target: LeaseStatus) {
+  return asyncHandler(async (req: Request, res: Response) => {
+    const actor = req.actor!;
+    const body = req.body as { lease: string; reason?: string };
+
+    const lease = await Lease.findOne({ _id: body.lease, deletedAt: null }).exec();
+    if (!lease) throw ApiError.notFound('Lease');
+
+    /* Who this actor is *to this lease* comes from the loaded row, never from
+     * anything the caller asserted. A body claiming `party: 'coordinator'`
+     * would be the whole authorisation model in one field. */
+    const parties = await partiesOf(lease);
+
+    const problems = transitionProblems(
+      { userId: actor.userId, roles: actor.roles as string[] },
+      { status: lease.status, ...parties },
+      { from: lease.status, to: target, reason: body.reason },
+    );
+    if (problems.length) throw ApiError.validation('Request validation failed', problems);
+
+    const now = new Date();
+    lease.status = target;
+    lease.updatedBy = actor.userId as never;
+    if (target === 'terminated') {
+      lease.terminationReason = body.reason;
+      /* Stamped, because `leaseEnd` is when the term was *meant* to run out and
+       * this is when the tenancy actually stopped. Tenancy stability measures
+       * the second; using the first would credit a terminated tenant with
+       * months they did not live there. */
+      lease.closedAt = now;
+    }
+    if (target === 'completed') lease.closedAt = now;
+
+    await lease.save();
+    return ok(res, lease);
+  });
+}
+
+memberRouter.post(
+  '/create',
+  ...leaseMember,
+  requirePermission('lease:create'),
+  validate({ body: memberCreateLeaseSchema }),
+  asyncHandler(async (req, res) => {
+    const actor = req.actor!;
+    const body = req.body as Record<string, unknown>;
+
+    const problems = creationProblems(
+      { userId: actor.userId, roles: actor.roles as string[] },
+      body as never,
+    );
+    if (problems.length) throw ApiError.validation('Request validation failed', problems);
+
+    const property = await Property.findOne({ _id: body.property, deletedAt: null })
+      .select('_id owner ownerKind assignedCoordinator')
+      .lean()
+      .exec();
+    if (!property) throw ApiError.notFound('Property');
+
+    /* The landlord is the property's, not the caller's claim about it. A body
+     * that could name the landlord would let somebody draw up a lease over
+     * a building they have nothing to do with.
+     *
+     * ── `owner` + `ownerKind`, not `landlord` ─────────────────────────────
+     * This selected `landlord` and `coordinator`, neither of which is a path on
+     * `Property` — ownership is polymorphic, because a building can belong to a
+     * landlord, a hotel or a resort. Mongoose returned `_id` alone, `landlord`
+     * was therefore always undefined, and **every member-portal lease creation
+     * was refused** with "that property has no landlord on record". A landlord
+     * could not draw up a tenancy at all.
+     *
+     * The `as { landlord?: unknown }` cast is what hid it: without the cast
+     * this would not have compiled. It is gone, so the types can do their job.
+     *
+     * `ownerKind` is checked rather than assumed — a hotel's property has an
+     * owner too, and it is not a landlord. */
+    const landlord = property.ownerKind === 'LandlordProfile' ? property.owner : undefined;
+    if (!landlord) {
+      throw ApiError.validation('Request validation failed', [{
+        field: 'property', code: 'no-landlord',
+        message: 'That property has no landlord on record, so a lease cannot name one.',
+      }]);
+    }
+
+    const lease = await Lease.create({
+      property: property._id,
+      landlord,
+      tenant: body.tenant,
+      coordinator: property.assignedCoordinator,
+      monthlyRent: body.monthlyRent,
+      currency: body.currency ?? LAUNCH_CURRENCY,
+      leaseStart: body.leaseStart,
+      /* Absent means month-to-month, which is ordinary here. Stored as null
+       * rather than invented, so nothing downstream treats a made-up date as a
+       * commitment somebody agreed to. */
+      leaseEnd: body.leaseEnd ?? null,
+      paymentDayOfMonth: body.paymentDayOfMonth ?? 1,
+      securityDeposit: body.securityDeposit,
+      /* Always. A lease is drawn up, then activated by the landlord whose
+       * property it is — a create that could land straight in `active` would
+       * skip the one moment either party gets to look at it. */
+      status: 'draft',
+      createdBy: actor.userId,
+    });
+
+    return created(res, lease);
+  }),
+);
+
+memberRouter.post('/activate', ...leaseMember, requirePermission('lease:update', 'lease:updateOwn'),
+  validate({ body: leaseActionSchema }), lifecycleAct('active'));
+
+memberRouter.post('/complete', ...leaseMember, requirePermission('lease:update', 'lease:updateOwn'),
+  validate({ body: leaseActionSchema }), lifecycleAct('completed'));
+
+memberRouter.post('/terminate', ...leaseMember, requirePermission('lease:update', 'lease:updateOwn'),
+  validate({ body: leaseTerminateSchema }), lifecycleAct('terminated'));
+
+/**
+ * One person's tenancies — as tenant or as landlord, because the same account
+ * can be both and their two histories are one screen.
+ */
+memberRouter.get(
+  '/user/:userId',
+  ...leaseMember,
+  requirePermission('lease:read', 'lease:readOwn'),
+  validate({ params: leaseUserIdParam, query: listQuery }),
+  asyncHandler(async (req, res) => {
+    const actor = req.actor!;
+    const subjectId = String(req.params.userId);
+    const scope = leaseScope(
+      { userId: actor.userId, roles: actor.roles as string[] },
+      subjectId,
+    );
+    /* Refused, not answered empty. "You may not see this" and "there is nothing
+     * here" are different facts, and returning the second for the first teaches
+     * a caller something about a person that is not theirs to learn. */
+    if (scope === 'none') throw ApiError.forbidden('You may not read this person\'s tenancies');
+
+    const profileIds = await leaseProfileIds(subjectId);
+    /* `serverFilters`: this `$or` is the authorization decision, and the
+     * client-filter allowlist does not list `$or`. Passed as `filters` it was
+     * dropped and every lease on the platform was returned. See `ListParams`. */
+    const { items, meta } = await leaseService.list({
+      serverFilters: {
+        $or: [{ tenant: { $in: profileIds } }, { landlord: { $in: profileIds } }],
+      },
+      limit: Number(req.query.limit ?? 20),
+      page: Number(req.query.page ?? 1),
+    });
+    return paginated(res, items, meta);
+  }),
+);
+
+/** A property's succession of tenancies. */
+memberRouter.get(
+  '/property/:propertyId',
+  ...leaseMember,
+  requirePermission('lease:read', 'lease:readOwn'),
+  validate({ params: leasePropertyIdParam, query: listQuery }),
+  asyncHandler(async (req, res) => {
+    const actor = req.actor!;
+    const property = await Property.findOne({ _id: req.params.propertyId, deletedAt: null })
+      .select('_id owner ownerKind')
+      .lean()
+      .exec();
+    if (!property) throw ApiError.notFound('Property');
+
+    /* A property's lease history is its landlord's business and LRMC's. A
+     * tenant may read their own lease — that is `/leases/user/:userId` — but
+     * not the succession of everybody who lived there before them. */
+    const mine = await leaseProfileIds(actor.userId);
+    const isOwner = property.ownerKind === 'LandlordProfile'
+      && mine.some((id) => id === String(property.owner));
+    const staffOrCoordinator = leaseScope(
+      { userId: actor.userId, roles: actor.roles as string[] }, actor.userId) === 'all';
+    if (!isOwner && !staffOrCoordinator) {
+      throw ApiError.forbidden('You may not read this property\'s tenancies');
+    }
+
+    const { items, meta } = await leaseService.list({
+      filters: { property: property._id },
+      limit: Number(req.query.limit ?? 20),
+      page: Number(req.query.page ?? 1),
+    });
+    return paginated(res, items, meta);
+  }),
+);
+
 export const leaseModule = {
   collectionPath: 'leases',
   itemPath: 'lease',
@@ -479,6 +781,7 @@ export const leaseModule = {
   controller,
   mounts: [
     { path: 'leases', router: collectionRouter },
+    { path: 'leases', router: memberRouter },
     { path: 'lease', router: itemRouter },
     { path: 'tenant', router: tenantScopedRouter },
     { path: 'landlord', router: landlordScopedRouter },

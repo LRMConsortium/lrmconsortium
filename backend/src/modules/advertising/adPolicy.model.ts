@@ -50,7 +50,7 @@ const adPolicySchema = new Schema<IAdPolicy>(
     version: { type: Number, required: true, min: 1 },
     isActive: { type: Boolean, default: false, index: true },
     effectiveFrom: { type: Date, required: true, default: () => new Date() },
-    currency: { type: String, enum: CURRENCIES, default: 'GHS' },
+    currency: { type: String, enum: CURRENCIES, default: 'GMD' },
 
     pricing: {
       type: [
@@ -131,7 +131,7 @@ export const DEFAULT_AD_POLICY: Omit<
   IAdPolicy,
   '_id' | 'createdAt' | 'updatedAt' | 'version' | 'isActive' | 'effectiveFrom'
 > = {
-  currency: 'GHS',
+  currency: 'GMD',
   pricing: [
     { placement: 'heroBanner', cpm: 45 },
     { placement: 'sidebar', cpm: 18 },

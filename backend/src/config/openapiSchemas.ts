@@ -39,10 +39,21 @@ export const VERIFICATION_STATUS = [
   'unsubmitted', 'pending', 'inReview', 'verified', 'rejected', 'suspended',
 ];
 export const LIFECYCLE_STATUS = ['draft', 'active', 'inactive', 'suspended', 'archived'];
+
+/** Marketplace. Mirrors `orderLifecycle.ORDER_STATUSES` and `MERCHANT_CATEGORIES`. */
+export const ORDER_STATUS = [
+  'pending', 'paid', 'accepted', 'fulfilled', 'confirmed',
+  'released', 'cancelled', 'refunded', 'disputed',
+];
+export const LISTING_STATUS = ['draft', 'pending', 'published', 'suspended', 'archived'];
+export const MERCHANT_CATEGORY = [
+  'homeGoods', 'buildingMaterials', 'furnishing', 'appliances', 'cleaning',
+  'security', 'landscaping', 'professionalServices', 'logistics', 'other',
+];
 export const ID_TYPE = ['ghanaCard', 'passport', 'driversLicense', 'votersId', 'nationalId', 'ssnit', 'other'];
 export const CONTACT_METHOD = ['phone', 'whatsapp', 'email', 'sms', 'inApp'];
 export const PAYMENT_METHOD = ['mobileMoney', 'bankTransfer', 'cash', 'card', 'cheque', 'crypto'];
-export const CURRENCY = ['GHS', 'USD', 'EUR', 'GBP', 'NGN', 'XOF'];
+export const CURRENCY = ['GMD', 'GHS', 'USD', 'EUR', 'GBP', 'NGN', 'XOF'];
 export const DIASPORA_STATUS = ['resident', 'diaspora', 'returnee', 'dualBased'];
 export const SERVICE_TIER = ['basic', 'standard', 'premium'];
 export const REPORTING_FREQUENCY = ['daily', 'weekly', 'monthly', 'quarterly'];
@@ -51,7 +62,7 @@ export const REPORTING_FREQUENCY = ['daily', 'weekly', 'monthly', 'quarterly'];
 // below reference the same lists from several places, and a copy that drifts is
 // a contract that lies.
 export const LEASE_STATUS = [
-  'draft', 'pendingSignature', 'active', 'inArrears', 'expiring', 'ended', 'terminated',
+  'draft', 'pendingSignature', 'active', 'inArrears', 'expiring', 'completed', 'terminated',
 ];
 export const ARREARS_ESCALATION = [
   'none', 'reminder', 'firstNotice', 'finalNotice', 'legalReferral',
@@ -356,7 +367,7 @@ const RESOURCES: Record<string, JsonSchema> = {
       diasporaStatus: str({ enum: DIASPORA_STATUS, default: 'resident' }),
       payoutMethod: str({ enum: PAYMENT_METHOD, default: 'bankTransfer' }),
       payoutAccountRef: str({ writeOnly: true }),
-      payoutCurrency: str({ enum: CURRENCY, default: 'GHS' }),
+      payoutCurrency: str({ enum: CURRENCY, default: 'GMD' }),
       managementFeePercent: num({ minimum: 0, maximum: 100, default: 10 }),
       statementFrequency: str({ enum: ['monthly', 'quarterly', 'annually'] }),
     },
@@ -377,7 +388,7 @@ const RESOURCES: Record<string, JsonSchema> = {
       leaseStart: date(),
       leaseEnd: date(),
       monthlyRent: num({ minimum: 0 }),
-      rentCurrency: str({ enum: CURRENCY, default: 'GHS' }),
+      rentCurrency: str({ enum: CURRENCY, default: 'GMD' }),
       securityDeposit: num({ minimum: 0 }),
       paymentMethod: str({ enum: PAYMENT_METHOD, default: 'mobileMoney' }),
       rentDueDay: int({ minimum: 1, maximum: 31, default: 1 }),
@@ -1035,7 +1046,7 @@ const RESOURCES: Record<string, JsonSchema> = {
       leaseStart: date(),
       leaseEnd: date(),
       monthlyRent: num({ minimum: 0 }),
-      currency: str({ enum: CURRENCY, default: 'GHS' }),
+      currency: str({ enum: CURRENCY, default: 'GMD' }),
       paymentDayOfMonth: int({ minimum: 1, maximum: 31, default: 1 }),
       securityDeposit: num({ minimum: 0 }),
       depositHeldBy: str({ enum: ['LRMC', 'landlord', 'escrow'] }),
@@ -1053,7 +1064,7 @@ const RESOURCES: Record<string, JsonSchema> = {
       daysRemaining: int({ readOnly: true, nullable: true }),
       isInArrears: { ...bool(), readOnly: true },
       status: str({
-        enum: ['draft', 'pendingSignature', 'active', 'inArrears', 'expiring', 'ended', 'terminated'],
+        enum: ['draft', 'pendingSignature', 'active', 'inArrears', 'expiring', 'completed', 'terminated'],
       }),
     },
     required: ['property', 'tenant', 'landlord', 'leaseStart', 'leaseEnd', 'monthlyRent'],
@@ -1282,6 +1293,76 @@ const RESOURCES: Record<string, JsonSchema> = {
   }),
 
   PaymentList: arr(ref('Payment')),
+
+  /**
+   * One person's payment record, summarised.
+   *
+   * `onTimeRate` is nullable and that is load-bearing — see the endpoint's own
+   * notes, and `paymentRules.ts` for why this figure differs from the
+   * `paymentReliability` an assessment shows.
+   */
+  PaymentSummary: {
+    type: 'object',
+    properties: {
+      total: int({ minimum: 0 }),
+      settled: int({ minimum: 0 }),
+      onTime: int({ minimum: 0 }),
+      late: int({ minimum: 0 }),
+      failed: int({ minimum: 0 }),
+      awaiting: int({ minimum: 0, description: 'Raised, not yet settled. Excluded from every rate.' }),
+      onTimeRate: {
+        type: ['number', 'null'], minimum: 0, maximum: 100,
+        description:
+          '(onTime / (onTime + late)) * 100. NULL when nothing has settled — never 0, which would tell somebody on their first day that none of their payments were on time. Not the same as `paymentReliability` in an assessment, which counts missed instalments too.',
+      },
+      settledByCurrency: {
+        type: 'array',
+        description:
+          'One entry per currency, deliberately not summed. There is no exchange rate on this platform, so a single total would not be an amount of anything.',
+        items: {
+          type: 'object',
+          properties: {
+            currency: str({ enum: CURRENCY }),
+            amount: { type: 'number', minimum: 0 },
+            payments: int({ minimum: 0 }),
+          },
+          required: ['currency', 'amount', 'payments'],
+        },
+      },
+      scope: str({
+        enum: ['all', 'recordedByMe'],
+        description: 'Whose rows these totals cover.',
+      }),
+      partial: bool({
+        description:
+          'True when the totals cover only part of the person\'s history — a coordinator seeing their own receipts. Say so on screen; a partial total read as a whole one is worse than no total.',
+      }),
+    },
+    required: ['total', 'settled', 'onTime', 'late', 'onTimeRate', 'settledByCurrency', 'scope', 'partial'],
+  },
+
+  /** One person's maintenance, summarised. Same buckets as `/stats/maintenance`. */
+  MaintenanceSummary: {
+    type: 'object',
+    properties: {
+      total: int({ minimum: 0 }),
+      open: int({ minimum: 0 }),
+      inProgress: int({ minimum: 0 }),
+      completed: int({ minimum: 0 }),
+      stalled: int({ minimum: 0, description: 'On hold or cancelled. Reported so the parts sum to the total.' }),
+      unclassified: int({ minimum: 0, description: 'A status no bucket claims. Should always be 0; visible so it cannot hide.' }),
+      needsEscalation: int({
+        minimum: 0,
+        description:
+          'Computed on every read from the current state, never stored. An unassigned emergency, a breached SLA, or a job parked past 72 hours.',
+      }),
+      averageResolutionHours: {
+        type: ['number', 'null'], minimum: 0,
+        description: 'NULL over nothing resolved — never 0, which would read as an instant turnaround.',
+      },
+    },
+    required: ['total', 'open', 'inProgress', 'completed', 'stalled', 'needsEscalation', 'averageResolutionHours'],
+  },
 
   // ── Notifications ────────────────────────────────────────────────────────
 
@@ -1971,6 +2052,808 @@ const RESOURCES: Record<string, JsonSchema> = {
 
   FacAttemptList: arr(ref('FacAttempt')),
 
+
+  // ── Marketplace ────────────────────────────────────────────────────────
+
+  // ── Viewings ──────────────────────────────────────────────────────────────
+
+  Viewing: {
+    type: 'object',
+    description:
+      'A tenant asking to see a property, and LRMC agreeing to be there. `localHour` is stored alongside `requestedFor` because the server runs in UTC and the tenant does not — the hour a person meant is not recoverable from an instant without their offset.',
+    properties: {
+      _id: oid(),
+      property: oid(),
+      requestedBy: oid('The User who asked. Not a TenantProfile — an applicant may not have one yet.'),
+      landlord: oid(),
+      coordinator: oid(),
+      requestedFor: date(),
+      localHour: int({ minimum: 0, maximum: 23, description: 'The hour the tenant meant, in their own day.' }),
+      alternateFor: date(),
+      alternateLocalHour: int({ minimum: 0, maximum: 23 }),
+      status: str({ enum: ['requested', 'confirmed', 'declined', 'completed', 'cancelled', 'noShow'] }),
+      note: str({ maxLength: 600, description: 'What the tenant said when asking.' }),
+      decisionReason: str({ maxLength: 600 }),
+      outcomeNote: str({ maxLength: 600, description: "LRMC's account, kept apart from the tenant's." }),
+      decidedBy: oid(),
+      decidedAt: date(),
+      outcomeRecordedAt: date(),
+      createdAt: date(),
+      updatedAt: date(),
+    },
+    required: ['property', 'requestedBy', 'requestedFor', 'localHour', 'status'],
+  },
+
+  ViewingList: arr(ref('Viewing')),
+
+  // ── Applications ──────────────────────────────────────────────────────────
+
+  EligibilityFactor: {
+    type: 'object',
+    description: 'One scored factor, with the reason in words the applicant could be shown.',
+    properties: {
+      factor: str({
+        enum: ['identity', 'employment', 'references', 'paymentHistory', 'ususuContributions', 'disputes'],
+      }),
+      label: str(),
+      status: str({
+        enum: ['pass', 'concern', 'fail', 'unknown'],
+        description:
+          '`unknown` means LRMC has no evidence, which is not the same as bad evidence and is never scored as a failure.',
+      }),
+      points: num({ minimum: 0 }),
+      max: num({ minimum: 0 }),
+      reason: str(),
+    },
+    required: ['factor', 'label', 'status', 'points', 'max', 'reason'],
+  },
+
+  Assessment: {
+    type: 'object',
+    description:
+      'A recommendation, never a decision. Stored on the application as a snapshot of what the decider was looking at — recomputing on read would rewrite history every time somebody paid their rent.',
+    properties: {
+      factors: arr(ref('EligibilityFactor')),
+      score: num({ minimum: 0, maximum: 100 }),
+      recommendation: str({ enum: ['recommend', 'review', 'decline'] }),
+      blockedBy: strArr(),
+      missing: strArr(),
+      summary: str(),
+      evidence: ref('EvidenceBundle'),
+      takenAt: date(),
+      takenBy: oid(),
+    },
+    required: ['factors', 'score', 'recommendation', 'summary'],
+  },
+
+  Application: {
+    type: 'object',
+    description:
+      'A tenancy application. LRMC scores it; a named person decides it. `decision` carries both the author and the reason, for an approval as much as for a refusal.',
+    properties: {
+      _id: oid(),
+      property: oid(),
+      applicant: oid(),
+      landlord: oid(),
+      coordinator: oid(),
+      status: str({
+        enum: ['submitted', 'underReview', 'awaitingApplicant', 'approved', 'rejected', 'withdrawn', 'leaseIssued'],
+      }),
+      proposedRent: num({ minimum: 0 }),
+      currency: str({ enum: ['GMD', 'GHS', 'USD', 'EUR', 'GBP', 'NGN', 'XOF'] }),
+      proposedStart: date(),
+      termMonths: int({ minimum: 1, maximum: 120 }),
+      householdSize: int({ minimum: 1, maximum: 30 }),
+      message: str({ maxLength: 2000 }),
+      documentKeys: strArr(),
+      assessment: ref('Assessment'),
+      decision: {
+        type: 'object',
+        properties: {
+          outcome: str({ enum: ['approved', 'rejected'] }),
+          decidedBy: oid(),
+          decidedAt: date(),
+          reason: str({ maxLength: 2000 }),
+          againstRecommendation: bool({
+            description: 'Recorded so a decision taken against the score is findable later.',
+          }),
+        },
+      },
+      lease: oid(),
+      outstandingRequest: str({ maxLength: 600 }),
+      createdAt: date(),
+      updatedAt: date(),
+    },
+    required: ['property', 'applicant', 'status', 'currency'],
+  },
+
+  ApplicationList: arr(ref('Application')),
+
+  ApplicationAssessment: {
+    type: 'object',
+    properties: {
+      assessment: ref('Assessment'),
+      application: ref('Application'),
+    },
+    required: ['assessment', 'application'],
+  },
+
+  RequestViewingRequest: {
+    type: 'object',
+    description:
+      '`localHour` is required rather than derived: the server runs in UTC and the tenant does not, so the hour a person meant cannot be recovered from an instant without their offset.',
+    properties: {
+      property: oid(),
+      requestedFor: date(),
+      localHour: int({ minimum: 0, maximum: 23 }),
+      alternateFor: date(),
+      alternateLocalHour: int({ minimum: 0, maximum: 23 }),
+      note: str({ maxLength: 600 }),
+    },
+    required: ['property', 'requestedFor', 'localHour'],
+  },
+
+  UpdateViewingRequest: {
+    type: 'object',
+    description: "The tenant's own note. Status moves through the action routes.",
+    properties: { note: str({ maxLength: 600 }) },
+  },
+
+  ViewingDecisionRequest: {
+    type: 'object',
+    properties: { reason: str({ maxLength: 600 }) },
+  },
+
+  ViewingOutcomeRequest: {
+    type: 'object',
+    properties: { outcomeNote: str({ maxLength: 600 }) },
+  },
+
+  CreateApplicationRequest: {
+    type: 'object',
+    description:
+      'What the applicant states. Notably absent: whether their income is evidenced, their payment history, and whether a dispute is open — those LRMC looks up, never accepts.',
+    properties: {
+      property: oid(),
+      proposedRent: num({ minimum: 0 }),
+      proposedStart: date(),
+      termMonths: int({ minimum: 1, maximum: 120 }),
+      householdSize: int({ minimum: 1, maximum: 30 }),
+      monthlyIncome: num({ minimum: 0, description: 'Declared, not evidenced.' }),
+      message: str({ maxLength: 2000 }),
+      documentKeys: strArr(),
+    },
+    required: ['property'],
+  },
+
+  DecideApplicationRequest: {
+    type: 'object',
+    description:
+      'Required for an approval as much as for a refusal. An approval nobody signed is the thing that cannot be defended later.',
+    properties: { reason: str({ minLength: 4, maxLength: 2000 }) },
+    required: ['reason'],
+  },
+
+  RequestFromApplicantRequest: {
+    type: 'object',
+    properties: { outstandingRequest: str({ minLength: 4, maxLength: 600 }) },
+    required: ['outstandingRequest'],
+  },
+
+  // ── Evidence ──────────────────────────────────────────────────────────────
+  //
+  // Every one of these is always returned in full, never null. `hasRecord` is
+  // what separates "LRMC looked and found zero" from "LRMC has never looked" —
+  // the second is scored as unknown and holds an application at review, and
+  // without this field the two are indistinguishable.
+
+  // ── Aggregate statistics ──────────────────────────────────────────────────
+  //
+  // Every rate is nullable on purpose. `(part / 0) * 100` is NaN, and a tile
+  // reading "NaN%" is worse than one reading "—". `null` means there was
+  // nothing to measure, which is a different fact from zero.
+
+  PropertyStats: {
+    type: 'object',
+    properties: {
+      totalProperties: int({ minimum: 0 }),
+      occupied: int({ minimum: 0 }),
+      vacant: int({ minimum: 0 }),
+      unavailable: int({ minimum: 0, description: 'Under maintenance or off-market.' }),
+      unclassified: int({ minimum: 0, description: 'A status no bucket claims. Should be zero.' }),
+      occupancyRate: { type: ['number', 'null'], minimum: 0, maximum: 100,
+        description: 'Of lettable properties. Null when there are none.' },
+    },
+    required: ['totalProperties', 'occupied', 'vacant', 'occupancyRate'],
+  },
+
+  PaymentStats: {
+    type: 'object',
+    properties: {
+      totalPayments: int({ minimum: 0 }),
+      settled: int({ minimum: 0 }),
+      onTime: int({ minimum: 0 }),
+      late: int({ minimum: 0 }),
+      awaiting: int({ minimum: 0 }),
+      failed: int({ minimum: 0 }),
+      reliability: { type: ['number', 'null'], minimum: 0, maximum: 100,
+        description: 'Of settled instalments. Null when none have settled.' },
+      collectionWindowDays: int({ minimum: 1,
+        description: 'The period `collected` covers. Label the figure from this rather than assuming 30.' }),
+      collected: {
+        type: 'array',
+        description:
+          'Money settled inside the window, grouped by currency and deliberately NOT summed into one figure: the ledger carries several currencies and there is no exchange rate on this platform. An empty array means nothing settled in the window.',
+        items: {
+          type: 'object',
+          properties: {
+            currency: str({ enum: CURRENCY }),
+            amount: { type: 'number', minimum: 0 },
+            payments: int({ minimum: 0 }),
+          },
+          required: ['currency', 'amount', 'payments'],
+        },
+      },
+    },
+    required: ['totalPayments', 'onTime', 'late', 'reliability', 'collected', 'collectionWindowDays'],
+  },
+
+  MaintenanceStats: {
+    type: 'object',
+    properties: {
+      totalRequests: int({ minimum: 0 }),
+      openRequests: int({ minimum: 0 }),
+      inProgress: int({ minimum: 0 }),
+      completed: int({ minimum: 0 }),
+      stalled: int({ minimum: 0, description: 'On hold or cancelled.' }),
+      unclassified: int({ minimum: 0 }),
+    },
+    required: ['totalRequests', 'openRequests', 'inProgress', 'completed'],
+  },
+
+  ApplicationStats: {
+    type: 'object',
+    properties: {
+      totalApplications: int({ minimum: 0 }),
+      underReview: int({ minimum: 0 }),
+      approved: int({ minimum: 0 }),
+      declined: int({ minimum: 0 }),
+      withdrawn: int({ minimum: 0 }),
+      unclassified: int({ minimum: 0 }),
+    },
+    required: ['totalApplications', 'underReview', 'approved', 'declined'],
+  },
+
+  UsusuStats: {
+    type: 'object',
+    properties: {
+      totalGroups: int({ minimum: 0,
+        description: 'Savings circles this caller can see. NOT every circle on the platform — a coordinator sees only the ones they steward or belong to.' }),
+      activeGroups: int({ minimum: 0, description: 'Forming, active or paused.' }),
+      totalMembers: int({ minimum: 0,
+        description: 'People with a ledger, not groups — there is no group entity.' }),
+      avgGroupHealth: { type: ['number', 'null'], minimum: 0, maximum: 100 },
+      totalContributions: int({ minimum: 0 }),
+      totalMisses: int({ minimum: 0 }),
+    },
+    required: ['totalMembers', 'avgGroupHealth', 'totalContributions', 'totalMisses'],
+  },
+
+  IdentityEvidence: {
+    type: 'object',
+    properties: {
+      identityVerified: bool(),
+      identityPending: bool({ description: 'Documents submitted, not yet reviewed.' }),
+      hasRecord: bool({ description: 'False means LRMC has never checked, which is not a failure.' }),
+    },
+    required: ['identityVerified', 'identityPending', 'hasRecord'],
+  },
+
+  ReferencesEvidence: {
+    type: 'object',
+    properties: {
+      referenceRequested: bool(),
+      referenceReceived: bool(),
+      referenceScore: { type: ['integer', 'null'], minimum: 0, maximum: 100 },
+      hasRecord: bool(),
+    },
+    required: ['referenceRequested', 'referenceReceived', 'referenceScore', 'hasRecord'],
+  },
+
+  DisputesEvidence: {
+    type: 'object',
+    properties: {
+      disputesOpen: int({ minimum: 0 }),
+      disputesResolved: int({ minimum: 0 }),
+      disputeSeverity: int({
+        minimum: 0, maximum: 3,
+        description: 'The worst open dispute, not the sum. Three minor ones are not one severe one.',
+      }),
+      hasRecord: bool(),
+    },
+    required: ['disputesOpen', 'disputesResolved', 'disputeSeverity', 'hasRecord'],
+  },
+
+  UsusuEvidence: {
+    type: 'object',
+    properties: {
+      contributionsMade: int({ minimum: 0 }),
+      contributionsMissed: int({ minimum: 0 }),
+      streak: int({ minimum: 0, description: 'Counted backwards from the most recent period.' }),
+      groupHealth: int({ minimum: 0, maximum: 100 }),
+      hasRecord: bool(),
+    },
+    required: ['contributionsMade', 'contributionsMissed', 'streak', 'groupHealth', 'hasRecord'],
+  },
+
+  PaymentsEvidence: {
+    type: 'object',
+    properties: {
+      paymentsOnTime: int({ minimum: 0 }),
+      paymentsLate: int({ minimum: 0 }),
+      paymentsMissed: int({ minimum: 0 }),
+      paymentReliability: int({ minimum: 0, maximum: 100 }),
+      hasRecord: bool(),
+    },
+    required: ['paymentsOnTime', 'paymentsLate', 'paymentsMissed', 'paymentReliability', 'hasRecord'],
+  },
+
+  EvidenceBundle: {
+    type: 'object',
+    description: 'All five kinds, always present.',
+    properties: {
+      identityEvidence: ref('IdentityEvidence'),
+      referencesEvidence: ref('ReferencesEvidence'),
+      disputesEvidence: ref('DisputesEvidence'),
+      ususuEvidence: ref('UsusuEvidence'),
+      paymentsEvidence: ref('PaymentsEvidence'),
+    },
+    required: ['identityEvidence', 'referencesEvidence', 'disputesEvidence',
+               'ususuEvidence', 'paymentsEvidence'],
+  },
+
+  Reference: {
+    type: 'object',
+    properties: {
+      _id: oid(), subject: oid(),
+      refereeName: str({ maxLength: 160 }),
+      relationship: str({ maxLength: 120 }),
+      status: str({ enum: ['requested', 'received', 'declined', 'expired'] }),
+      score: int({ minimum: 0, maximum: 100 }),
+      comment: str({ maxLength: 2000 }),
+      respondedAt: date(), createdAt: date(), updatedAt: date(),
+    },
+    required: ['subject', 'refereeName', 'status'],
+  },
+
+  Dispute: {
+    type: 'object',
+    properties: {
+      _id: oid(), subject: oid(), raisedBy: oid(),
+      kind: str({ enum: ['rent', 'damage', 'conduct', 'marketplace', 'ride', 'other'] }),
+      severity: int({ minimum: 1, maximum: 3 }),
+      summary: str({ maxLength: 2000 }),
+      status: str({ enum: ['open', 'resolved', 'withdrawn'] }),
+      resolution: str({ maxLength: 2000 }),
+      resolvedBy: oid(), resolvedAt: date(), createdAt: date(), updatedAt: date(),
+    },
+    required: ['subject', 'raisedBy', 'kind', 'severity', 'summary', 'status'],
+  },
+
+  UsusuEntry: {
+    type: 'object',
+    properties: {
+      _id: oid(), subject: oid(),
+      kind: str({ enum: ['contribution', 'miss'] }),
+      amount: num({ minimum: 0 }),
+      currency: str(),
+      period: str({ pattern: '^\\d{4}-(0[1-9]|1[0-2])$' }),
+      note: str({ maxLength: 600 }),
+      createdAt: date(),
+    },
+    required: ['subject', 'kind', 'period'],
+  },
+
+  ReferenceEvidenceView: {
+    type: 'object',
+    properties: {
+      subject: oid(),
+      evidence: ref('ReferencesEvidence'),
+      references: arr(ref('Reference')),
+    },
+    required: ['subject', 'evidence', 'references'],
+  },
+
+  DisputeEvidenceView: {
+    type: 'object',
+    properties: {
+      subject: oid(),
+      evidence: ref('DisputesEvidence'),
+      disputes: arr(ref('Dispute')),
+    },
+    required: ['subject', 'evidence', 'disputes'],
+  },
+
+  UsusuEvidenceView: {
+    type: 'object',
+    properties: {
+      subject: oid(),
+      evidence: ref('UsusuEvidence'),
+      entries: arr(ref('UsusuEntry')),
+    },
+    required: ['subject', 'evidence', 'entries'],
+  },
+
+  RequestReferenceRequest: {
+    type: 'object',
+    properties: {
+      subject: oid(), refereeName: str({ minLength: 2, maxLength: 160 }),
+      refereeEmail: str({ format: 'email' }), refereePhone: str({ maxLength: 30 }),
+      relationship: str({ maxLength: 120 }),
+    },
+    required: ['subject', 'refereeName'],
+  },
+
+  RespondToReferenceRequest: {
+    type: 'object',
+    properties: {
+      reference: oid(),
+      score: int({ minimum: 0, maximum: 100 }),
+      comment: str({ maxLength: 2000 }),
+    },
+    required: ['reference', 'score'],
+  },
+
+  OpenDisputeRequest: {
+    type: 'object',
+    properties: {
+      subject: oid(),
+      kind: str({ enum: ['rent', 'damage', 'conduct', 'marketplace', 'ride', 'other'] }),
+      severity: int({ minimum: 1, maximum: 3 }),
+      summary: str({ minLength: 10, maxLength: 2000 }),
+    },
+    required: ['subject', 'kind', 'severity', 'summary'],
+  },
+
+  ResolveMemberDisputeRequest: {
+    type: 'object',
+    description:
+      'Closing a dispute raised against a person. Distinct from the marketplace `ResolveDisputeRequest`, which settles an order and carries a refund decision — two different acts that happened to want the same name.',
+    properties: { resolution: str({ minLength: 4, maxLength: 2000 }) },
+    required: ['resolution'],
+  },
+
+  UsusuContributionRequest: {
+    type: 'object',
+    properties: {
+      subject: oid(), period: str({ pattern: '^\\d{4}-(0[1-9]|1[0-2])$' }),
+      amount: num({ minimum: 0 }), currency: str({ maxLength: 8 }),
+      note: str({ maxLength: 600 }),
+    },
+    required: ['subject', 'period'],
+  },
+
+  UsusuMissRequest: {
+    type: 'object',
+    properties: {
+      subject: oid(), period: str({ pattern: '^\\d{4}-(0[1-9]|1[0-2])$' }),
+      note: str({ maxLength: 600 }),
+    },
+    required: ['subject', 'period'],
+  },
+
+  Listing: {
+    type: 'object',
+    description:
+      'A product or a service offered by a merchant. Services carry no stock — a plumber does not run out of plumbing.',
+    properties: {
+      _id: oid(),
+      merchant: oid(),
+      createdBySeller: oid(),
+      kind: str({ enum: ['product', 'service'] }),
+      status: str({ enum: ['draft', 'pending', 'published', 'suspended', 'archived'] }),
+      title: str({ maxLength: 200 }),
+      description: str({ maxLength: 4000 }),
+      unitPrice: num({ minimum: 0 }),
+      currency: str({ enum: CURRENCY }),
+      stock: { type: ['integer', 'null'], minimum: 0,
+        description: 'Null on a service.' },
+      unit: str({ maxLength: 30 }),
+      category: str({ maxLength: 60 }),
+      imageKeys: arr(str({ description: 'Storage key, never a URL. Signed links are minted on demand.' })),
+      publishedAt: date(),
+      suspendedReason: str({ maxLength: 500 }),
+      totalOrdered: int({ minimum: 0 }),
+      createdAt: date(),
+      updatedAt: date(),
+    },
+    required: ['merchant', 'kind', 'status', 'title', 'unitPrice'],
+  },
+
+  ListingList: arr(ref('Listing')),
+
+  MerchantCatalogue: {
+    type: 'object',
+    properties: {
+      merchant: oid(),
+      tradingName: str(),
+      verified: bool({ description: 'An unverified merchant cannot publish anything.' }),
+      counts: {
+        type: 'object',
+        properties: {
+          total: int({ minimum: 0 }), published: int({ minimum: 0 }),
+          draft: int({ minimum: 0 }), suspended: int({ minimum: 0 }),
+        },
+      },
+      listings: arr(ref('Listing')),
+    },
+    required: ['merchant', 'listings'],
+  },
+
+  OrderLine: {
+    type: 'object',
+    description:
+      'Title and price are **copied at order time**, not referenced. A price change next Tuesday must not alter what was agreed last Friday.',
+    properties: {
+      listing: oid(),
+      title: str({ maxLength: 200 }),
+      unitPrice: num({ minimum: 0 }),
+      quantity: int({ minimum: 1 }),
+      lineTotal: num({ minimum: 0 }),
+    },
+    required: ['listing', 'title', 'unitPrice', 'quantity', 'lineTotal'],
+  },
+
+  OrderEvent: {
+    type: 'object',
+    description: 'Append-only. Every status change, who made it, and when.',
+    properties: {
+      at: date(),
+      from: str({ enum: ORDER_STATUS }),
+      to: str({ enum: ORDER_STATUS }),
+      by: oid(),
+      actorKind: str({ enum: ['buyer', 'merchant', 'backOffice', 'system'] }),
+      note: str({ maxLength: 500 }),
+    },
+    required: ['at', 'from', 'to', 'actorKind'],
+  },
+
+  Order: {
+    type: 'object',
+    description:
+      'Escrow order. LRMC holds the money from `paid` until `released`, `refunded` or `cancelled`.',
+    properties: {
+      _id: oid(),
+      reference: str({ description: 'ORD-YYYY-NNNNNNN. Sortable and legible on a receipt.' }),
+      merchant: oid(),
+      customer: oid(),
+      placedByBuyer: oid(),
+      acceptedBySeller: oid(),
+      status: str({ enum: ORDER_STATUS }),
+      lines: arr(ref('OrderLine')),
+      subtotal: num({ minimum: 0 }),
+      deliveryFee: num({ minimum: 0 }),
+      total: num({ minimum: 0, description: 'What the buyer pays.' }),
+      commissionPercent: num({ minimum: 0, maximum: 100 }),
+      platformFee: num({ minimum: 0, description: "LRMC's cut. Charged on goods, never on delivery." }),
+      merchantNet: num({ minimum: 0, description: 'What the merchant is owed on completion.' }),
+      currency: str({ enum: CURRENCY }),
+      deliveryAddress: str({ maxLength: 400 }),
+      note: str({ maxLength: 1000 }),
+      placedAt: date(), paidAt: date(), acceptedAt: date(), fulfilledAt: date(),
+      confirmedAt: date(), releasedAt: date(), cancelledAt: date(),
+      refundedAt: date(), disputedAt: date(),
+      /** When escrow releases on its own if the buyer stays silent. */
+      autoReleaseAt: date(),
+      disputeReason: str({ maxLength: 1000 }),
+      disputeRuling: str({ maxLength: 1000 }),
+      refundAmount: num({ minimum: 0 }),
+      events: arr(ref('OrderEvent')),
+      createdAt: date(),
+      updatedAt: date(),
+    },
+    required: ['reference', 'merchant', 'customer', 'status', 'lines', 'total'],
+  },
+
+  OrderList: arr(ref('Order')),
+
+  OrderDetail: {
+    type: 'object',
+    description: 'An order plus what *this* caller may do with it next.',
+    properties: {
+      statusLabel: str({ description: 'Plain language, for the screen.' }),
+      escrowHeld: bool({ description: 'Is LRMC currently holding the money?' }),
+      // Derived from the lifecycle table for this caller's side, so a client
+      // never reimplements the rules to decide which buttons to draw.
+      availableActions: arr(str({ enum: ORDER_STATUS })),
+      yourSide: str({ enum: ['buyer', 'merchant', 'backOffice', 'system'] }),
+    },
+    allOf: [ref('Order')],
+  },
+
+  OrderSettlement: {
+    type: 'object',
+    description: 'The result of releasing or refunding an order.',
+    properties: {
+      statusLabel: str(),
+      escrowHeld: bool(),
+      settlement: {
+        type: 'object',
+        properties: {
+          gross: num({ minimum: 0 }),
+          platformFee: num({ minimum: 0 }),
+          merchantNet: num({ minimum: 0 }),
+        },
+      },
+      refund: {
+        type: 'object',
+        description: 'Commission is returned pro rata on a partial refund.',
+        properties: {
+          refundToBuyer: num({ minimum: 0 }),
+          commissionReturned: num({ minimum: 0 }),
+          merchantBears: num({ minimum: 0 }),
+          isFull: bool(),
+        },
+      },
+    },
+    allOf: [ref('Order')],
+  },
+
+  MarketplaceOverview: {
+    type: 'object',
+    properties: {
+      side: str({ enum: ['merchant', 'customer', 'observer'] }),
+      account: {
+        type: 'object',
+        properties: { id: oid(), name: str(), verified: bool() },
+      },
+      orders: {
+        type: 'object',
+        properties: {
+          total: int({ minimum: 0 }),
+          byStatus: { type: 'object', additionalProperties: int({ minimum: 0 }) },
+          escrowHeldCount: int({ minimum: 0 }),
+          escrowHeldValue: num({ minimum: 0, description: 'What is currently tied up.' }),
+          settledValue: num({ minimum: 0 }),
+          commissionPaid: num({ minimum: 0, description: 'Merchant view only; null for a customer.' }),
+        },
+      },
+      awaitingAction: arr({
+        type: 'object',
+        properties: {
+          _id: oid(), reference: str(), status: str({ enum: ORDER_STATUS }),
+          statusLabel: str(), total: num({ minimum: 0 }), currency: str({ enum: CURRENCY }),
+          createdAt: date(),
+        },
+      }),
+    },
+    required: ['side', 'orders'],
+  },
+
+  Merchant: {
+    type: 'object',
+    description: 'A trading account on the LRMC marketplace. Sellers act for it.',
+    properties: {
+      _id: oid(),
+      user: oid(),
+      tradingName: str({ maxLength: 160 }),
+      category: str({ enum: MERCHANT_CATEGORY }),
+      registrationNumber: str({ maxLength: 60 }),
+      sellers: arr(oid()),
+      commissionPercent: num({ minimum: 0, maximum: 100,
+        description: 'Negotiated rate. Absent means the platform default at time of order.' }),
+      currency: str({ enum: CURRENCY }),
+      totalOrders: int({ minimum: 0 }),
+      totalSales: num({ minimum: 0 }),
+      email: str(), phone: str(), region: str(), city: str(),
+      verificationStatus: str({ enum: VERIFICATION_STATUS }),
+      status: str({ enum: LIFECYCLE_STATUS }),
+      rating: num({ minimum: 0, maximum: 5 }),
+      createdAt: date(), updatedAt: date(),
+    },
+    required: ['user', 'tradingName', 'category'],
+  },
+
+  MerchantList: arr(ref('Merchant')),
+
+  Customer: {
+    type: 'object',
+    description: 'A buying account on the LRMC marketplace. Buyers act for it.',
+    properties: {
+      _id: oid(),
+      user: oid(),
+      accountName: str({ maxLength: 160 }),
+      buyers: arr(oid()),
+      buyerOrderLimit: num({ minimum: 0,
+        description: 'Ceiling on what a named buyer may spend without the account owner. Absent means no ceiling.' }),
+      currency: str({ enum: CURRENCY }),
+      totalOrders: int({ minimum: 0 }),
+      totalSpend: num({ minimum: 0 }),
+      email: str(), phone: str(), region: str(), city: str(),
+      verificationStatus: str({ enum: VERIFICATION_STATUS }),
+      status: str({ enum: LIFECYCLE_STATUS }),
+      createdAt: date(), updatedAt: date(),
+    },
+    required: ['user', 'accountName'],
+  },
+
+  CustomerList: arr(ref('Customer')),
+
+
+  MerchantSellersRequest: {
+    type: 'object',
+    description: 'Who may sell for this merchant account.',
+    properties: { sellerIds: arr(oid()) },
+    required: ['sellerIds'],
+  },
+
+  CustomerBuyersRequest: {
+    type: 'object',
+    description: 'Who may purchase against this customer account.',
+    properties: { buyerIds: arr(oid()) },
+    required: ['buyerIds'],
+  },
+
+  SuspendListingRequest: {
+    type: 'object',
+    properties: { reason: str({ minLength: 5, maxLength: 500 }) },
+    required: ['reason'],
+  },
+
+  PlaceOrderRequest: {
+    type: 'object',
+    description:
+      'Listing ids and quantities only. Prices are read from the listings server-side — a client that could name its own prices would name zero.',
+    properties: {
+      merchant: oid(),
+      lines: arr({
+        type: 'object',
+        properties: { listing: oid(), quantity: int({ minimum: 1, maximum: 999 }) },
+        required: ['listing', 'quantity'],
+      }),
+      deliveryAddress: str({ maxLength: 400 }),
+      note: str({ maxLength: 1000 }),
+    },
+    required: ['merchant', 'lines'],
+  },
+
+  PayOrderRequest: {
+    type: 'object',
+    description:
+      "The provider's reference, not an amount. The server already knows what the order costs; letting the client restate it would mean deciding which number to believe.",
+    properties: { paymentRef: str({ minLength: 3, maxLength: 120 }) },
+    required: ['paymentRef'],
+  },
+
+  FulfilOrderRequest: {
+    type: 'object',
+    properties: { note: str({ maxLength: 500 }) },
+  },
+
+  CancelOrderRequest: {
+    type: 'object',
+    properties: { reason: str({ minLength: 3, maxLength: 500 }) },
+    required: ['reason'],
+  },
+
+  DisputeOrderRequest: {
+    type: 'object',
+    properties: { reason: str({ minLength: 10, maxLength: 1000 }) },
+    required: ['reason'],
+  },
+
+  ResolveDisputeRequest: {
+    type: 'object',
+    description:
+      'A refund ruling must carry an amount; the other two must not. Commission is returned pro rata.',
+    properties: {
+      outcome: str({ enum: ['release', 'refund', 'cancel'] }),
+      ruling: str({ minLength: 10, maxLength: 1000 }),
+      refundAmount: num({ minimum: 0 }),
+    },
+    required: ['outcome', 'ruling'],
+  },
+
   FacLockout: {
     type: 'object',
     description: 'One founder currently shut out of Zone A, with the time left to run.',
@@ -2597,6 +3480,378 @@ const RESOURCES: Record<string, JsonSchema> = {
     required: ['refreshToken'],
   },
 
+  /**
+   * Writing down money that changed hands in a room.
+   *
+   * Note what is absent and cannot be supplied: `status` (always succeeded),
+   * `recordedBy` (from the token), `reference` (derived, for idempotency),
+   * `platformFee` and `netAmount` (derived by the model). The schema is strict,
+   * so sending one is a refusal rather than a silent drop.
+   */
+  RecordPaymentRequest: {
+    type: 'object',
+    properties: {
+      payer: oid('The member the money came from, as a USER id. The server joins to their profile.'),
+      subject: oid('The lease the money is against, where there is one.'),
+      subjectKind: str({ enum: ['Lease', 'MaintenanceRequest'] }),
+      kind: str({
+        enum: ['rent', 'deposit'],
+        description: 'Only these two. A payout recorded by hand would mark money as sent that was never sent.',
+      }),
+      method: str({ enum: ['cash', 'mobileMoney', 'bankTransfer'], default: 'cash' }),
+      amount: { type: 'number', exclusiveMinimum: 0, maximum: 500000 },
+      currency: str({ enum: CURRENCY }),
+      paidAt: str({ format: 'date-time', description: 'When the money changed hands, which is not when it was typed in. A future date is refused.' }),
+      notes: str({ maxLength: 2000 }),
+    },
+    required: ['payer', 'kind', 'amount'],
+  },
+
+  /**
+   * Drawing up a tenancy from inside the portal.
+   *
+   * `landlord`, `status`, `totalPaid`, `arrearsAmount` and `reference` are all
+   * absent and cannot be supplied — the schema is strict, so sending one is a
+   * refusal rather than a silent drop.
+   */
+  MemberCreateLeaseRequest: {
+    type: 'object',
+    properties: {
+      property: oid(),
+      tenant: oid('The tenant, as a USER id. The server joins to their profile.'),
+      monthlyRent: { type: 'number', exclusiveMinimum: 0 },
+      currency: str({ enum: CURRENCY }),
+      leaseStart: str({ format: 'date-time' }),
+      leaseEnd: {
+        type: ['string', 'null'], format: 'date-time',
+        description:
+          'OPTIONAL. Absent or null means a month-to-month tenancy, which is ordinary in The Gambia. A required end date would force whoever writes the lease to invent one that then looks like a commitment.',
+      },
+      paymentDayOfMonth: int({ minimum: 1, maximum: 31 }),
+      securityDeposit: { type: 'number', minimum: 0 },
+    },
+    required: ['property', 'tenant', 'monthlyRent', 'leaseStart'],
+  },
+
+  /** Activating or completing. The id, and nothing else to get wrong. */
+  LeaseActionRequest: {
+    type: 'object',
+    properties: { lease: oid() },
+    required: ['lease'],
+  },
+
+  /** Ending a tenancy early. The reason is not optional. */
+  LeaseTerminateRequest: {
+    type: 'object',
+    properties: {
+      lease: oid(),
+      reason: str({
+        minLength: 4, maxLength: 600,
+        description:
+          'Required. The tenant is told, and a terminated lease with no stated reason is a fact about somebody\'s housing that nobody has to defend.',
+      }),
+    },
+    required: ['lease', 'reason'],
+  },
+
+  /* ── Security ──────────────────────────────────────────────────────────── */
+
+  /** What a browser sends. See the endpoint's notes for what it may not send. */
+  ErrorReportRequest: {
+    type: 'object',
+    properties: {
+      kind: str({
+        enum: ['uncaught', 'unhandledRejection', 'frameworkMissing',
+               'networkFailure', 'deadPath', 'assetFailure'],
+        description:
+          '`deadPath` is the one nothing throws for: a control that should do something and does not. It is the most valuable kind here — a member meeting it has no vocabulary to report it.',
+      }),
+      message: str({ minLength: 1, maxLength: 1000 }),
+      source: str({ maxLength: 600, description: 'The script. Code, not data.' }),
+      line: int({ minimum: 0 }),
+      column: int({ minimum: 0 }),
+      stack: str({ maxLength: 4000, description: 'Truncated and redacted before storage.' }),
+      url: str({ maxLength: 2000, description: 'Reduced to a path template server-side. Never stored raw — a query string is where a name goes.' }),
+      control: str({ maxLength: 200, description: 'Which control, for a dead path.' }),
+    },
+    required: ['kind', 'message'],
+  },
+
+  /** Deliberately empty of information. See the endpoint's notes. */
+  ErrorReceipt: {
+    type: 'object',
+    properties: { received: bool() },
+    required: ['received'],
+  },
+
+  ErrorReport: {
+    type: 'object',
+    properties: {
+      id: oid(),
+      kind: str(),
+      severity: str({ enum: ['noise', 'degraded', 'blocking'] }),
+      message: str(),
+      path: str({ description: 'A path template, never a real URL.' }),
+      source: str(),
+      line: int(),
+      stack: str(),
+      control: str(),
+      reportedBy: oid('Null for a fault reported before sign-in.'),
+      summary: str({ description: 'Plain English, computed on read. Never a stack — a coordinator is being asked whether a member is stuck, not to debug.' }),
+      createdAt: str({ format: 'date-time' }),
+      expiresAt: str({ format: 'date-time', description: '90 days. A retention decision, not a storage one.' }),
+    },
+    required: ['id', 'kind', 'severity', 'message', 'path'],
+  },
+
+  ErrorReportList: arr(ref('ErrorReport')),
+
+  AnomalyFeed: {
+    type: 'object',
+    properties: {
+      findings: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            signal: str(),
+            action: str({ enum: ['watch', 'escalate'], description: 'The ceiling is `escalate`. Nothing here blocks or locks.' }),
+            count: int({ minimum: 0 }),
+            windowMinutes: int({ minimum: 1 }),
+            subject: oid(),
+            address: str(),
+            summary: str(),
+          },
+          required: ['signal', 'action', 'count', 'summary'],
+        },
+      },
+      note: str({ description: 'Says that counts are per process, so a reader knows why they look low.' }),
+      reportsPerBrowserPerWindow: int({ minimum: 1 }),
+    },
+    required: ['findings'],
+  },
+
+  /* ── Ususu groups ──────────────────────────────────────────────────────── */
+
+  UsusuGroup: {
+    type: 'object',
+    properties: {
+      id: oid(),
+      name: str({ maxLength: 160 }),
+      createdBy: oid('The coordinator who runs it. Holds the register, not the money.'),
+      members: { type: 'array', items: oid() },
+      status: str({ enum: ['forming', 'active', 'paused', 'closed'] }),
+      contributionAmount: { type: 'number', minimum: 0 },
+      currency: str({ enum: CURRENCY }),
+      region: str(),
+      note: str({ maxLength: 600 }),
+      createdAt: str({ format: 'date-time' }),
+      updatedAt: str({ format: 'date-time' }),
+    },
+    required: ['id', 'name', 'createdBy', 'members', 'status'],
+  },
+
+  UsusuGroupList: arr(ref('UsusuGroup')),
+
+  /**
+   * A circle's ledger, summarised.
+   *
+   * `groupHealth` and `streaks` are computed on every read and never stored —
+   * a stored streak is a number somebody can correct by hand, and it goes stale
+   * the moment a contribution is recorded out of order.
+   */
+  UsusuGroupSummary: {
+    type: 'object',
+    properties: {
+      group: ref('UsusuGroup'),
+      memberCount: int({ minimum: 0 }),
+      contributions: int({ minimum: 0 }),
+      misses: int({ minimum: 0 }),
+      groupHealth: {
+        type: ['number', 'null'], minimum: 0, maximum: 100,
+        description:
+          '100 minus five per miss, floored at zero. NULL when nobody has contributed yet — a circle formed on Tuesday is not in perfect health and is not in bad health.',
+      },
+      streaks: {
+        type: 'object',
+        additionalProperties: int({ minimum: 0 }),
+        description:
+          'Consecutive contributions per member, counted BACKWARDS from the latest period. A member in the circle with no entries gets a real 0.',
+      },
+      contributedByCurrency: {
+        type: 'array',
+        description: 'One entry per currency, never summed. There is no exchange rate on this platform.',
+        items: {
+          type: 'object',
+          properties: {
+            currency: str({ enum: CURRENCY }),
+            amount: { type: 'number', minimum: 0 },
+            entries: int({ minimum: 0 }),
+          },
+          required: ['currency', 'amount', 'entries'],
+        },
+      },
+      hasActivity: bool({ description: 'Whether anything has been recorded at all.' }),
+      entries: {
+        type: 'array',
+        description: 'Oldest first, so a page renders the history in the order it happened.',
+        items: {
+          type: 'object',
+          properties: {
+            member: oid(),
+            kind: str({ enum: ['contribution', 'miss'] }),
+            period: str({ pattern: '^\\d{4}-(0[1-9]|1[0-2])$' }),
+            amount: { type: 'number', minimum: 0 },
+            currency: str({ enum: CURRENCY }),
+          },
+          required: ['member', 'kind', 'period'],
+        },
+      },
+    },
+    required: ['memberCount', 'contributions', 'misses', 'groupHealth', 'streaks', 'hasActivity'],
+  },
+
+  CreateUsusuGroupRequest: {
+    type: 'object',
+    properties: {
+      name: str({ minLength: 2, maxLength: 160 }),
+      members: { type: 'array', maxItems: 50, items: oid() },
+      contributionAmount: { type: 'number', minimum: 0 },
+      currency: str({ enum: CURRENCY }),
+      region: str({ maxLength: 120 }),
+      note: str({ maxLength: 600 }),
+    },
+    required: ['name'],
+  },
+
+  UsusuGroupMemberRequest: {
+    type: 'object',
+    properties: { group: oid(), member: oid() },
+    required: ['group', 'member'],
+  },
+
+  UsusuGroupContributionRequest: {
+    type: 'object',
+    properties: {
+      group: oid(),
+      member: oid(),
+      period: str({
+        pattern: '^\\d{4}-(0[1-9]|1[0-2])$',
+        description: 'YYYY-MM. What a streak is counted over and what makes a duplicate detectable.',
+      }),
+      amount: { type: 'number', minimum: 0 },
+      currency: str({ enum: CURRENCY }),
+      note: str({ maxLength: 600 }),
+    },
+    required: ['group', 'member', 'period', 'amount'],
+  },
+
+  UsusuGroupMissRequest: {
+    type: 'object',
+    properties: {
+      group: oid(),
+      member: oid(),
+      period: str({ pattern: '^\\d{4}-(0[1-9]|1[0-2])$' }),
+      note: str({ maxLength: 600 }),
+    },
+    required: ['group', 'member', 'period'],
+  },
+
+  /** Raising a work order from inside a tenancy. */
+  RaiseMaintenanceRequest: {
+    type: 'object',
+    properties: {
+      property: oid(),
+      title: str({ minLength: 3, maxLength: 240 }),
+      description: str({ maxLength: 5000 }),
+      serviceType: str(),
+      priority: str({
+        enum: ['low', 'normal', 'high', 'emergency'],
+        description: 'How urgent the person reporting it thinks it is. Triage may change it.',
+      }),
+      photosBefore: {
+        type: 'array', maxItems: 8, items: str(),
+        description: 'Storage keys, never URLs. An address a client supplies is an address a client controls.',
+      },
+    },
+    required: ['property', 'title', 'serviceType'],
+  },
+
+  /** Moving a request along. `note` is required for some targets, not all. */
+  UpdateMaintenanceStatusRequest: {
+    type: 'object',
+    properties: {
+      request: oid(),
+      status: str({
+        enum: ['open', 'triaged', 'assigned', 'quoted', 'approved', 'inProgress',
+               'onHold', 'completed', 'verified', 'cancelled'],
+      }),
+      note: str({
+        maxLength: 1000,
+        description:
+          'REQUIRED when cancelling or parking a request, and when sending one back from completed. Whoever raised it is told what happened, and a bare status change reads as an accident.',
+      }),
+    },
+    required: ['request', 'status'],
+  },
+
+  /**
+   * Signing out. `refreshToken` is optional on purpose — see the note on the
+   * endpoint. A sign-out with nothing to revoke still succeeds.
+   */
+  LogoutRequest: {
+    type: 'object',
+    properties: {
+      refreshToken: str({
+        minLength: 10,
+        description:
+          'The session\'s refresh token. Send it: revoking it is what makes signing out mean anything server-side. Omitted, the reply says nothing was revoked.',
+      }),
+    },
+  },
+
+  /**
+   * What LRMC tells a payment gateway.
+   *
+   * Read by Stripe and by nobody else, which is why it carries no order and no
+   * money: a webhook response is an acknowledgement, and anything more in it is
+   * information handed to whoever can reach the endpoint.
+   *
+   * `received: true` accompanies almost every outcome on purpose — a non-2xx
+   * tells Stripe to retry, and retrying cannot fix a duplicate, an unhandled
+   * event type, or an event about an order that does not exist.
+   */
+  WebhookAck: {
+    type: 'object',
+    properties: {
+      received: bool({ description: 'Always true when the signature verified.' }),
+      outcome: str({
+        description:
+          'What was done: settled, alreadyApplied, inFlight, retryStale, ignoredType, unknownOrder, refused, recorded, unparseable or noEventId.',
+      }),
+      eventId: str({ description: "The gateway's event id, echoed for correlation." }),
+      type: str({ description: 'The event type, when it was not acted on.' }),
+    },
+    required: ['received', 'outcome'],
+  },
+
+  SignOutOutcome: {
+    type: 'object',
+    properties: {
+      signedOut: bool({
+        description: 'Always true. The local session ends regardless of what could be revoked.',
+      }),
+      refreshRevoked: bool({
+        description:
+          'Whether a refresh token was presented and is now denied. False means any refresh token for this session remains valid until it expires.',
+      }),
+      note: str({
+        description: 'Present when nothing was revoked, explaining why.',
+      }),
+    },
+    required: ['signedOut', 'refreshRevoked'],
+  },
+
   ChangePasswordRequest: {
     type: 'object',
     properties: {
@@ -3092,6 +4347,8 @@ export const RESPONSE_SCHEMA_BY_LABEL: Record<string, string> = {
   'Resort profile': 'Resort',
   'Rental car company profile': 'RentalCarCompany',
   'Driver profile': 'Driver',
+  'Merchant profile': 'Merchant',
+  'Customer profile': 'Customer',
   'Rider profile': 'Rider',
   'Advertiser profile': 'Advertiser',
   Property: 'Property',
@@ -3175,9 +4432,38 @@ export const REQUEST_SCHEMA_BY_NAME: Record<string, string> = {
   verifyFacCodeSchema: 'VerifyFacCodeRequest',
   revokeFacCodeSchema: 'RevokeFacCodeRequest',
   clearLockoutSchema: 'ClearLockoutRequest',
+
+  // Marketplace
+  createMerchantSchema: 'Merchant',
+  updateMerchantSchema: 'Merchant',
+  merchantSellersSchema: 'MerchantSellersRequest',
+  createCustomerSchema: 'Customer',
+  updateCustomerSchema: 'Customer',
+  customerBuyersSchema: 'CustomerBuyersRequest',
+  createListingSchema: 'Listing',
+  updateListingSchema: 'Listing',
+  suspendListingSchema: 'SuspendListingRequest',
+  placeOrderSchema: 'PlaceOrderRequest',
+  payOrderSchema: 'PayOrderRequest',
+  fulfilOrderSchema: 'FulfilOrderRequest',
+  cancelOrderSchema: 'CancelOrderRequest',
+  disputeOrderSchema: 'DisputeOrderRequest',
+  resolveDisputeSchema: 'ResolveDisputeRequest',
   facResetRequestSchema: 'FacResetRequestBody',
   updateCommercialClientSchema: 'CommercialClient',
   refreshSchema: 'RefreshRequest',
+  recordPaymentSchema: 'RecordPaymentRequest',
+  memberCreateLeaseSchema: 'MemberCreateLeaseRequest',
+  createUsusuGroupSchema: 'CreateUsusuGroupRequest',
+  errorReportSchema: 'ErrorReportRequest',
+  groupMemberSchema: 'UsusuGroupMemberRequest',
+  groupContributionSchema: 'UsusuGroupContributionRequest',
+  groupMissSchema: 'UsusuGroupMissRequest',
+  leaseActionSchema: 'LeaseActionRequest',
+  leaseTerminateSchema: 'LeaseTerminateRequest',
+  raiseMaintenanceSchema: 'RaiseMaintenanceRequest',
+  updateMaintenanceStatusSchema: 'UpdateMaintenanceStatusRequest',
+  logoutSchema: 'LogoutRequest',
   changePasswordSchema: 'ChangePasswordRequest',
   assignRoleSchema: 'AssignRolesRequest',
   assignPropertiesSchema: 'AssignPropertiesRequest',
@@ -3186,5 +4472,19 @@ export const REQUEST_SCHEMA_BY_NAME: Record<string, string> = {
   adStatusSchema: 'AdStatusRequest',
   adReviewSchema: 'AdReviewRequest',
   advertiserTermsSchema: 'AdvertiserTermsRequest',
+  requestViewingSchema: 'RequestViewingRequest',
+  updateViewingSchema: 'UpdateViewingRequest',
+  viewingDecisionSchema: 'ViewingDecisionRequest',
+  viewingOutcomeSchema: 'ViewingOutcomeRequest',
+  createApplicationSchema: 'CreateApplicationRequest',
+  updateApplicationSchema: 'CreateApplicationRequest',
+  decideApplicationSchema: 'DecideApplicationRequest',
+  requestFromApplicantSchema: 'RequestFromApplicantRequest',
+  requestReferenceSchema: 'RequestReferenceRequest',
+  respondToReferenceSchema: 'RespondToReferenceRequest',
+  openDisputeSchema: 'OpenDisputeRequest',
+  resolveMemberDisputeSchema: 'ResolveMemberDisputeRequest',
+  ususuContributionSchema: 'UsusuContributionRequest',
+  ususuMissSchema: 'UsusuMissRequest',
   trackTrafficSchema: 'TrafficEventRequest',
 };

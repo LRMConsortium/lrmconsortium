@@ -19,6 +19,8 @@ export const NOTIFICATION_CATEGORIES = [
   'payout',
   'adReview',
   'adBudget',
+  // Marketplace: order placed, accepted, delivered, settled, disputed.
+  'order',
   'policy',
   'system',
 ] as const;

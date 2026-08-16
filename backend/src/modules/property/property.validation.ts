@@ -54,5 +54,22 @@ export const publicPropertyQuery = z
     maxRent: z.coerce.number().min(0).optional(),
     bedrooms: z.coerce.number().int().min(0).max(100).optional(),
     search: z.string().trim().max(120).optional(),
+    furnished: z
+      .enum(['true', 'false'])
+      .transform((v) => v === 'true')
+      .optional(),
+    /**
+     * Comma-separated, and every one must be present — not any.
+     *
+     * A tenant who ticks "water" and "electricity" is stating two
+     * requirements, not offering two alternatives. Returning a house with
+     * water and no power because it matched one of them wastes a journey.
+     */
+    amenities: z
+      .string()
+      .trim()
+      .max(200)
+      .transform((v) => v.split(',').map((a) => a.trim()).filter(Boolean).slice(0, 12))
+      .optional(),
   })
   .strict();

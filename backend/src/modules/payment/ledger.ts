@@ -15,17 +15,47 @@ import { money } from '../lease/rentSchedule.js';
 
 export { money };
 
+/* Canonical in config/currencies.ts, beside the management fee, so the pricing
+ * page and the split arithmetic read one number. They disagreed for four weeks:
+ * this said 15 and the page said "to confirm". */
+import { RIDE_COMMISSION_PERCENT } from '../../config/currencies.js';
+
 /** Default platform commission on an Ususu fare, in percent. */
-export const DEFAULT_RIDE_COMMISSION_PERCENT = 15;
+export const DEFAULT_RIDE_COMMISSION_PERCENT = RIDE_COMMISSION_PERCENT;
 
 /** Kinds that move money *to* a member. These are what a payout batch settles. */
-export const PAYOUT_KINDS = ['driverPayout', 'landlordPayout', 'refund'] as const;
+export const PAYMENT_KINDS = [
+  'rent',
+  'deposit',
+  'ride',
+  'driverPayout',
+  'landlordPayout',
+  'adSpend',
+  'vendorInvoice',
+  'managementFee',
+  'refund',
+  /* Marketplace. `order` is money taken from a buyer and held by LRMC;
+   * `merchantPayout` is what leaves for the merchant once escrow releases.
+   * Both were absent, which is why escrow released with no ledger row at all —
+   * the money was held and never settled, and the payout batcher had no kind it
+   * could pay a merchant with. */
+  'order',
+  'merchantPayout',
+] as const;
+
+export type PaymentKind = (typeof PAYMENT_KINDS)[number];
+
+export const PAYOUT_KINDS = ['driverPayout', 'landlordPayout', 'merchantPayout', 'refund'] as const;
 export type PayoutKind = (typeof PAYOUT_KINDS)[number];
 
 /** Which ledger kinds each payout kind is computed from. */
 export const PAYOUT_SOURCES: Record<PayoutKind, readonly string[]> = {
   driverPayout: ['ride'],
   landlordPayout: ['rent', 'deposit'],
+  /* A merchant is paid from the orders LRMC took money for and has released.
+   * Without this the batcher had no source for them: escrow held the money and
+   * nothing could ever pay it out. */
+  merchantPayout: ['order'],
   refund: ['adSpend'],
 };
 
@@ -163,7 +193,7 @@ export function buildPayoutBatch(
 
   return {
     kind,
-    currency: currency ?? lines[0]?.currency ?? 'GHS',
+    currency: currency ?? lines[0]?.currency ?? 'GMD',
     lines,
     lineCount: lines.length,
     gross: money(lines.reduce((sum, l) => sum + l.gross, 0)),
@@ -208,7 +238,7 @@ export interface EarningsSummary {
   byKind: Record<string, { count: number; gross: number; net: number }>;
 }
 
-export function summariseEarnings(rows: LedgerRow[], currency = 'GHS'): EarningsSummary {
+export function summariseEarnings(rows: LedgerRow[], currency = 'GMD'): EarningsSummary {
   const scoped = rows.filter((r) => r.currency === currency && r.status === 'succeeded');
   const byKind: EarningsSummary['byKind'] = {};
 
@@ -228,4 +258,52 @@ export function summariseEarnings(rows: LedgerRow[], currency = 'GHS'): Earnings
     count: scoped.length,
     byKind,
   };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Which ledger rows a live batch still has a claim on
+ *
+ * A payout batch claims the payments it is built from, so a second batch does
+ * not pay the same money again. The question is which claims survive a batch
+ * that only partly succeeded.
+ *
+ * Batch-level was the first answer and it stranded money: a batch where one
+ * transfer failed and the rest succeeded becomes `partiallySettled`, which is
+ * neither cancelled nor failed, so *every* line stayed claimed — including the
+ * one that never paid. That payee could not then be paid by any route.
+ *
+ * Releasing the whole batch is worse: the lines that did pay become claimable
+ * again and those payees are paid twice.
+ *
+ * So the claim is per line. A `failed` line releases its sources; anything else
+ * — settled, processing, or not yet attempted — keeps them.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/** Batch statuses whose lines may still be re-driven by settling again. */
+export const RETRYABLE_BATCH_STATUSES = ['draft', 'approved', 'partiallySettled'] as const;
+
+export interface ClaimingLine {
+  transferStatus?: string | null;
+  sourcePayments?: unknown[];
+}
+
+/** Does this line still hold a claim on the rows it was built from? */
+export function lineStillClaims(line: ClaimingLine): boolean {
+  return line.transferStatus !== 'failed';
+}
+
+/**
+ * Every payment id still claimed by these batches.
+ *
+ * Takes the batches already narrowed to the live ones (not cancelled, not
+ * failed); the per-line question is the one this answers.
+ */
+export function spentSourceIds(batches: { lines?: ClaimingLine[] }[]): Set<string> {
+  return new Set(
+    batches.flatMap((b) =>
+      (b.lines ?? [])
+        .filter(lineStillClaims)
+        .flatMap((l) => (l.sourcePayments ?? []).map((id) => String(id))),
+    ),
+  );
 }

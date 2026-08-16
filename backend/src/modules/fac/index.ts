@@ -140,14 +140,33 @@ async function currentCode(withHash = false): Promise<IFacCode | null> {
   return (await query.lean().exec()) as IFacCode | null;
 }
 
-/** This actor's attempt history, oldest first — the order the arithmetic expects. */
+/**
+ * This actor's attempt history, oldest first — the order the arithmetic expects.
+ *
+ * ── Why the sort is descending and the array is then reversed ─────────────
+ * This read `.sort('at').limit(200)`: ascending, so the *oldest* two hundred
+ * rows. `FacAttempt` has no TTL, so once an actor accumulated two hundred rows
+ * the window stopped advancing — permanently. Every later attempt was graded
+ * against ancient history, `consecutiveFailures` never counted the current run,
+ * and the lockout could not fire again.
+ *
+ * That is the credential guarding Zone A. Somebody who had already made two
+ * hundred attempts could then work through a six-digit code without ever being
+ * locked out, and the two hundredth attempt is the cheap part.
+ *
+ * So: the newest two hundred by sorting descending, then reversed back into the
+ * oldest-first order `attemptVerdict` reads. Both halves are needed — sorting
+ * descending without reversing feeds the arithmetic backwards, which breaks
+ * `consecutiveFailures` and `lastFailure` in a quieter way.
+ */
 async function historyFor(actorId: string): Promise<AttemptRecord[]> {
   const rows = await FacAttempt.find({ actor: actorId })
-    .sort('at')
+    .sort('-at')
     .limit(200)
     .select('actor at result')
     .lean()
     .exec();
+  rows.reverse();
   return rows.map((r) => ({ actor: String(r.actor), at: r.at, result: r.result }));
 }
 

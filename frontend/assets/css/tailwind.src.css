@@ -1,0 +1,14 @@
+/* Tailwind's entry point for the real CLI build.
+ *
+ * The pages load `cdn.tailwindcss.com` today, which ships a JIT compiler to
+ * every visitor. `scripts/bundle.production.sh` runs the CLI over this file and
+ * emits only the classes the pages and the JavaScript actually use — see that
+ * script for why scanning the JS matters as much as scanning the HTML.
+ *
+ * The LRMC palette lives here rather than in an inline `tailwind.config` block,
+ * because an inline config is only read by the CDN build and would be dead
+ * weight in every page once the compiled stylesheet exists.
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

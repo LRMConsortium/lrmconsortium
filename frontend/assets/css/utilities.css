@@ -1,0 +1,407 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+ * LRMC — COMPONENT CLASSES
+ *
+ * The LRMC design system, expressed once. Tailwind handles one-off layout;
+ * these classes handle the pieces that must look identical on every page.
+ *
+ * Each class produces exactly what the locked design system specifies — a
+ * primary button is `bg-blue-600 … rounded-lg hover:bg-blue-700`, a card is
+ * `bg-white rounded-xl shadow-md p-6` — written once so page eleven cannot
+ * spell it differently from page one.
+ *
+ * Everything resolves to a token in theme.css. Nothing here hard-codes a
+ * brand colour.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+
+.lrmc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: var(--lrmc-radius-sm);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.5;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+  white-space: nowrap;
+  text-decoration: none;
+  /* 44px minimum touch target — this platform is used on phones in the field. */
+  min-height: 2.75rem;
+}
+
+.lrmc-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.lrmc-btn-primary { background: var(--lrmc-blue-600); color: #fff; }
+.lrmc-btn-primary:hover:not(:disabled) { background: var(--lrmc-blue-700); }
+
+.lrmc-btn-secondary { background: var(--lrmc-slate); color: #fff; }
+.lrmc-btn-secondary:hover:not(:disabled) { background: #1e293b; }
+
+.lrmc-btn-success { background: #059669; color: #fff; }
+.lrmc-btn-success:hover:not(:disabled) { background: #047857; }
+
+.lrmc-btn-warning { background: var(--lrmc-amber); color: #fff; }
+.lrmc-btn-warning:hover:not(:disabled) { background: #d97706; }
+
+.lrmc-btn-danger { background: var(--lrmc-rose); color: #fff; }
+.lrmc-btn-danger:hover:not(:disabled) { background: #be123c; }
+
+.lrmc-btn-ghost {
+  background: var(--lrmc-white);
+  color: var(--lrmc-slate);
+  border-color: #cbd5e1;
+}
+.lrmc-btn-ghost:hover:not(:disabled) { background: var(--lrmc-gray-50); }
+
+.lrmc-btn-sm { padding: .375rem .75rem; font-size: .8125rem; min-height: 2.25rem; }
+
+/* Gold, the institutional seal, used as a button — and only ever with dark
+ * text on it. White on LRMC Gold measures 2.1:1 and is unreadable; slate-900
+ * on the same gold measures 8.5:1. The colour is not the problem, the pairing
+ * is. */
+.lrmc-btn-gold { background: var(--lrmc-gold); color: #0F172A; }
+.lrmc-btn-gold:hover:not(:disabled) { background: #C19B2E; }
+
+/* For the blue hero band, where a white-backed ghost button would sit on the
+ * page like a hole. Outlined in white on blue: 10.4:1. */
+.lrmc-btn-on-blue {
+  background: transparent;
+  color: #fff;
+  border-color: rgba(255, 255, 255, .55);
+}
+.lrmc-btn-on-blue:hover:not(:disabled) { background: rgba(255, 255, 255, .12); }
+
+/* ── Cards ───────────────────────────────────────────────────────────────
+ * bg-white rounded-xl shadow-md p-6, per the locked system.
+ */
+
+.lrmc-card {
+  background: var(--lrmc-white);
+  border-radius: var(--lrmc-radius);
+  box-shadow: var(--lrmc-shadow);
+  padding: 1.5rem;
+}
+
+.lrmc-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.lrmc-card-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--lrmc-gray-900);
+  margin: 0;
+}
+
+/* Founder Command Center surfaces carry the gold edge. Used sparingly — an
+ * accent on everything is an accent on nothing. */
+.lrmc-card-institutional { border-top: 3px solid var(--lrmc-gold); }
+
+/* ── Stat tiles ──────────────────────────────────────────────────────────
+ * The headline tile is LRMC Blue with white text, per the locked system.
+ * The muted variant is for supporting figures — a row of four solid blue
+ * tiles makes all four equally loud, which is the same as none of them being.
+ */
+
+.lrmc-stat {
+  background: var(--lrmc-blue-600);
+  color: #fff;
+  border-radius: var(--lrmc-radius);
+  box-shadow: var(--lrmc-shadow);
+  padding: 1.5rem;
+}
+
+.lrmc-stat-value {
+  font-size: 1.875rem;
+  font-weight: 700;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+
+.lrmc-stat-label { font-size: .875rem; opacity: .8; margin: .25rem 0 0; }
+.lrmc-stat-meta  { font-size: .8125rem; opacity: .75; margin: .5rem 0 0; }
+
+.lrmc-stat-muted {
+  background: var(--lrmc-white);
+  color: var(--lrmc-gray-900);
+}
+.lrmc-stat-muted .lrmc-stat-label { color: var(--lrmc-gray-500); opacity: 1; }
+.lrmc-stat-muted .lrmc-stat-meta  { color: var(--lrmc-gray-500); opacity: 1; }
+
+/* ── Tables ──────────────────────────────────────────────────────────── */
+
+.lrmc-table { min-width: 100%; border-collapse: collapse; }
+
+.lrmc-table thead { background: var(--lrmc-gray-50); }
+
+.lrmc-table thead th {
+  text-align: left;
+  padding: .75rem 1rem;
+  font-size: .875rem;
+  font-weight: 600;
+  color: #334155;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--lrmc-gray-200);
+}
+
+.lrmc-table tbody td {
+  padding: .75rem 1rem;
+  font-size: .875rem;
+  color: var(--lrmc-gray-900);
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.lrmc-table tbody tr:hover { background: var(--lrmc-gray-50); }
+.lrmc-table .lrmc-td-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ── Badges ──────────────────────────────────────────────────────────────
+ * Every badge carries a word. Colour is the fast read; the word is what
+ * survives colour blindness and a black-and-white board pack.
+ */
+
+.lrmc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .3125rem;
+  padding: .25rem .5rem;
+  border-radius: var(--lrmc-radius-sm);
+  font-size: .75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lrmc-badge-success { background: var(--lrmc-emerald-tint); color: #047857; }
+.lrmc-badge-warning { background: var(--lrmc-amber-tint);   color: #b45309; }
+.lrmc-badge-danger  { background: var(--lrmc-rose-tint);    color: #be123c; }
+.lrmc-badge-info    { background: var(--lrmc-blue-tint);    color: var(--lrmc-blue); }
+/* slate-700, not slate-500: gray-500 on this background measures 4.34:1,
+ * which is under AA for text this size. slate-700 is 9.45:1. */
+.lrmc-badge-neutral { background: #f1f5f9;                  color: var(--lrmc-slate); }
+.lrmc-badge-gold    { background: #FBF6E5;                  color: #8a6d1c; }
+
+/* ── Forms ───────────────────────────────────────────────────────────── */
+
+.lrmc-label {
+  display: block;
+  margin-bottom: .5rem;
+  font-size: .875rem;
+  font-weight: 500;
+  color: #334155;
+}
+
+.lrmc-input,
+.lrmc-select,
+.lrmc-textarea {
+  width: 100%;
+  padding: .5rem 1rem;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--lrmc-radius-sm);
+  font-size: .875rem;
+  font-family: inherit;
+  color: var(--lrmc-gray-900);
+  background: var(--lrmc-white);
+  min-height: 2.75rem;
+}
+
+.lrmc-input::placeholder, .lrmc-textarea::placeholder { color: var(--lrmc-gray-400); }
+
+.lrmc-input:focus, .lrmc-select:focus, .lrmc-textarea:focus {
+  outline: none;
+  border-color: var(--lrmc-blue-500);
+  box-shadow: 0 0 0 3px rgb(59 130 246 / .25);
+}
+
+/* An invalid field is outlined AND carries text beneath. A red border alone
+ * tells a colour-blind user nothing at all. */
+.lrmc-input[aria-invalid='true'],
+.lrmc-select[aria-invalid='true'],
+.lrmc-textarea[aria-invalid='true'] { border-color: var(--lrmc-rose); }
+
+.lrmc-field-error { margin-top: .375rem; font-size: .8125rem; color: var(--lrmc-rose); }
+.lrmc-field-hint  { margin-top: .375rem; font-size: .8125rem; color: var(--lrmc-gray-500); }
+
+/* ── Navigation ──────────────────────────────────────────────────────── */
+
+/* The public mobile menu sits on white. `.lrmc-nav-item` below is slate-300
+ * for the dark sidebar — on white it measures 1.7:1, which is a menu nobody
+ * can read. Same shape, legible colours, and a 44px touch target, because a
+ * navigation drawer exists to be tapped. */
+.lrmc-menu-item {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  min-height: 2.75rem;
+  padding: .625rem .875rem;
+  border-radius: var(--lrmc-radius-sm);
+  font-size: .9375rem;
+  font-weight: 500;
+  color: var(--lrmc-slate);
+  text-decoration: none;
+}
+.lrmc-menu-item:hover { background: var(--lrmc-gray-50); color: var(--lrmc-blue-700); }
+.lrmc-menu-item[aria-current='page'] { color: var(--lrmc-blue-700); font-weight: 600; }
+
+.lrmc-nav-item {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .625rem .875rem;
+  border-radius: var(--lrmc-radius-sm);
+  font-size: .875rem;
+  font-weight: 500;
+  color: #cbd5e1;
+  text-decoration: none;
+  transition: background-color .15s ease, color .15s ease;
+}
+
+.lrmc-nav-item:hover { background: rgb(255 255 255 / .08); color: #fff; }
+
+/* The current page is marked by a gold edge as well as by colour, so it is
+ * still identifiable without colour perception. */
+.lrmc-nav-item.active {
+  background: rgb(255 255 255 / .12);
+  color: #fff;
+  box-shadow: inset 3px 0 0 var(--lrmc-gold);
+}
+
+.lrmc-nav-section {
+  font-size: .6875rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  padding: 0 .875rem;
+  margin: 1.5rem 0 .5rem;
+}
+
+/* ── Loading ─────────────────────────────────────────────────────────────
+ * HTMX toggles `.htmx-request` while a request is in flight. These rules are
+ * what make every load state on the platform consistent without a line of
+ * JavaScript per page.
+ */
+
+.lrmc-skeleton {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: lrmc-shimmer 1.4s infinite;
+  border-radius: var(--lrmc-radius-sm);
+}
+
+@keyframes lrmc-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.htmx-indicator { opacity: 0; transition: opacity .15s ease; }
+.htmx-request .htmx-indicator, .htmx-request.htmx-indicator { opacity: 1; }
+
+/* ── Toasts ──────────────────────────────────────────────────────────── */
+
+.lrmc-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: .625rem;
+  padding: .75rem 1rem;
+  border-radius: var(--lrmc-radius-sm);
+  box-shadow: var(--lrmc-shadow-lg);
+  font-size: .875rem;
+  color: #fff;
+  max-width: 24rem;
+}
+
+.lrmc-toast-info    { background: var(--lrmc-blue-600); }
+.lrmc-toast-success { background: #059669; }
+.lrmc-toast-warning { background: var(--lrmc-amber); }
+.lrmc-toast-danger  { background: var(--lrmc-rose); }
+
+/* ── Visibility ──────────────────────────────────────────────────────────
+ * The `hidden` attribute beats every component class that sets `display`.
+ * Without `!important`, `.lrmc-nav-item { display: flex }` wins whenever this
+ * file happens to load last — a bug that appears and disappears with
+ * stylesheet order, which is the worst kind to chase.
+ *
+ * It also removes the element from the accessibility tree, so a screen reader
+ * does not announce navigation the user cannot see.
+ */
+
+[hidden] { display: none !important; }
+
+/* ── Accessibility helpers ───────────────────────────────────────────── */
+
+.lrmc-sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Visible on focus — the first thing a keyboard user tabs to on every page. */
+.lrmc-skip-link {
+  position: absolute;
+  left: -9999px;
+  top: .5rem;
+  z-index: 100;
+  background: var(--lrmc-blue);
+  color: #fff;
+  padding: .5rem 1rem;
+  border-radius: var(--lrmc-radius-sm);
+  font-weight: 600;
+  font-size: .875rem;
+}
+.lrmc-skip-link:focus { left: .5rem; }
+
+/* ── Working without Alpine ─────────────────────────────────────────────────
+ *
+ * `assets/js/boot.js` adds `lrmc-no-alpine` to <html> when Alpine has not
+ * arrived. That is not a hypothetical: LRMC launches in The Gambia, a great
+ * many members are on intermittent mobile data, and a script from a CDN is the
+ * single most likely thing on the page to fail.
+ *
+ * What failed before these rules existed, measured rather than guessed: on a
+ * 390px viewport the sidebar sat at left:0 over the whole screen, the main
+ * content was underneath it, and the toggle button did nothing — because
+ * `:class="sidebarOpen ? … : '-translate-x-full'"` is an Alpine binding and
+ * without Alpine it never evaluates. The page was unusable, silently, with no
+ * console error.
+ *
+ * These rules take over the two things Alpine was doing: keeping the rail
+ * off-canvas on a phone, and sliding it in when asked. `boot.js` flips
+ * `data-open` in place of the Alpine state.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lrmc-no-alpine aside {
+  transform: translateX(-100%);
+  transition: transform .2s;
+}
+.lrmc-no-alpine aside[data-open="true"] { transform: translateX(0); }
+
+/* At the desktop breakpoint the rail is part of the layout, not an overlay, so
+ * it is always in view — matching `lg:static lg:translate-x-0`. */
+@media (min-width: 1024px) {
+  .lrmc-no-alpine aside { transform: translateX(0); }
+}
+
+/* The scrim. Alpine's `x-show` normally reveals it; `x-cloak` keeps it hidden
+ * without Alpine, which is correct — so this only shows it while the rail is
+ * open in fallback mode. */
+.lrmc-no-alpine .lrmc-scrim { display: none; }
+.lrmc-no-alpine .lrmc-scrim[data-open="true"] { display: block; }
+
+/* Said out loud rather than degrading in silence. A person whose page is half
+ * working should be told, not left wondering. */
+.lrmc-fallback-note { display: none; }
+.lrmc-no-alpine .lrmc-fallback-note { display: block; }

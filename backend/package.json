@@ -12,6 +12,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "preflight": "tsx src/scripts/preflight.ts",
+    "migrate": "tsx src/scripts/migrate.ts",
     "seed": "tsx src/scripts/seed.ts",
     "verify": "tsx src/scripts/verify.ts",
     "test": "npm run typecheck && npm run verify && npm run blueprint && npm run openapi",
@@ -28,6 +30,7 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.6.0",
+    "stripe": "^22.5.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

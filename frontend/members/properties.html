@@ -1,0 +1,1511 @@
+<!DOCTYPE html>
+<!--
+ ═══════════════════════════════════════════════════════════════════════════
+ LEGACY RENTAL MANAGEMENT CONSORTIUM (LRMC)
+ PROPERTIES — dual mode
+
+ Extends layouts/dashboard.html. Zone D (MEMBER_PORTAL): a session is
+ required, and `LrmcAuth.requireSession()` sends a visitor to sign in
+ remembering where they were. The public search lives at
+ `/public/properties.html` and shares the card renderer and the search engine.
+
+ ── Modes ────────────────────────────────────────────────────────────────
+ **Find** — a tenant looking for a home: search, request a viewing, apply.
+ **List** — a landlord: their portfolio by state, the add-property wizard,
+ the applications queue, and how the portfolio is performing.
+
+ The mode is resolved from three things in this order, and the last word is
+ always the roles on the token:
+
+   1. `?mode=find` or `?mode=list` from the URL
+   2. the person's roles — a landlord defaults to `list`, everyone else `find`
+   3. **clamping**: a mode the roles do not permit is refused, whatever the
+      URL says. `?mode=list` in a tenant's address bar shows the tenant
+      surface, because the landlord surface would be a wall of 403s.
+
+ That clamp is a courtesy, not a control. Every endpoint behind it is gated
+ again server-side — `property:create` for the wizard, `application:approve`
+ for a decision — and the backend is the only place that counts.
+
+ ── What is *not* decided here ───────────────────────────────────────────
+ No status transition is computed on this page. A viewing becomes `confirmed`
+ because `POST /viewing/:id/confirm` returned a record saying so; an
+ application becomes `approved` because the server allowed it. The page reads
+ the record back and re-renders. `LrmcStatus` names states; it never decides
+ which are reachable — `viewingRules.mayAct` and
+ `applicationLifecycle.decisionProblems` do, on the server.
+
+ Likewise the assessment: LRMC's recommendation is displayed, never computed
+ here, and the page shows the snapshot the record carries rather than
+ anything it works out itself.
+
+ ── Four protections the suite proves ────────────────────────────────────
+ • **A stale reply never wins.** Slow answers to searches and to queue loads
+   are discarded if the person has moved on. `LrmcSearch` holds the guard for
+   the search; `loadQueue` holds its own for the queues.
+ • **Paging appears only when there is more than one page**, and changing a
+   filter returns to page one.
+ • **Nothing is faked client-side.** Filters are sent to the API, not applied
+   to a cached array; a count comes from `meta.total`, not from `rows.length`.
+ • **Every action re-reads.** After a decision the list is reloaded from the
+   server rather than patched in place, so what is on screen is what the
+   server holds.
+ ═══════════════════════════════════════════════════════════════════════════
+-->
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Properties · Legacy Rental Management Consortium</title>
+
+  <!-- Zone D is behind a session and never indexed. The canonical is here
+       so a shared link resolves to one address rather than to whichever
+       `?mode=` the sharer happened to be reading. -->
+  <link rel="canonical" href="https://lrmconsortium.com/members/properties.html" />
+  <meta name="robots" content="noindex, nofollow" />
+
+  <link rel="icon" href="/assets/img/lrmc-favicon.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/assets/img/lrmc-apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: {
+      colors: {
+        /* LRMC branding-locked palette */
+        lrmc: { blue:'#1E3A8A', gold:'#D4AF37', slate:'#334155' },
+        blue: { 100:'#DBEAFE', 300:'#93C5FD', 500:'#3B82F6', 600:'#2563EB', 700:'#1D4ED8', 800:'#1E3A8A', 900:'#172554' },
+        slate:{ 50:'#F8FAFC', 100:'#F1F5F9', 200:'#E2E8F0', 300:'#CBD5E1', 400:'#94A3B8', 500:'#64748B', 700:'#334155', 800:'#1E293B', 900:'#0F172A' },
+        emerald:{ 50:'#ECFDF5', 100:'#D1FAE5', 500:'#10B981', 600:'#059669', 700:'#047857' },
+        amber:{ 50:'#FFFBEB', 100:'#FEF3C7', 500:'#F59E0B', 600:'#D97706', 700:'#B45309' },
+        rose:{ 50:'#FFF1F2', 100:'#FFE4E6', 600:'#E11D48', 700:'#BE123C' },
+        gold: { 100:'#FBF6E5', 500:'#D4AF37', 700:'#8A6D1C' },
+      },
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+    } } };
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/theme.css" />
+  <link rel="stylesheet" href="/assets/css/utilities.css" />
+
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <!-- First, and not deferred. This is the file that has to work on the
+       connection where the CDN did not — see its header. -->
+  <script src="/assets/js/boot.js"></script>
+  <script src="/assets/js/sdk.js" defer></script>
+  <script src="/assets/js/auth.js" defer></script>
+  <script src="/assets/js/ui.js" defer></script>
+  <script src="/assets/js/properties.js" defer></script>
+  <script src="/assets/js/portal.js" defer></script>
+  <!-- Watches for the four faults that throw and the one that does not:
+       a control that should do something and does not. See its header. -->
+  <script src="/assets/js/error-capture.js" defer></script>
+  <!-- Self-hosted first, CDN second. `deploy/vendor-assets.sh` fetches the
+       local copy; a machine that has never run it falls through to unpkg, and
+       a machine that cannot reach unpkg either falls through to boot.js. -->
+  <script src="/assets/vendor/alpine.min.js" defer
+          onerror="this.remove();var s=document.createElement('script');s.src='https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js';s.defer=true;document.head.appendChild(s);"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+
+  <style>[x-cloak] { display: none !important; }</style>
+</head>
+
+<body class="h-full antialiased" data-zone="MEMBER_PORTAL" x-data="lrmcShell">
+
+<a href="#lrmc-main" class="lrmc-skip-link">Skip to main content</a>
+
+<div class="flex h-full">
+
+  <!-- ═══ SIDEBAR ═════════════════════════════════════════════════════════ -->
+  <aside
+    class="fixed lg:static inset-y-0 left-0 z-40 w-[260px] bg-blue-800 border-r border-slate-200
+           flex flex-col transition-transform duration-200 lg:translate-x-0"
+    :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
+    :aria-hidden="(!sidebarOpen && window.innerWidth < 1024).toString()">
+
+    <div class="h-16 flex items-center gap-3 px-5 border-b border-slate-200 flex-shrink-0">
+      <img src="/assets/img/lrmc-mark.png" alt="" class="w-9 h-9 flex-shrink-0 object-contain" />
+      <div class="min-w-0">
+        <p class="text-sm font-extrabold text-gold-500 leading-tight tracking-wide">LRMC</p>
+        <p class="text-[10px] text-slate-400 leading-tight truncate">Legacy Rental Management Consortium</p>
+      </div>
+    </div>
+
+    <nav class="flex-1 overflow-y-auto px-3 py-4" aria-label="Main">
+      <p class="lrmc-nav-section">Your portal</p>
+      <a href="/members/index.html" class="lrmc-nav-item">
+        <i data-lucide="layout-dashboard" class="w-[18px] h-[18px]"></i><span>Overview</span>
+      </a>
+      <a href="/members/properties.html" class="lrmc-nav-item active" aria-current="page">
+        <i data-lucide="home" class="w-[18px] h-[18px]"></i><span>Properties</span>
+      </a>
+      <a href="/members/payments.html" class="lrmc-nav-item">
+        <i data-lucide="banknote" class="w-[18px] h-[18px]"></i><span>Payments</span>
+      </a>
+      <a href="/members/maintenance.html" class="lrmc-nav-item">
+        <i data-lucide="wrench" class="w-[18px] h-[18px]"></i><span>Maintenance</span>
+      </a>
+      <a href="/members/leases.html" class="lrmc-nav-item">
+        <i data-lucide="file-text" class="w-[18px] h-[18px]"></i><span>Leases</span>
+      </a>
+      <a href="/members/ususu.html" class="lrmc-nav-item">
+        <i data-lucide="users" class="w-[18px] h-[18px]"></i><span>Ususu</span>
+      </a>
+      <a href="/members/applications.html" class="lrmc-nav-item">
+        <i data-lucide="clipboard-list" class="w-[18px] h-[18px]"></i><span>Applications</span>
+      </a>
+      <a href="/members/dashboard.html" class="lrmc-nav-item">
+        <i data-lucide="bar-chart-3" class="w-[18px] h-[18px]"></i><span>Performance</span>
+      </a>
+    </nav>
+
+    <div class="border-t border-slate-200 p-3 flex-shrink-0">
+      <div class="flex items-center gap-3 px-2 py-2">
+        <div class="w-8 h-8 rounded-full bg-gold-100 flex items-center justify-center flex-shrink-0">
+          <i data-lucide="user" class="w-4 h-4 text-gold-500"></i>
+        </div>
+        <div class="min-w-0 flex-1">
+          <p id="lrmc-actor-name" class="text-xs font-semibold text-slate-800 truncate">—</p>
+          <p id="lrmc-actor-role" class="text-[10px] font-bold text-gold-500 tracking-wider uppercase truncate">—</p>
+        </div>
+        <button type="button" id="sign-out"
+                class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm !min-h-0 !p-1.5" aria-label="Sign out">
+          <i data-lucide="log-out" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <div x-show="sidebarOpen" x-cloak @click="close()"
+       class="lrmc-scrim fixed inset-0 bg-slate-900/50 z-30 lg:hidden" aria-hidden="true"></div>
+
+  <!-- ═══ MAIN COLUMN ═════════════════════════════════════════════════════ -->
+  <div class="flex-1 flex flex-col min-w-0">
+
+    <header class="h-16 bg-white border-b border-slate-200 flex items-center gap-4
+                   px-4 lg:px-6 flex-shrink-0 sticky top-0 z-20">
+      <span class="lg:hidden"><button type="button" @click="toggle()"
+              class="lrmc-btn lrmc-btn-ghost !min-h-0 !p-2" aria-label="Toggle navigation">
+        <i data-lucide="menu" class="w-5 h-5"></i>
+      </button></span>
+
+      <div class="min-w-0 flex-1">
+        <h1 class="text-base font-bold text-slate-900 truncate">Properties</h1>
+        <p id="mode-caption" class="text-xs text-slate-500 truncate">—</p>
+      </div>
+
+    </header>
+
+    <main id="lrmc-main" class="flex-1 overflow-y-auto p-4 lg:p-6">
+
+      <!-- Only rendered when the roles permit both, so it is never a switch
+           into a surface that would answer 403 to everything. In `main` rather
+           than the header: two full-size buttons beside a menu toggle and a
+           two-line title overflow a 390px screen, which is the width most of
+           the launch market arrives on. -->
+      <div id="mode-switch" class="flex flex-wrap gap-2 mb-6" role="tablist"
+           aria-label="What you are here to do" hidden>
+        <button type="button" id="mode-find" role="tab" class="lrmc-btn lrmc-btn-ghost">
+          Find a home
+        </button>
+        <button type="button" id="mode-list" role="tab" class="lrmc-btn lrmc-btn-ghost">
+          Properties &amp; applications
+        </button>
+      </div>
+
+      <!-- Shown until the session and roles are resolved. Neither surface is
+           painted first, because painting the wrong one and swapping is how a
+           tenant briefly sees a landlord's portfolio headings. -->
+      <div id="mode-resolving" class="lrmc-card">
+        <div class="lrmc-skeleton h-5 w-48 mb-3"></div>
+        <div class="lrmc-skeleton h-4 w-full mb-2"></div>
+        <div class="lrmc-skeleton h-4 w-2/3"></div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════════════════
+           MODE A — FIND
+           ══════════════════════════════════════════════════════════════════ -->
+      <section id="find-mode" aria-labelledby="find-heading" hidden>
+        <h2 id="find-heading" class="lrmc-sr-only">Find a home</h2>
+
+        <form id="find-filters" class="lrmc-card mb-6" role="search" aria-label="Filter homes">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="sm:col-span-2">
+              <label class="lrmc-label" for="f-search">Search</label>
+              <input class="lrmc-input" id="f-search" name="search" type="search"
+                     placeholder="Street, area or keyword" maxlength="120" />
+            </div>
+            <div>
+              <label class="lrmc-label" for="f-region">Region</label>
+              <select class="lrmc-select" id="f-region" name="region"><option value="">Anywhere</option></select>
+            </div>
+            <div>
+              <label class="lrmc-label" for="f-propertyType">Type</label>
+              <select class="lrmc-select" id="f-propertyType" name="propertyType"><option value="">Any type</option></select>
+            </div>
+            <div>
+              <label class="lrmc-label" for="f-bedrooms">Bedrooms</label>
+              <select class="lrmc-select" id="f-bedrooms" name="bedrooms">
+                <option value="">Any</option>
+                <option value="1">1 or more</option><option value="2">2 or more</option>
+                <option value="3">3 or more</option><option value="4">4 or more</option>
+              </select>
+            </div>
+            <div>
+              <label class="lrmc-label" for="f-minRent">Rent from (D)</label>
+              <input class="lrmc-input" id="f-minRent" name="minRent" type="number" min="0" step="500" />
+            </div>
+            <div>
+              <label class="lrmc-label" for="f-maxRent">Rent up to (D)</label>
+              <input class="lrmc-input" id="f-maxRent" name="maxRent" type="number" min="0" step="500" />
+              <p class="lrmc-field-error" id="rent-range-error" hidden>
+                The upper figure needs to be the larger one.
+              </p>
+            </div>
+            <div>
+              <label class="lrmc-label" for="f-furnished">Furnishing</label>
+              <select class="lrmc-select" id="f-furnished" name="furnished">
+                <option value="">Either</option><option value="true">Furnished</option>
+                <option value="false">Unfurnished</option>
+              </select>
+            </div>
+          </div>
+
+          <fieldset class="mt-4">
+            <legend class="lrmc-label">Must have</legend>
+            <div id="amenity-options" class="flex flex-wrap gap-x-6 gap-y-2 mt-1"></div>
+          </fieldset>
+        </form>
+
+        <div class="flex flex-wrap items-baseline justify-between gap-3 mb-4">
+          <p id="results-count" class="text-sm text-slate-600" role="status" aria-live="polite"></p>
+          <div id="active-filters" class="flex flex-wrap gap-2"></div>
+        </div>
+
+        <div id="results-loading" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" aria-hidden="true">
+          <div class="lrmc-card"><div class="lrmc-skeleton h-40 mb-3"></div><div class="lrmc-skeleton h-4 w-4/5"></div></div>
+          <div class="lrmc-card"><div class="lrmc-skeleton h-40 mb-3"></div><div class="lrmc-skeleton h-4 w-4/5"></div></div>
+          <div class="lrmc-card"><div class="lrmc-skeleton h-40 mb-3"></div><div class="lrmc-skeleton h-4 w-4/5"></div></div>
+        </div>
+
+        <ul id="results-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" hidden></ul>
+
+        <div id="results-empty" class="lrmc-card text-center py-12" hidden>
+          <p class="font-medium text-slate-900 mb-1">Nothing matched that search</p>
+          <p class="text-sm text-slate-600 mb-4">Try a wider price range or fewer required amenities.</p>
+          <button type="button" id="find-clear" class="lrmc-btn lrmc-btn-primary">Clear the filters</button>
+        </div>
+
+        <div id="results-error" class="lrmc-card text-center py-12" hidden>
+          <p class="font-medium text-slate-900 mb-1">We could not load listings just now</p>
+          <p class="text-sm text-slate-600 mb-4">This is on our side, not yours.</p>
+          <button type="button" id="find-retry" class="lrmc-btn lrmc-btn-secondary">Try again</button>
+        </div>
+
+        <nav id="results-paging" class="flex items-center justify-between gap-4 mt-8"
+             aria-label="Results pages" hidden>
+          <button type="button" id="page-prev" class="lrmc-btn lrmc-btn-secondary">Previous</button>
+          <p id="page-status" class="text-sm text-slate-600"></p>
+          <button type="button" id="page-next" class="lrmc-btn lrmc-btn-secondary">Next</button>
+        </nav>
+
+        <!-- ── What the tenant already has in motion ───────────────────── -->
+        <h2 class="text-lg font-bold text-slate-900 mt-10 mb-4">Your viewings</h2>
+        <div id="my-viewings" class="lrmc-card"><div class="lrmc-skeleton h-4 w-2/3"></div></div>
+
+        <h2 class="text-lg font-bold text-slate-900 mt-8 mb-4">Your applications</h2>
+        <div id="my-applications" class="lrmc-card"><div class="lrmc-skeleton h-4 w-2/3"></div></div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════════════
+           MODE B — LIST
+           ══════════════════════════════════════════════════════════════════ -->
+      <section id="list-mode" aria-labelledby="list-heading" hidden>
+        <h2 id="list-heading" class="lrmc-sr-only">My properties</h2>
+
+        <!-- ── Performance ──────────────────────────────────────────────
+             Every figure here is counted from records the server returned.
+             Nothing is estimated, and a figure LRMC cannot compute yet says
+             so rather than showing a plausible zero. -->
+        <div id="performance" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8"></div>
+
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div class="flex flex-wrap gap-1" role="tablist" aria-label="Filter by state">
+            <button type="button" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm" data-state="">All</button>
+            <button type="button" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm" data-state="active">Active</button>
+            <button type="button" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm" data-state="draft">Drafts</button>
+            <button type="button" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm" data-state="pending">Pending verification</button>
+            <button type="button" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm" data-state="archived">Archived</button>
+          </div>
+          <button type="button" id="add-property" class="lrmc-btn lrmc-btn-primary" hidden>
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            Add a property
+          </button>
+        </div>
+
+        <p id="portfolio-count" class="text-sm text-slate-600 mb-4" role="status" aria-live="polite"></p>
+
+        <div id="portfolio-loading" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" aria-hidden="true">
+          <div class="lrmc-card"><div class="lrmc-skeleton h-40 mb-3"></div><div class="lrmc-skeleton h-4 w-4/5"></div></div>
+          <div class="lrmc-card"><div class="lrmc-skeleton h-40 mb-3"></div><div class="lrmc-skeleton h-4 w-4/5"></div></div>
+        </div>
+
+        <ul id="portfolio-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" hidden></ul>
+
+        <div id="portfolio-empty" class="lrmc-card text-center py-12" hidden>
+          <p class="font-medium text-slate-900 mb-1">Nothing here yet</p>
+          <p class="text-sm text-slate-600 mb-4">Add a property and LRMC will assign a coordinator to it.</p>
+        </div>
+
+        <div id="portfolio-error" class="lrmc-card text-center py-12" hidden>
+          <p class="font-medium text-slate-900 mb-1">We could not load your properties</p>
+          <p class="text-sm text-slate-600 mb-4">This is on our side, not yours.</p>
+          <button type="button" id="portfolio-retry" class="lrmc-btn lrmc-btn-secondary">Try again</button>
+        </div>
+
+        <nav id="portfolio-paging" class="flex items-center justify-between gap-4 mt-8"
+             aria-label="Portfolio pages" hidden>
+          <button type="button" id="portfolio-prev" class="lrmc-btn lrmc-btn-secondary">Previous</button>
+          <p id="portfolio-page-status" class="text-sm text-slate-600"></p>
+          <button type="button" id="portfolio-next" class="lrmc-btn lrmc-btn-secondary">Next</button>
+        </nav>
+
+        <!-- ── Applications queue ───────────────────────────────────────── -->
+        <div class="flex flex-wrap items-center justify-between gap-3 mt-10 mb-4">
+          <h2 class="text-lg font-bold text-slate-900">Applications</h2>
+          <div class="flex flex-wrap gap-1" role="tablist" aria-label="Filter applications">
+            <button type="button" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm" data-appfilter="open">Open</button>
+            <button type="button" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm" data-appfilter="">All</button>
+            <button type="button" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm" data-appfilter="approved">Approved</button>
+            <button type="button" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm" data-appfilter="rejected">Not successful</button>
+          </div>
+        </div>
+        <div id="applications-queue" class="lrmc-card"><div class="lrmc-skeleton h-4 w-2/3"></div></div>
+
+        <!-- ── Viewings on the landlord's properties ────────────────────── -->
+        <h2 class="text-lg font-bold text-slate-900 mt-10 mb-4">Viewing requests</h2>
+        <div id="landlord-viewings" class="lrmc-card"><div class="lrmc-skeleton h-4 w-2/3"></div></div>
+      </section>
+    </main>
+
+    <footer class="border-t border-slate-200 px-4 lg:px-6 py-3 flex-shrink-0">
+      <p class="text-[11px] text-slate-500">
+        © <span class="lrmc-year"></span> Legacy Rental Management Consortium · Serving The Gambia
+      </p>
+    </footer>
+  </div>
+</div>
+
+<!-- ═══ DETAIL / ACTION PANEL ═══════════════════════════════════════════════
+     One dialog, reused. Its contents are written by whichever flow opened it,
+     which is why the shell carries the focus management and the close button
+     and the flows carry only their own markup.
+-->
+<div id="panel" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/50 p-0 sm:p-4"
+     role="dialog" aria-modal="true" aria-labelledby="panel-title" hidden>
+  <div class="bg-white rounded-t-xl sm:rounded-xl shadow-md w-full sm:max-w-2xl max-h-full overflow-y-auto">
+    <div class="flex items-start justify-between gap-4 p-6 border-b border-slate-200 sticky top-0 bg-white">
+      <h2 id="panel-title" class="text-lg font-bold text-slate-900">—</h2>
+      <button type="button" id="panel-close" class="lrmc-btn lrmc-btn-ghost !min-h-0 !p-2" aria-label="Close">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+    </div>
+    <div id="panel-body" class="p-6"></div>
+  </div>
+</div>
+
+<div id="lrmc-toasts" aria-live="polite" class="fixed top-4 right-4 z-50 flex flex-col gap-2 items-end"></div>
+
+<script>
+document.querySelectorAll('.lrmc-year').forEach(function (el) {
+  el.textContent = new Date().getFullYear();
+});
+
+/* Constructed on ready. This inline script runs while the page is still
+ * parsing; the deferred modules have not executed yet, so anything built here
+ * from `LrmcSearch` would throw before a single handler was wired. */
+var finder = null;
+var portfolio = null;
+var MODE = null;
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Mode
+ *
+ * The roles decide what is *available*; the URL picks among what is
+ * available; a mode the roles do not permit is refused. Showing a tenant the
+ * landlord surface because `?mode=list` was in the address bar produces a
+ * screen where every control answers 403.
+ *
+ * This is a courtesy, not a control — `property:create` is enforced on the
+ * server for the wizard, `application:approve` for a decision.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+function availableModes() {
+  var out = [];
+  /* Anyone with a session may look for a home. */
+  out.push('find');
+  /* Anyone who can act on a property or an application gets the working
+   * surface — that is a landlord with their own portfolio *and* a coordinator
+   * with a queue. Gating this on `property:create` alone left coordinators,
+   * who hold `application:approve` but create nothing, on the search page
+   * with no queue: the one screen they exist to use. */
+  if (LrmcAuth.can('property:create') || LrmcAuth.can('property:updateOwn')
+      || LrmcAuth.can('property:update') || LrmcAuth.can('application:approve')
+      || LrmcAuth.can('application:read')) {
+    out.push('list');
+  }
+  return out;
+}
+
+function resolveMode(requested, available) {
+  if (requested && available.indexOf(requested) !== -1) return requested;
+  return available.indexOf('list') !== -1 ? 'list' : 'find';
+}
+
+function applyMode(mode) {
+  MODE = mode;
+  document.getElementById('mode-resolving').hidden = true;
+  document.getElementById('find-mode').hidden = mode !== 'find';
+  document.getElementById('list-mode').hidden = mode !== 'list';
+
+  document.getElementById('mode-caption').textContent = mode === 'list'
+    ? 'Properties, applications and how they are performing'
+    : 'Search homes managed by LRMC';
+
+  ['find', 'list'].forEach(function (m) {
+    var btn = document.getElementById('mode-' + m);
+    if (!btn) return;
+    btn.setAttribute('aria-selected', String(m === mode));
+    btn.classList.toggle('lrmc-btn-primary', m === mode);
+    btn.classList.toggle('lrmc-btn-ghost', m !== mode);
+  });
+
+  var params = new URLSearchParams(location.search);
+  params.set('mode', mode);
+  history.replaceState(null, '', '?' + params.toString());
+
+  if (mode === 'find') startFind(); else startList();
+  if (window.lucide) window.lucide.createIcons();
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * The panel
+ * ──────────────────────────────────────────────────────────────────────── */
+
+var panelOpener = null;
+
+function openPanel(title, html) {
+  panelOpener = document.activeElement;
+  document.getElementById('panel-title').textContent = title;
+  document.getElementById('panel-body').innerHTML = html;
+  document.getElementById('panel').hidden = false;
+  if (window.lucide) window.lucide.createIcons();
+  var focusable = document.querySelector('#panel-body input, #panel-body select, #panel-body button');
+  (focusable || document.getElementById('panel-close')).focus();
+}
+
+function closePanel() {
+  document.getElementById('panel').hidden = true;
+  document.getElementById('panel-body').innerHTML = '';
+  /* Focus returns to whatever opened it. A keyboard user otherwise lands at
+   * the top of the document with no idea where they were. */
+  if (panelOpener && panelOpener.focus) panelOpener.focus();
+  panelOpener = null;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Queues
+ *
+ * Each carries its own stale-reply guard for the same reason the search does:
+ * a landlord clicking through filters faster than the API answers must not
+ * end up looking at an earlier filter's rows under a later filter's heading.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+var queueStamps = {};
+
+function loadQueue(id, fetcher, render, emptyText) {
+  var stamp = String(Date.now()) + Math.random();
+  queueStamps[id] = stamp;
+  var box = document.getElementById(id);
+  box.innerHTML = '<div class="lrmc-skeleton h-4 w-2/3"></div>';
+
+  return fetcher()
+    .then(function (items) {
+      if (queueStamps[id] !== stamp) return;
+      var rows = Array.isArray(items) ? items : (items && items.data) || [];
+      box.innerHTML = rows.length
+        ? render(rows)
+        : '<p class="text-sm text-slate-600">' + LrmcUI.esc(emptyText) + '</p>';
+      if (window.lucide) window.lucide.createIcons();
+    })
+    .catch(function () {
+      if (queueStamps[id] !== stamp) return;
+      box.innerHTML =
+        '<p class="text-sm text-slate-600">That list could not be loaded. ' +
+        'This is on our side, not yours.</p>';
+    });
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * FIND — search, viewings, applications
+ * ──────────────────────────────────────────────────────────────────────── */
+
+var FIND_FIELDS = ['search', 'region', 'propertyType', 'minRent', 'maxRent',
+                   'bedrooms', 'furnished'];
+
+function findState(s) {
+  var badRange = s.phase === 'range-error';
+  document.getElementById('rent-range-error').hidden = !badRange;
+  document.getElementById('f-maxRent').setAttribute('aria-invalid', badRange ? 'true' : 'false');
+  if (badRange) return;
+
+  var chips = LrmcSearch.chips(s.filters || {});
+  document.getElementById('active-filters').innerHTML = LrmcSearch.chipHtml(chips);
+
+  document.getElementById('results-loading').hidden = s.phase !== 'loading';
+  document.getElementById('results-grid').hidden = s.phase !== 'results';
+  document.getElementById('results-empty').hidden = s.phase !== 'empty';
+  document.getElementById('results-error').hidden = s.phase !== 'error';
+  document.getElementById('results-paging').hidden = !(s.phase === 'results' && s.pages > 1);
+
+  var count = document.getElementById('results-count');
+  if (s.phase === 'empty') count.textContent = 'No homes matched.';
+  else if (s.phase === 'error') count.textContent = 'Listings could not be loaded.';
+  else if (s.phase === 'results') {
+    var word = s.total === 1 ? 'home' : 'homes';
+    count.textContent = s.total > s.shown
+      ? LrmcUI.number(s.total) + ' ' + word + ' found — showing ' + s.shown
+      : LrmcUI.number(s.total) + ' ' + word + ' found';
+  }
+
+  if (s.phase === 'results' && s.pages > 1) {
+    document.getElementById('page-status').textContent = 'Page ' + s.page + ' of ' + s.pages;
+    document.getElementById('page-prev').disabled = s.page <= 1;
+    document.getElementById('page-next').disabled = s.page >= s.pages;
+  }
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function startFind() {
+  if (finder) { finder.run({ resetPage: false }); loadTenantLists(); return; }
+
+  LrmcProperties.fillRegions(document.getElementById('f-region'));
+  LrmcProperties.fillTypes(document.getElementById('f-propertyType'));
+  LrmcProperties.fillAmenities(document.getElementById('amenity-options'));
+
+  finder = new LrmcSearch({
+    fetch: function (q) { return Lrmc.properties.public(q); },
+    fields: FIND_FIELDS,
+    amenityBox: 'amenity-options',
+    pageSize: 12,
+    onRender: function (rows) {
+      document.getElementById('results-grid').innerHTML = rows.map(function (r) {
+        return LrmcProperties.card(r);
+      }).join('');
+    },
+    onState: findState,
+  });
+  /* The mode is part of the URL, so restoring a shared link restores both the
+   * surface and the search on it. */
+  finder.urlExtra = function () { return { mode: MODE }; };
+
+  finder.write(new URLSearchParams(location.search));
+  finder.bind(document.getElementById('find-filters'));
+  finder.run({ resetPage: false });
+  loadTenantLists();
+}
+
+function loadTenantLists() {
+  loadQueue('my-viewings',
+    function () { return Lrmc.viewings.list({ limit: 20 }); },
+    renderTenantViewings,
+    'You have not asked to view anything yet.');
+
+  loadQueue('my-applications',
+    function () { return Lrmc.applications.list({ limit: 20 }); },
+    renderTenantApplications,
+    'You have not applied for anything yet.');
+}
+
+function renderTenantViewings(rows) {
+  return '<ul class="divide-y divide-slate-200">' + rows.map(function (v) {
+    /* `canCancel` is read from the record's status, and the server refuses
+     * the move anyway — the button is an affordance, not a permission. */
+    var open = v.status === 'requested' || v.status === 'confirmed';
+    return '<li class="py-3 flex flex-wrap items-center gap-3">' +
+      '<span class="flex-1 min-w-0">' +
+        '<span class="block text-sm font-medium text-slate-900">' +
+          LrmcUI.esc(LrmcUI.dateTime(v.requestedFor)) + '</span>' +
+        (v.note ? '<span class="block text-sm text-slate-500">' + LrmcUI.esc(v.note) + '</span>' : '') +
+      '</span>' +
+      LrmcStatus.viewing(v.status) +
+      (open ? '<button type="button" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm" ' +
+        'data-cancel-viewing="' + LrmcUI.esc(v.id || v._id) + '">Cancel</button>' : '') +
+      '</li>';
+  }).join('') + '</ul>';
+}
+
+function renderTenantApplications(rows) {
+  return '<ul class="divide-y divide-slate-200">' + rows.map(function (a) {
+    var canWithdraw = ['submitted', 'underReview', 'awaitingApplicant', 'approved']
+      .indexOf(a.status) !== -1;
+    return '<li class="py-3">' +
+      '<div class="flex flex-wrap items-center gap-3">' +
+        '<span class="flex-1 min-w-0 text-sm font-medium text-slate-900">' +
+          LrmcUI.esc(a.propertyTitle || 'Application') + '</span>' +
+        LrmcStatus.application(a.status) +
+        (canWithdraw ? '<button type="button" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm" ' +
+          'data-withdraw="' + LrmcUI.esc(a.id || a._id) + '">Withdraw</button>' : '') +
+      '</div>' +
+      (a.status === 'awaitingApplicant' && a.outstandingRequest
+        ? '<p class="text-sm text-amber-700 mt-2">LRMC has asked for: ' +
+          LrmcUI.esc(a.outstandingRequest) + '</p>' : '') +
+      (a.decision && a.decision.reason
+        ? '<p class="text-sm text-slate-600 mt-2">' + LrmcUI.esc(a.decision.reason) + '</p>' : '') +
+      '</li>';
+  }).join('') + '</ul>';
+}
+
+/* ── Requesting a viewing ─────────────────────────────────────────────────
+ * The slot rules live on the server (`viewingRules.slotProblem`). This form
+ * collects a date and the *local* hour — the server runs in UTC and the
+ * tenant does not, so the hour a person meant cannot be recovered from an
+ * instant without their offset. Refusals are shown as the server words them.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+function viewingForm(propertyId, title) {
+  var hours = '';
+  for (var h = 8; h < 18; h++) {
+    hours += '<option value="' + h + '">' + (h < 10 ? '0' : '') + h + ':00</option>';
+  }
+  openPanel('Request a viewing', '' +
+    '<p class="text-sm text-slate-600 mb-4">' + LrmcUI.esc(title) + '</p>' +
+    '<form id="viewing-form" class="space-y-4">' +
+      '<div>' +
+        '<label class="lrmc-label" for="v-date">Date</label>' +
+        '<input class="lrmc-input" id="v-date" type="date" required />' +
+      '</div>' +
+      '<div>' +
+        '<label class="lrmc-label" for="v-hour">Time</label>' +
+        '<select class="lrmc-select" id="v-hour" required>' + hours + '</select>' +
+        '<p class="lrmc-field-hint">LRMC shows properties between 08:00 and 18:00.</p>' +
+      '</div>' +
+      '<div>' +
+        '<label class="lrmc-label" for="v-note">Anything LRMC should know</label>' +
+        '<textarea class="lrmc-textarea" id="v-note" maxlength="600" rows="3"></textarea>' +
+      '</div>' +
+      '<div id="viewing-error" role="alert" class="lrmc-field-error" hidden></div>' +
+      '<button type="submit" id="viewing-submit" class="lrmc-btn lrmc-btn-primary w-full">' +
+        'Ask for this slot</button>' +
+    '</form>');
+
+  document.getElementById('viewing-form').addEventListener('submit', function (evt) {
+    evt.preventDefault();
+    var date = document.getElementById('v-date').value;
+    var hour = parseInt(document.getElementById('v-hour').value, 10);
+    if (!date) return;
+
+    var when = new Date(date + 'T00:00:00');
+    when.setHours(hour, 0, 0, 0);
+
+    var btn = document.getElementById('viewing-submit');
+    btn.disabled = true;
+    document.getElementById('viewing-error').hidden = true;
+
+    Lrmc.viewings.request({
+      property: propertyId,
+      requestedFor: when.toISOString(),
+      localHour: hour,
+      note: document.getElementById('v-note').value || undefined,
+    })
+      .then(function () {
+        closePanel();
+        LrmcUI.toast('Viewing requested. LRMC will confirm.', 'success');
+        loadTenantLists();
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        var box = document.getElementById('viewing-error');
+        /* The server's wording, not ours. It knows why. */
+        box.textContent = (err.details && err.details[0] && err.details[0].message)
+          || err.message || 'That slot could not be booked.';
+        box.hidden = false;
+      });
+  });
+}
+
+/* ── Applying ─────────────────────────────────────────────────────────── */
+
+function applicationForm(propertyId, title) {
+  openPanel('Apply for this home', '' +
+    '<p class="text-sm text-slate-600 mb-4">' + LrmcUI.esc(title) + '</p>' +
+    '<form id="apply-form" class="space-y-4">' +
+      '<div><label class="lrmc-label" for="a-rent">Rent you are offering (D)</label>' +
+        '<input class="lrmc-input" id="a-rent" type="number" min="0" step="100" /></div>' +
+      '<div><label class="lrmc-label" for="a-income">Your monthly income (D)</label>' +
+        '<input class="lrmc-input" id="a-income" type="number" min="0" step="100" />' +
+        '<p class="lrmc-field-hint">Declared here; LRMC checks it separately.</p></div>' +
+      '<div><label class="lrmc-label" for="a-start">Preferred start date</label>' +
+        '<input class="lrmc-input" id="a-start" type="date" /></div>' +
+      '<div><label class="lrmc-label" for="a-term">Term (months)</label>' +
+        '<input class="lrmc-input" id="a-term" type="number" min="1" max="120" /></div>' +
+      '<div><label class="lrmc-label" for="a-household">People in the household</label>' +
+        '<input class="lrmc-input" id="a-household" type="number" min="1" max="30" /></div>' +
+      '<div><label class="lrmc-label" for="a-message">Anything else</label>' +
+        '<textarea class="lrmc-textarea" id="a-message" rows="3" maxlength="2000"></textarea></div>' +
+      '<div id="apply-error" role="alert" class="lrmc-field-error" hidden></div>' +
+      '<button type="submit" id="apply-submit" class="lrmc-btn lrmc-btn-primary w-full">' +
+        'Send application</button>' +
+      '<p class="text-xs text-slate-500">LRMC scores every application on six factors and a ' +
+        'person decides. You will be told the outcome and the reason.</p>' +
+    '</form>');
+
+  document.getElementById('apply-form').addEventListener('submit', function (evt) {
+    evt.preventDefault();
+    var btn = document.getElementById('apply-submit');
+    btn.disabled = true;
+    document.getElementById('apply-error').hidden = true;
+
+    var body = { property: propertyId };
+    var num = function (id) {
+      var v = document.getElementById(id).value;
+      return v === '' ? undefined : Number(v);
+    };
+    body.proposedRent = num('a-rent');
+    body.monthlyIncome = num('a-income');
+    body.termMonths = num('a-term');
+    body.householdSize = num('a-household');
+    var start = document.getElementById('a-start').value;
+    if (start) body.proposedStart = new Date(start + 'T00:00:00').toISOString();
+    var msg = document.getElementById('a-message').value;
+    if (msg) body.message = msg;
+
+    /* `JSON.stringify` drops `undefined` on its own, so stripping those would
+     * be theatre. What it does *not* drop is an empty or whitespace-only
+     * string — and the create schema is `.strict()` with minimum lengths, so
+     * a message of three spaces is a 422 the applicant cannot act on. */
+    Object.keys(body).forEach(function (k) {
+      if (typeof body[k] !== 'string') return;
+      if (body[k].trim() === '') delete body[k];
+      else body[k] = body[k].trim();
+    });
+
+    Lrmc.applications.apply(body)
+      .then(function () {
+        closePanel();
+        LrmcUI.toast('Application sent. LRMC will be in touch.', 'success');
+        loadTenantLists();
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        var box = document.getElementById('apply-error');
+        box.textContent = (err.details && err.details[0] && err.details[0].message)
+          || err.message || 'That application could not be sent.';
+        box.hidden = false;
+      });
+  });
+}
+
+function detailPanel(id) {
+  Lrmc.properties.read(id)
+    .then(function (p) {
+      var price = LrmcProperties.priceLine(p);
+      openPanel(p.title || 'Property', '' +
+        '<p class="text-sm text-slate-600 mb-1">' +
+          LrmcUI.esc([p.city, p.region].filter(Boolean).join(', ')) + '</p>' +
+        '<p class="font-bold text-blue-800 mb-4">' + LrmcUI.esc(price.amount) +
+          (price.period ? ' <span class="text-sm font-normal text-slate-500">' +
+            LrmcUI.esc(price.period) + '</span>' : '') + '</p>' +
+        (p.address ? '<p class="text-sm text-slate-600 mb-4">' + LrmcUI.esc(p.address) + '</p>' : '') +
+        (p.amenities && p.amenities.length
+          ? '<div class="flex flex-wrap gap-2 mb-6">' + p.amenities.map(function (a) {
+              return '<span class="lrmc-badge lrmc-badge-neutral">' +
+                LrmcUI.esc(LrmcProperties.amenityLabel(a)) + '</span>';
+            }).join('') + '</div>' : '') +
+        '<div class="flex flex-col sm:flex-row gap-3">' +
+          '<button type="button" class="lrmc-btn lrmc-btn-primary flex-1" ' +
+            'data-request-viewing="' + LrmcUI.esc(id) + '">Request a viewing</button>' +
+          '<button type="button" class="lrmc-btn lrmc-btn-secondary flex-1" ' +
+            'data-apply="' + LrmcUI.esc(id) + '">Apply now</button>' +
+        '</div>');
+      document.getElementById('panel-body').dataset.title = p.title || 'Property';
+    })
+    .catch(function () {
+      openPanel('Property', '<p class="text-sm text-slate-600">' +
+        'That property could not be loaded. This is on our side, not yours.</p>');
+    });
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * LIST — portfolio, wizard, applications queue, performance
+ * ──────────────────────────────────────────────────────────────────────── */
+
+var portfolioState = '';
+var appFilter = 'open';
+
+function portfolioStateHandler(s) {
+  document.getElementById('portfolio-loading').hidden = s.phase !== 'loading';
+  document.getElementById('portfolio-grid').hidden = s.phase !== 'results';
+  document.getElementById('portfolio-empty').hidden = s.phase !== 'empty';
+  document.getElementById('portfolio-error').hidden = s.phase !== 'error';
+  document.getElementById('portfolio-paging').hidden = !(s.phase === 'results' && s.pages > 1);
+
+  var count = document.getElementById('portfolio-count');
+  if (s.phase === 'empty') count.textContent = 'No properties in this state.';
+  else if (s.phase === 'error') count.textContent = 'Your properties could not be loaded.';
+  else if (s.phase === 'results') {
+    var word = s.total === 1 ? 'property' : 'properties';
+    count.textContent = s.total > s.shown
+      ? LrmcUI.number(s.total) + ' ' + word + ' — showing ' + s.shown
+      : LrmcUI.number(s.total) + ' ' + word;
+  }
+
+  if (s.phase === 'results' && s.pages > 1) {
+    document.getElementById('portfolio-page-status').textContent =
+      'Page ' + s.page + ' of ' + s.pages;
+    document.getElementById('portfolio-prev').disabled = s.page <= 1;
+    document.getElementById('portfolio-next').disabled = s.page >= s.pages;
+  }
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function startList() {
+  if (!portfolio) {
+    portfolio = new LrmcSearch({
+      /* The authenticated collection, scoped server-side to what this actor
+       * owns. Never the public endpoint: a landlord must see their drafts,
+       * and drafts are not public. */
+      fetch: function (q) { return Lrmc.properties.list(q); },
+      fields: [],
+      pageSize: 12,
+      syncUrl: false,
+      onRender: function (rows) {
+        document.getElementById('portfolio-grid').innerHTML = rows.map(function (r) {
+          return LrmcProperties.card(r, { action: false });
+        }).join('');
+      },
+      onState: portfolioStateHandler,
+    });
+    /* The state filter is sent to the API, never applied to a cached array —
+     * filtering client-side would silently show "3 drafts" out of one page
+     * while the landlord has forty. */
+    portfolio.read = function () { return portfolioState ? { status: portfolioState } : {}; };
+  }
+
+  document.getElementById('add-property').hidden = !LrmcAuth.can('property:create');
+  portfolio.run();
+  loadApplicationsQueue();
+  loadLandlordViewings();
+  loadPerformance();
+}
+
+function loadApplicationsQueue() {
+  var q = { limit: 20 };
+  if (appFilter === 'open') q.open = 'true';
+  else if (appFilter) q.status = appFilter;
+
+  loadQueue('applications-queue',
+    function () { return Lrmc.applications.list(q); },
+    renderApplicationsQueue,
+    'No applications in this list.');
+}
+
+/**
+ * One application, with LRMC's recommendation and the reasons behind it.
+ *
+ * The recommendation is *displayed*, never computed here. A landlord sees
+ * what LRMC made of an applicant and does not decide — `mayDecide` refuses a
+ * landlord's approval on the server, and the buttons below are rendered only
+ * for somebody holding `application:approve`.
+ */
+function renderApplicationsQueue(rows) {
+  var mayDecide = LrmcAuth.can('application:approve');
+
+  return '<ul class="divide-y divide-slate-200">' + rows.map(function (a) {
+    var assessment = a.assessment;
+    var factors = (assessment && assessment.factors) || [];
+
+    return '<li class="py-4">' +
+      '<div class="flex flex-wrap items-center gap-3 mb-2">' +
+        '<span class="flex-1 min-w-0 text-sm font-medium text-slate-900">' +
+          LrmcUI.esc(a.applicantName || a.propertyTitle || 'Application') + '</span>' +
+        LrmcStatus.application(a.status) +
+        (assessment ? LrmcStatus.recommendation(assessment.recommendation) : '') +
+      '</div>' +
+
+      (assessment
+        ? '<p class="text-sm text-slate-600 mb-3">' + LrmcUI.esc(assessment.summary) + '</p>' +
+          '<ul class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 mb-3">' +
+            factors.map(function (f) {
+              return '<li class="flex items-center justify-between gap-3 text-sm">' +
+                '<span class="text-slate-700">' + LrmcUI.esc(f.label) + '</span>' +
+                LrmcStatus.factor(f.status) + '</li>';
+            }).join('') +
+          '</ul>'
+        : '<p class="text-sm text-slate-500 mb-3">Not yet assessed.</p>') +
+
+      (a.decision
+        ? '<p class="text-sm text-slate-600 mb-2">' +
+            LrmcUI.esc(a.decision.reason) + '</p>' +
+          (a.decision.againstRecommendation
+            ? '<p class="text-xs text-amber-700 mb-2">Decided against LRMC’s recommendation.</p>'
+            : '')
+        : '') +
+
+      (mayDecide && a.status === 'submitted'
+        ? '<button type="button" class="lrmc-btn lrmc-btn-secondary lrmc-btn-sm" ' +
+          'data-open-application="' + LrmcUI.esc(a.id || a._id) + '">Open for review</button>'
+        : '') +
+      (mayDecide && (a.status === 'underReview' || a.status === 'awaitingApplicant')
+        ? '<div class="flex flex-wrap gap-2">' +
+            '<button type="button" class="lrmc-btn lrmc-btn-success lrmc-btn-sm" ' +
+              'data-decide="approve" data-id="' + LrmcUI.esc(a.id || a._id) + '">Approve</button>' +
+            '<button type="button" class="lrmc-btn lrmc-btn-danger lrmc-btn-sm" ' +
+              'data-decide="reject" data-id="' + LrmcUI.esc(a.id || a._id) + '">Reject</button>' +
+          '</div>'
+        : '') +
+      '</li>';
+  }).join('') + '</ul>';
+}
+
+function decisionForm(id, outcome) {
+  var verb = outcome === 'approve' ? 'Approve' : 'Reject';
+  openPanel(verb + ' this application', '' +
+    '<form id="decide-form" class="space-y-4">' +
+      '<div>' +
+        '<label class="lrmc-label" for="d-reason">Reason</label>' +
+        '<textarea class="lrmc-textarea" id="d-reason" rows="4" required minlength="4" ' +
+          'maxlength="2000"></textarea>' +
+        '<p class="lrmc-field-hint">Required for an approval as much as for a refusal. ' +
+          'The applicant may be shown this.</p>' +
+      '</div>' +
+      '<div id="decide-error" role="alert" class="lrmc-field-error" hidden></div>' +
+      '<button type="submit" id="decide-submit" class="lrmc-btn ' +
+        (outcome === 'approve' ? 'lrmc-btn-success' : 'lrmc-btn-danger') + ' w-full">' +
+        verb + '</button>' +
+    '</form>');
+
+  document.getElementById('decide-form').addEventListener('submit', function (evt) {
+    evt.preventDefault();
+    var reason = document.getElementById('d-reason').value.trim();
+    var btn = document.getElementById('decide-submit');
+    btn.disabled = true;
+    document.getElementById('decide-error').hidden = true;
+
+    var call = outcome === 'approve'
+      ? Lrmc.applications.approve(id, { reason: reason })
+      : Lrmc.applications.reject(id, { reason: reason });
+
+    call.then(function () {
+      closePanel();
+      LrmcUI.toast('Decision recorded.', 'success');
+      /* Re-read rather than patch: what is on screen must be what the server
+       * holds, including any state change the decision triggered. */
+      loadApplicationsQueue();
+    }).catch(function (err) {
+      btn.disabled = false;
+      var box = document.getElementById('decide-error');
+      box.textContent = (err.details && err.details[0] && err.details[0].message)
+        || err.message || 'That decision could not be recorded.';
+      box.hidden = false;
+    });
+  });
+}
+
+function loadLandlordViewings() {
+  loadQueue('landlord-viewings',
+    function () { return Lrmc.viewings.list({ open: 'true', limit: 20 }); },
+    function (rows) {
+      var mayAnswer = LrmcAuth.can('viewing:approve');
+      return '<ul class="divide-y divide-slate-200">' + rows.map(function (v) {
+        return '<li class="py-3 flex flex-wrap items-center gap-3">' +
+          '<span class="flex-1 min-w-0 text-sm font-medium text-slate-900">' +
+            LrmcUI.esc(LrmcUI.dateTime(v.requestedFor)) + '</span>' +
+          LrmcStatus.viewing(v.status) +
+          (mayAnswer && v.status === 'requested'
+            ? '<button type="button" class="lrmc-btn lrmc-btn-success lrmc-btn-sm" ' +
+                'data-viewing="confirm" data-id="' + LrmcUI.esc(v.id || v._id) + '">Confirm</button>' +
+              '<button type="button" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm" ' +
+                'data-viewing="decline" data-id="' + LrmcUI.esc(v.id || v._id) + '">Decline</button>'
+            : '') +
+          '</li>';
+      }).join('') + '</ul>';
+    },
+    'No viewing requests waiting.');
+}
+
+/**
+ * Performance.
+ *
+ * ── Why these are aggregate endpoints and not list calls ─────────────────
+ * This function used to fetch `properties.list({ limit: 100 })`, count the
+ * `occupied` ones in the browser, and divide. That is correct for a landlord
+ * with ten properties and wrong for one with two hundred — and wrong in the
+ * direction nobody reports: the occupancy percentage stays entirely plausible,
+ * it is just computed over the first hundred rows. The same applied to the
+ * maintenance count and to the rent figure, which summed a page of the ledger.
+ *
+ * `/stats/*` runs one aggregation over the whole collection, scoped server-side
+ * from the token. The browser does no arithmetic here at all now; it formats.
+ *
+ * ── A figure LRMC has not measured says so ───────────────────────────────
+ * The endpoints return `null` for a rate with nothing to divide, and this
+ * renders `—`. An occupancy rate of 0% and an occupancy rate nobody could
+ * compute look identical on a tile, and only one of them is a reason to worry.
+ *
+ * ── Money is per currency ────────────────────────────────────────────────
+ * `collected` is an array, one entry per currency, because the ledger holds
+ * several and there is no exchange rate on this platform. The tile shows the
+ * launch currency's figure and says how many others there are rather than
+ * adding dalasi to dollars and presenting the result as an amount.
+ */
+function loadPerformance() {
+  var box = document.getElementById('performance');
+  box.innerHTML = ['', '', '', ''].map(function () {
+    return '<div class="lrmc-card"><div class="lrmc-skeleton h-4 w-1/2 mb-3"></div>' +
+      '<div class="lrmc-skeleton h-7 w-2/3"></div></div>';
+  }).join('');
+
+  /* One endpoint failing must cost one tile, not the row. Each catch resolves
+   * to null and the tile renders `—`. */
+  Promise.all([
+    Lrmc.stats.properties().catch(function () { return null; }),
+    Lrmc.stats.payments().catch(function () { return null; }),
+    Lrmc.stats.maintenance().catch(function () { return null; }),
+  ]).then(function (r) {
+    var props = r[0];
+    var pay = r[1];
+    var maint = r[2];
+
+    box.innerHTML =
+      tile('Properties',
+           props ? String(props.totalProperties) : null,
+           props ? props.occupied + ' occupied, ' + props.vacant + ' vacant' : '') +
+      tile('Occupancy',
+           props && props.occupancyRate !== null && props.occupancyRate !== undefined
+             ? LrmcUI.percent(props.occupancyRate, 1) : null,
+           'Of lettable properties') +
+      tile(collectedLabel(pay), collectedValue(pay), collectedMeta(pay)) +
+      tile('Open maintenance',
+           maint ? String(maint.openRequests + maint.inProgress) : null,
+           maint ? maint.stalled + ' stalled' : '');
+    if (window.lucide) window.lucide.createIcons();
+  });
+}
+
+/* The window comes from the reply, so the label cannot claim thirty days over
+ * a figure computed across ninety. */
+function collectedLabel(pay) {
+  var days = pay && pay.collectionWindowDays;
+  return 'Collected, ' + (days ? days + ' days' : 'recently');
+}
+
+function collectedValue(pay) {
+  if (!pay || !Array.isArray(pay.collected)) return null;
+  if (!pay.collected.length) return LrmcUI.moneyWhole(0, 'GMD');
+  var launch = pay.collected.filter(function (c) { return c.currency === 'GMD'; })[0];
+  var first = launch || pay.collected[0];
+  return LrmcUI.moneyWhole(first.amount, first.currency);
+}
+
+function collectedMeta(pay) {
+  if (!pay || !Array.isArray(pay.collected)) return '';
+  if (!pay.collected.length) return 'Nothing settled in this period';
+  /* Never summed across currencies — said out loud instead, so the number on
+   * the tile is not mistaken for the whole. */
+  var others = pay.collected.length - 1;
+  return others > 0
+    ? 'Plus ' + others + ' other ' + (others === 1 ? 'currency' : 'currencies')
+    : 'Settled through LRMC';
+}
+
+/* A tile with no value says so. `—` and `0` are different statements. */
+function tile(label, value, meta) {
+  var unknown = value === null || value === undefined;
+  return '<div class="lrmc-card">' +
+    '<p class="lrmc-stat-label">' + LrmcUI.esc(label) + '</p>' +
+    '<p class="lrmc-stat-value">' + (unknown ? '—' : LrmcUI.esc(value)) + '</p>' +
+    '<p class="lrmc-stat-meta">' +
+      LrmcUI.esc(unknown ? 'Not available yet' : meta) + '</p>' +
+    '</div>';
+}
+
+/* ── The six-step wizard ─────────────────────────────────────────────────
+ * Rendered from `LrmcWizard.STEPS`. Adding a field is a line in that table,
+ * not a new block of markup and a new handler somebody forgets to validate.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* `status` starts as a draft on purpose. Left unset, the create schema falls
+ * through to the platform default of `active` — and a half-finished listing
+ * would go live because a select said "Not set". */
+function emptyWizard() { return { step: 0, values: { status: 'draft' } }; }
+var wizard = emptyWizard();
+
+function wizardField(f) {
+  var id = 'w-' + f.name;
+  var label = '<label class="lrmc-label" for="' + id + '">' + LrmcUI.esc(f.label) +
+    (f.required ? ' <span class="text-rose-600" aria-hidden="true">*</span>' : '') + '</label>';
+  var hint = f.hint ? '<p class="lrmc-field-hint">' + LrmcUI.esc(f.hint) + '</p>' : '';
+  var err = '<p class="lrmc-field-error" data-error-for="' + f.name + '" hidden></p>';
+  var v = wizard.values[f.name];
+  var control;
+
+  if (f.type === 'select') {
+    var opts = LrmcWizard.OPTION_SETS[f.options]();
+    control = '<select class="lrmc-select" id="' + id + '" name="' + f.name + '"' +
+      (f.required ? ' required' : '') + '>' +
+      (f.required ? '' : '<option value="">Not set</option>') +
+      opts.map(function (o) {
+        return '<option value="' + LrmcUI.esc(o[0]) + '"' +
+          (String(v) === String(o[0]) ? ' selected' : '') + '>' + LrmcUI.esc(o[1]) + '</option>';
+      }).join('') + '</select>';
+  } else if (f.type === 'textarea') {
+    control = '<textarea class="lrmc-textarea" id="' + id + '" name="' + f.name +
+      '" rows="3" maxlength="' + (f.maxlength || 2000) + '">' + LrmcUI.esc(v || '') + '</textarea>';
+  } else if (f.type === 'checkbox') {
+    control = '<label class="flex items-center gap-2 text-sm text-slate-700">' +
+      '<input type="checkbox" id="' + id + '" name="' + f.name + '"' + (v ? ' checked' : '') +
+      ' class="w-4 h-4 rounded border-slate-300 text-blue-600" />' +
+      '<span>' + LrmcUI.esc(f.label) + '</span></label>';
+    return '<div>' + control + hint + err + '</div>';
+  } else if (f.type === 'amenities') {
+    var chosen = (v || '').split(',').filter(Boolean);
+    control = '<div id="w-amenities" class="flex flex-wrap gap-x-6 gap-y-2">' +
+      LrmcProperties.AMENITIES.map(function (a) {
+        return '<label class="flex items-center gap-2 text-sm text-slate-700">' +
+          '<input type="checkbox" value="' + LrmcUI.esc(a[0]) + '"' +
+          (chosen.indexOf(a[0]) !== -1 ? ' checked' : '') +
+          ' class="w-4 h-4 rounded border-slate-300 text-blue-600" />' +
+          '<span>' + LrmcUI.esc(a[1]) + '</span></label>';
+      }).join('') + '</div>';
+    return '<fieldset><legend class="lrmc-label">' + LrmcUI.esc(f.label) + '</legend>' +
+      control + hint + err + '</fieldset>';
+  } else if (f.type === 'photos') {
+    control = '<textarea class="lrmc-textarea" id="' + id + '" name="' + f.name +
+      '" rows="3">' + LrmcUI.esc(v || '') + '</textarea>';
+  } else {
+    control = '<input class="lrmc-input" id="' + id + '" name="' + f.name + '" type="' + f.type + '"' +
+      (f.required ? ' required' : '') +
+      (f.maxlength ? ' maxlength="' + f.maxlength + '"' : '') +
+      (f.min !== undefined ? ' min="' + f.min + '"' : '') +
+      (f.max !== undefined ? ' max="' + f.max + '"' : '') +
+      (f.step !== undefined ? ' step="' + f.step + '"' : '') +
+      ' value="' + LrmcUI.esc(v === undefined ? '' : v) + '" />';
+  }
+  return '<div>' + label + control + hint + err + '</div>';
+}
+
+function renderWizard() {
+  var steps = LrmcWizard.STEPS;
+  var step = steps[wizard.step];
+
+  var progress = '<ol class="flex flex-wrap items-center gap-x-2 gap-y-1 mb-6 text-sm" ' +
+    'aria-label="Steps">' + steps.map(function (s, i) {
+      var done = i < wizard.step;
+      var here = i === wizard.step;
+      return '<li class="flex items-center gap-2"' + (here ? ' aria-current="step"' : '') + '>' +
+        '<span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ' +
+          (here ? 'bg-blue-600 text-white' : done ? 'bg-emerald-100 text-emerald-700'
+                                                  : 'bg-slate-100 text-slate-500') + '">' +
+          (done ? '✓' : String(i + 1)) + '</span>' +
+        '<span class="' + (here ? 'font-medium text-slate-900' : 'text-slate-500') + '">' +
+          LrmcUI.esc(s.title) + '</span></li>';
+    }).join('') + '</ol>';
+
+  openPanel('Add a property', progress +
+    '<p class="text-sm text-slate-600 mb-4">' + LrmcUI.esc(step.blurb) + '</p>' +
+    '<form id="wizard-form" class="space-y-4" novalidate>' +
+      step.fields.map(wizardField).join('') +
+      '<div id="wizard-error" role="alert" class="lrmc-field-error" hidden></div>' +
+      '<div class="flex gap-3 pt-2">' +
+        (wizard.step > 0
+          ? '<button type="button" id="wizard-back" class="lrmc-btn lrmc-btn-secondary">Back</button>'
+          : '') +
+        '<button type="submit" id="wizard-next" class="lrmc-btn lrmc-btn-primary flex-1">' +
+          (wizard.step === steps.length - 1 ? 'Save property' : 'Continue') + '</button>' +
+      '</div>' +
+    '</form>');
+
+  var back = document.getElementById('wizard-back');
+  if (back) back.addEventListener('click', function () {
+    collectStep();
+    wizard.step -= 1;
+    renderWizard();
+  });
+
+  document.getElementById('wizard-form').addEventListener('submit', function (evt) {
+    evt.preventDefault();
+    collectStep();
+
+    var missing = LrmcWizard.missingOn(step, wizard.values);
+    clearWizardErrors();
+    if (missing.length) {
+      missing.forEach(function (name) {
+        var slot = document.querySelector('[data-error-for="' + name + '"]');
+        if (slot) { slot.textContent = 'This one is needed.'; slot.hidden = false; }
+      });
+      var firstEl = document.getElementById('w-' + missing[0]);
+      if (firstEl) firstEl.focus();
+      return;
+    }
+
+    if (wizard.step < LrmcWizard.STEPS.length - 1) {
+      wizard.step += 1;
+      renderWizard();
+      return;
+    }
+    saveProperty();
+  });
+}
+
+function clearWizardErrors() {
+  document.querySelectorAll('#panel-body [data-error-for]').forEach(function (el) {
+    el.textContent = ''; el.hidden = true;
+  });
+  var box = document.getElementById('wizard-error');
+  if (box) { box.hidden = true; box.textContent = ''; }
+}
+
+function collectStep() {
+  var step = LrmcWizard.STEPS[wizard.step];
+  step.fields.forEach(function (f) {
+    if (f.type === 'amenities') {
+      wizard.values[f.name] = [].slice.call(
+        document.querySelectorAll('#w-amenities input:checked')
+      ).map(function (i) { return i.value; }).join(',');
+      return;
+    }
+    var el = document.getElementById('w-' + f.name);
+    if (!el) return;
+    wizard.values[f.name] = f.type === 'checkbox' ? el.checked : el.value;
+  });
+}
+
+function saveProperty() {
+  var v = wizard.values;
+  var body = {
+    title: v.title,
+    propertyType: v.propertyType,
+    ownerKind: 'LandlordProfile',
+    owner: LrmcAuth.actor() && (LrmcAuth.actor().profileId || LrmcAuth.actor().userId),
+  };
+
+  var num = function (name) {
+    return v[name] === undefined || v[name] === '' ? undefined : Number(v[name]);
+  };
+  var str = function (name) {
+    return v[name] === undefined || v[name] === '' ? undefined : v[name];
+  };
+
+  body.bedrooms = num('bedrooms');
+  body.bathrooms = num('bathrooms');
+  body.floorAreaSqm = num('floorAreaSqm');
+  body.region = str('region');
+  body.city = str('city');
+  body.address = str('address');
+  body.digitalAddress = str('digitalAddress');
+  body.rentAmount = num('rentAmount');
+  body.rentCurrency = str('rentCurrency');
+  body.rentPeriod = str('rentPeriod');
+  body.status = str('status');
+  if (v.furnished !== undefined && v.furnished !== '') body.furnished = v.furnished === 'true';
+  if (v.listedPublicly !== undefined) body.listedPublicly = Boolean(v.listedPublicly);
+  if (v.amenities) body.amenities = v.amenities.split(',').filter(Boolean);
+  if (v.photos) {
+    body.photos = v.photos.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+  }
+
+  /* Same reasoning as the application form: `undefined` never reaches the
+   * wire, but a title of three spaces would, and `.strict()` with a minimum
+   * length turns it into a 422 nobody can act on. */
+  Object.keys(body).forEach(function (k) {
+    if (typeof body[k] !== 'string') return;
+    if (body[k].trim() === '') delete body[k];
+    else body[k] = body[k].trim();
+  });
+
+  var btn = document.getElementById('wizard-next');
+  btn.disabled = true;
+
+  Lrmc.properties.create(body)
+    .then(function () {
+      closePanel();
+      wizard = emptyWizard();
+      LrmcUI.toast('Property saved.', 'success');
+      portfolio.run();
+      loadPerformance();
+    })
+    .catch(function (err) {
+      btn.disabled = false;
+      /* Field errors land on their field; anything the wizard has no slot for
+       * goes to the banner rather than disappearing. */
+      var details = err.details || [];
+
+      /* Only the current step's fields are on screen, so an error naming a
+       * field from step one arrives with nowhere to land. Go back to the step
+       * that owns it rather than making somebody hunt for it. */
+      var owning = -1;
+      details.forEach(function (d) {
+        LrmcWizard.STEPS.forEach(function (st, i) {
+          if (owning !== -1) return;
+          if (st.fields.some(function (f) { return f.name === d.field; })) owning = i;
+        });
+      });
+      if (owning !== -1 && owning !== wizard.step) {
+        wizard.step = owning;
+        renderWizard();
+      }
+
+      var unplaced = [];
+      details.forEach(function (d) {
+        var slot = document.querySelector('[data-error-for="' + (d.field || '') + '"]');
+        if (slot) { slot.textContent = d.message; slot.hidden = false; }
+        else unplaced.push(d.message);
+      });
+      var box = document.getElementById('wizard-error');
+      box.textContent = unplaced.length ? unplaced.join(' ')
+        : (details.length ? 'Please check the highlighted fields.'
+                          : (err.message || 'That property could not be saved.'));
+      box.hidden = false;
+    });
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Wiring
+ * ──────────────────────────────────────────────────────────────────────── */
+
+document.addEventListener('DOMContentLoaded', function () {
+  if (!LrmcAuth.requireSession()) return;
+
+  var actor = LrmcAuth.actor() || {};
+  document.getElementById('lrmc-actor-name').textContent = actor.name || actor.email || '—';
+  document.getElementById('lrmc-actor-role').textContent = actor.primaryRole || '—';
+  document.getElementById('sign-out').addEventListener('click', function () {
+    LrmcAuth.signOut().then(function () { location.href = '/public/login.html'; });
+  });
+
+  var available = availableModes();
+  if (available.length > 1) {
+    document.getElementById('mode-switch').hidden = false;
+    document.getElementById('mode-find').addEventListener('click', function () { applyMode('find'); });
+    document.getElementById('mode-list').addEventListener('click', function () { applyMode('list'); });
+  }
+
+  applyMode(resolveMode(new URLSearchParams(location.search).get('mode'), available));
+
+  // ── panel ──
+  document.getElementById('panel-close').addEventListener('click', closePanel);
+  document.getElementById('panel').addEventListener('click', function (evt) {
+    if (evt.target.id === 'panel') closePanel();
+  });
+  document.addEventListener('keydown', function (evt) {
+    if (evt.key === 'Escape' && !document.getElementById('panel').hidden) closePanel();
+  });
+
+  // ── find ──
+  document.getElementById('find-clear').addEventListener('click', function () { finder.clear(); });
+  document.getElementById('find-retry').addEventListener('click', function () {
+    finder.run({ resetPage: false });
+  });
+  document.getElementById('active-filters').addEventListener('click', function (evt) {
+    var chip = evt.target.closest('[data-remove]');
+    if (chip) finder.removeFilter(chip.getAttribute('data-remove'));
+  });
+  document.getElementById('page-prev').addEventListener('click', function () {
+    if (finder.page > 1) { finder.page -= 1; finder.run({ resetPage: false }); }
+  });
+  document.getElementById('page-next').addEventListener('click', function () {
+    finder.page += 1; finder.run({ resetPage: false });
+  });
+
+  // ── list ──
+  document.getElementById('portfolio-retry').addEventListener('click', function () {
+    portfolio.run({ resetPage: false });
+  });
+  document.getElementById('portfolio-prev').addEventListener('click', function () {
+    if (portfolio.page > 1) { portfolio.page -= 1; portfolio.run({ resetPage: false }); }
+  });
+  document.getElementById('portfolio-next').addEventListener('click', function () {
+    portfolio.page += 1; portfolio.run({ resetPage: false });
+  });
+  document.getElementById('add-property').addEventListener('click', function () {
+    wizard = emptyWizard();
+    renderWizard();
+  });
+
+  document.querySelectorAll('[data-state]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      portfolioState = btn.getAttribute('data-state');
+      document.querySelectorAll('[data-state]').forEach(function (b) {
+        b.setAttribute('aria-selected', String(b === btn));
+        b.classList.toggle('lrmc-btn-primary', b === btn);
+        b.classList.toggle('lrmc-btn-ghost', b !== btn);
+      });
+      portfolio.run();
+    });
+  });
+
+  document.querySelectorAll('[data-appfilter]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      appFilter = btn.getAttribute('data-appfilter');
+      document.querySelectorAll('[data-appfilter]').forEach(function (b) {
+        b.setAttribute('aria-selected', String(b === btn));
+        b.classList.toggle('lrmc-btn-primary', b === btn);
+        b.classList.toggle('lrmc-btn-ghost', b !== btn);
+      });
+      loadApplicationsQueue();
+    });
+  });
+
+  /* One delegated listener for everything the rendered lists produce. Binding
+   * per row would re-bind on every reload and leak a handler each time. */
+  document.body.addEventListener('click', function (evt) {
+    var el = evt.target.closest('[data-open-details],[data-request-viewing],[data-apply],' +
+      '[data-cancel-viewing],[data-withdraw],[data-decide],[data-viewing],[data-open-application]');
+    if (!el) return;
+
+    if (el.hasAttribute('data-open-details')) return detailPanel(el.getAttribute('data-property'));
+    if (el.hasAttribute('data-request-viewing')) {
+      return viewingForm(el.getAttribute('data-request-viewing'),
+        document.getElementById('panel-body').dataset.title || '');
+    }
+    if (el.hasAttribute('data-apply')) {
+      return applicationForm(el.getAttribute('data-apply'),
+        document.getElementById('panel-body').dataset.title || '');
+    }
+    if (el.hasAttribute('data-cancel-viewing')) {
+      return Lrmc.viewings.cancel(el.getAttribute('data-cancel-viewing'))
+        .then(function () { LrmcUI.toast('Viewing cancelled.', 'success'); loadTenantLists(); })
+        .catch(function (err) { LrmcUI.toast(err.message || 'That could not be cancelled.', 'danger'); });
+    }
+    if (el.hasAttribute('data-withdraw')) {
+      return Lrmc.applications.withdraw(el.getAttribute('data-withdraw'))
+        .then(function () { LrmcUI.toast('Application withdrawn.', 'success'); loadTenantLists(); })
+        .catch(function (err) { LrmcUI.toast(err.message || 'That could not be withdrawn.', 'danger'); });
+    }
+    if (el.hasAttribute('data-open-application')) {
+      return Lrmc.applications.review(el.getAttribute('data-open-application'))
+        .then(function () { loadApplicationsQueue(); })
+        .catch(function (err) { LrmcUI.toast(err.message || 'That could not be opened.', 'danger'); });
+    }
+    if (el.hasAttribute('data-decide')) {
+      return decisionForm(el.getAttribute('data-id'), el.getAttribute('data-decide'));
+    }
+    if (el.hasAttribute('data-viewing')) {
+      var action = el.getAttribute('data-viewing');
+      var call = action === 'confirm'
+        ? Lrmc.viewings.confirm(el.getAttribute('data-id'))
+        : Lrmc.viewings.decline(el.getAttribute('data-id'));
+      return call
+        .then(function () { LrmcUI.toast('Viewing ' + action + 'ed.', 'success'); loadLandlordViewings(); })
+        .catch(function (err) { LrmcUI.toast(err.message || 'That could not be done.', 'danger'); });
+    }
+  });
+
+  if (window.lucide) window.lucide.createIcons();
+});
+</script>
+</body>
+</html>

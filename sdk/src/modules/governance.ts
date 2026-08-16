@@ -20,7 +20,7 @@ import { client, withMeta, type ListOptions, type RequestOptions } from './_runt
 /** Zone, roles and permissions for each operation, straight from the spec. */
 export const META = {
   health: { operationId: 'getGovernanceHealth', method: 'GET' as const, pathTemplate: '/governance/health', zone: 'HQ_EXECUTIVE' as const, roles: ["founder","hqExecutive"] as Role[], permissions: ["governance:read","analytics:read"], ownership: 'none' as const, auth: 'required' as const },
-  myVisibility: { operationId: 'getGovernanceMeVisibility', method: 'GET' as const, pathTemplate: '/governance/me/visibility', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser"] as Role[], permissions: [], ownership: 'self' as const, auth: 'required' as const },
+  myVisibility: { operationId: 'getGovernanceMeVisibility', method: 'GET' as const, pathTemplate: '/governance/me/visibility', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer"] as Role[], permissions: [], ownership: 'self' as const, auth: 'required' as const },
   tiers: { operationId: 'getGovernanceTiers', method: 'GET' as const, pathTemplate: '/governance/tiers', zone: 'BACK_OFFICE' as const, roles: ["founder","hqExecutive","backOfficeStaff"] as Role[], permissions: ["governance:read"], ownership: 'none' as const, auth: 'required' as const },
   visibilityMatrix: { operationId: 'getGovernanceVisibilityMatrix', method: 'GET' as const, pathTemplate: '/governance/visibility-matrix', zone: 'BACK_OFFICE' as const, roles: ["founder","hqExecutive","backOfficeStaff"] as Role[], permissions: ["governance:read"], ownership: 'none' as const, auth: 'required' as const },
 } satisfies Record<string, OperationMeta>;
@@ -48,7 +48,7 @@ export const governance = {
    *
    * `GET /governance/me/visibility`
    * Zone: MEMBER_PORTAL
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer
    * Ownership: self
    */
   myVisibility(options?: RequestOptions): Promise<GovernanceVisibility> {

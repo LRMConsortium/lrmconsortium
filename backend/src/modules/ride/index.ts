@@ -63,6 +63,62 @@ async function ownProfile(
 }
 
 /**
+ * Which side of *this* ride the caller is on, if either.
+ *
+ * ── Why this is not a role check ─────────────────────────────────────────
+ * `/start`, `/complete` and `/cancel` were gated by `requirePermission('ride:
+ * update')` and nothing else. Three roles hold that grant, including both
+ * driver and rider — so any Ususu member who could name a `rideId` could close
+ * a trip belonging to two other people, and on `/complete` name the fare from
+ * their own request body. A stranger could bill a rider 50,000, or rob a driver
+ * by completing their trip at 1.
+ *
+ * A permission says what kind of thing you may do. It cannot say whose. That is
+ * the fourth gate, and it was missing here.
+ *
+ * ── Why both profiles are resolved ───────────────────────────────────────
+ * One person can hold both roles — an Ususu driver takes rides home like
+ * anyone else — and `actor.profileId` is one profile, so it cannot answer this
+ * question. Neither can `actor.roles`: holding the driver role says nothing
+ * about whether you are *this* ride's driver.
+ */
+async function partyOn(ride: IRide, userId: string): Promise<'driver' | 'rider' | null> {
+  const [driver, rider] = await Promise.all([
+    DriverProfile.findOne({ user: userId, deletedAt: null }).select('_id').lean().exec(),
+    RiderProfile.findOne({ user: userId, deletedAt: null }).select('_id').lean().exec(),
+  ]);
+  if (ride.driver && driver && String(ride.driver) === String(driver._id)) return 'driver';
+  if (ride.rider && rider && String(ride.rider) === String(rider._id)) return 'rider';
+  return null;
+}
+
+/**
+ * Refuse anyone who is not on this ride.
+ *
+ * `notFound` rather than `forbidden` when the caller is a stranger: a 403 on a
+ * ride id confirms that the ride exists, and a stranger walking ids should not
+ * be able to map the platform's trips by reading the difference between two
+ * refusals. A party who is simply the wrong party gets a plain 403, because
+ * they already know the ride is real.
+ */
+async function requireParty(
+  ride: IRide,
+  userId: string,
+  who: 'driver' | 'rider' | 'either',
+): Promise<'driver' | 'rider'> {
+  const party = await partyOn(ride, userId);
+  if (!party) throw ApiError.notFound('Ride');
+  if (who !== 'either' && party !== who) {
+    throw ApiError.forbidden(
+      who === 'driver'
+        ? 'Only the driver on this ride can do that'
+        : 'Only the rider on this ride can do that',
+    );
+  }
+  return party;
+}
+
+/**
  * Move a ride through the lifecycle.
  *
  * Every transition goes through `canTransition`, which reads the state machine
@@ -78,6 +134,12 @@ function transition(
     actorId: string,
     req: Parameters<RequestHandler>[0],
   ) => Record<string, unknown>,
+  /**
+   * Which party may make this move. Omitted only for `/accept`, where the
+   * caller is *claiming* the ride and is by definition not yet on it — that
+   * route has its own gate (a verified driver, stamped onto the ride).
+   */
+  who?: 'driver' | 'rider' | 'either',
 ): RequestHandler {
   return asyncHandler(async (req, res) => {
     const actor = req.actor!;
@@ -85,6 +147,8 @@ function transition(
       .lean()
       .exec()) as IRide | null;
     if (!ride) throw ApiError.notFound('Ride');
+
+    if (who) await requireParty(ride, actor.userId, who);
 
     if (!canTransition(ride.status, to)) {
       throw ApiError.conflict(`A ride in status "${ride.status}" cannot move to "${to}"`);
@@ -182,9 +246,10 @@ itemRouter.post(
   ...ususu,
   requirePermission('ride:update'),
   validate({ params: rideId, body: startRideSchema }),
+  // The driver starts the trip. A rider cannot, and a stranger certainly cannot.
   transition('inProgress', (_ride, body) => ({
     startedAt: (body.startedAt as Date | undefined) ?? new Date(),
-  })),
+  }), 'driver'),
 );
 
 /**
@@ -203,11 +268,17 @@ itemRouter.post(
       .lean()
       .exec()) as IRide | null;
     if (!ride) throw ApiError.notFound('Ride');
+
+    /* The driver, and only the driver. The fare on this route is taken from the
+     * request body, so whoever may call it decides what the rider is charged
+     * and what the driver earns. */
+    await requireParty(ride, actor.userId, 'driver');
+
     if (!canTransition(ride.status, 'completed')) {
       throw ApiError.conflict(`A ride in status "${ride.status}" cannot be completed`);
     }
 
-    const body = req.body as { finalFare: number; currency?: string; distanceKm?: number; durationMin?: number };
+    const body = req.body as { finalFare: number; distanceKm?: number; durationMin?: number };
     if (!ride.driver) {
       throw ApiError.conflict('A ride with no assigned driver cannot be completed');
     }
@@ -231,7 +302,10 @@ itemRouter.post(
       payee: ride.driver,
       payeeKind: 'DriverProfile',
       amount: body.finalFare,
-      currency: body.currency ?? ride.currency,
+      /* The ride's currency, never the request's. A caller who could name the
+       * denomination could turn a 300 dalasi fare into 300 of something worth
+       * more — and this platform has no exchange rate with which to notice. */
+      currency: ride.currency,
       method: ride.paymentMethod,
       platformFee,
       netAmount: driverEarnings,
@@ -272,7 +346,14 @@ itemRouter.post(
       .exec()) as IRide | null;
     if (!ride) throw ApiError.notFound('Ride');
 
-    const to = actor.roles.includes('driver') ? 'cancelledByDriver' : 'cancelledByRider';
+    /* Either party may call off a trip. Which one is asking decides which
+     * cancellation this is — and it is read from the *ride*, not from the
+     * caller's roles. `actor.roles.includes('driver')` was wrong for anybody
+     * who holds both roles: an Ususu driver cancelling a ride they had booked
+     * as a passenger was recorded as a driver cancellation, against a stranger's
+     * driver record and never against their own rider one. */
+    const party = await requireParty(ride, actor.userId, 'either');
+    const to = party === 'driver' ? 'cancelledByDriver' : 'cancelledByRider';
     if (!canTransition(ride.status, to)) {
       throw ApiError.conflict(`A ride in status "${ride.status}" cannot be cancelled`);
     }
@@ -396,8 +477,13 @@ driverScopedRouter.get(
       ...new Set([doc.region as string | undefined, ...((doc.areasCovered as string[]) ?? [])]),
     ].filter(Boolean) as string[];
 
+    /* Server door. Every clause here is derived from the driver's own profile,
+     * not from the request, and none of it is the caller's to relax. It would
+     * have survived the client door too — `region` happens to be allowlisted —
+     * but that is a coincidence, and relying on it is what turned the same
+     * shape into a full-collection read in three other modules. */
     const { items, meta } = await rideService.list({
-      filters: {
+      serverFilters: {
         status: 'searching',
         vehicleType: doc.vehicleType as string,
         ...(regions.length ? { region: { $in: regions } } : {}),
@@ -418,7 +504,7 @@ driverScopedRouter.get(
   asyncHandler(async (req, res) => {
     const { id } = await ownProfile('driver', req.actor!.userId);
     const { items, meta } = await rideService.list({
-      filters: { driver: id },
+      serverFilters: { driver: id },
       limit: Number(req.query.limit ?? 20),
       page: Number(req.query.page ?? 1),
     });
@@ -435,7 +521,7 @@ riderScopedRouter.get(
   asyncHandler(async (req, res) => {
     const { id } = await ownProfile('rider', req.actor!.userId);
     const { items, meta } = await rideService.list({
-      filters: { rider: id },
+      serverFilters: { rider: id },
       limit: Number(req.query.limit ?? 20),
       page: Number(req.query.page ?? 1),
     });

@@ -12,7 +12,7 @@ import {
 } from './permissions.js';
 
 /**
- * The fifteen roles of the consortium.
+ * The nineteen roles of the consortium.
  *
  * Every role declares four things and nothing else:
  *   accessScope     — how wide the role sees (global → own record)
@@ -36,6 +36,14 @@ export const ROLES = [
   'driver',
   'rider',
   'advertiser',
+
+  // Marketplace. Merchant and Customer are the accounts a coordinator
+  // supervises; Seller and Buyer are the people who act for them.
+  'merchant',
+  'seller',
+  'customer',
+  'buyer',
+
   'publicUser',
 ] as const;
 
@@ -160,6 +168,9 @@ const hqExecutive = define({
     'publicMetrics:read',
     'lease:read',
     'payment:read',
+    /* Writing down cash taken in person. Distinct from `payment:create`, which
+     * is starting a transfer — see the note on the `record` action. */
+    'payment:record',
     'commercialClient:read',
     'maintenanceRequest:read',
     'ride:read',
@@ -173,6 +184,11 @@ const hqExecutive = define({
     'fac:verify',
     'fac:read',
     'governance:read',
+    'merchantProfile:read',
+    'customerProfile:read',
+    'listing:read',
+    'order:read',
+    'marketplace:read',
   ],
   allowedZones: ['HQ_EXECUTIVE', 'BACK_OFFICE', 'MEMBER_PORTAL', 'PUBLIC_PORTAL'],
   allowedActions: [
@@ -199,6 +215,12 @@ const backOfficeStaff = define({
   permissions: [
     all('coordinatorProfile'),
     all('vendorProfile'),
+    // Back Office administers the marketplace parties and adjudicates orders.
+    all('merchantProfile'),
+    all('customerProfile'),
+    all('listing'),
+    all('order'),
+    all('marketplace'),
     all('backOfficeStaffProfile'),
     'driverProfile:read',
     'driverProfile:update',
@@ -231,6 +253,11 @@ const backOfficeStaff = define({
     'property:read',
     'property:update',
     'lease:read',
+    all('viewing'),
+    all('application'),
+    all('reference'),
+    all('dispute'),
+    all('ususuLedger'),
     'maintenanceRequest:read',
     'maintenanceRequest:assign',
     'maintenanceRequest:update',
@@ -243,6 +270,7 @@ const backOfficeStaff = define({
     'lease:update',
     'payment:read',
     'payment:create',
+    'payment:record',
     'commercialClient:create',
     'commercialClient:read',
     'commercialClient:update',
@@ -305,10 +333,36 @@ const coordinator = define({
     'maintenanceRequest:read',
     'maintenanceRequest:update',
     'maintenanceRequest:assign',
+    // The coordinator runs the viewing diary in their region and is the first
+    // person to look at an application. `approve` here is the grant to record
+    // a decision; which decisions exist is the lifecycle table's business.
+    'viewing:read',
+    'viewing:update',
+    'viewing:approve',
+    'application:read',
+    'application:update',
+    'application:approve',
+    'reference:create',
+    'reference:read',
+    'reference:update',
+    'dispute:create',
+    'dispute:read',
+    'ususuLedger:create',
+    'ususuLedger:read',
     'rentPayment:read',
     'rentPayment:create',
     'lease:read',
+    /* Terminating a tenancy — the one lifecycle act a landlord may not do,
+     * because LRMC carries the tenancy and answers for the outcome. */
+    'lease:update',
+    'lease:create',
     'payment:readOwn',
+    /* The reason `POST /payments/record` exists. A coordinator collects rent in
+     * a compound from a tenant with no card; without this the receipt cannot be
+     * written and the tenant's payment evidence stays empty. Deliberately NOT
+     * `payment:create` — see the note on the `record` action for why the two
+     * are different powers. */
+    'payment:record',
     'notification:readOwn',
     'document:create',
     'document:read',
@@ -380,12 +434,25 @@ const landlord = define({
     'property:updateOwn',
     'lease:readOwn',
     'rentPayment:readOwn',
+    // Read-only on both. LRMC carries the tenancy, holds the deposit and
+    // answers for the decision, so a landlord sees who applied and what LRMC
+    // made of them — and does not approve or reject. See
+    // `applicationLifecycle.mayDecide`.
+    'viewing:readOwn',
+    'application:readOwn',
+    // A landlord sees an applicant's *assessment*, which is the summary LRMC
+    // stands behind — not the referee comments and dispute detail behind it.
     'maintenanceRequest:readOwn',
     'maintenanceRequest:approve',
     'tenantProfile:readOwn',
     'vendorProfile:read',
     'lease:readOwn',
     'lease:create',
+    /* Activating and completing their own tenancies. NOT terminating — ending
+     * one early is LRMC's decision, and `leaseLifecycle.TRANSITIONS_BY_PARTY`
+     * is where that is enforced. The grant opens the route; the table decides
+     * which of the three acts a landlord may actually perform. */
+    'lease:updateOwn',
     'payment:readOwn',
     'notification:readOwn',
     'document:create',
@@ -422,6 +489,21 @@ const tenant = define({
     'rentPayment:create',
     'maintenanceRequest:create',
     'maintenanceRequest:readOwn',
+    // A tenant asks for a viewing and applies for a tenancy. They may update
+    // their own — which is how a withdrawal happens — but `mayDecide` is what
+    // stops that becoming an approval.
+    'viewing:create',
+    'viewing:readOwn',
+    'viewing:updateOwn',
+    'application:create',
+    'application:readOwn',
+    'application:updateOwn',
+    // Read-only, and only their own. A person who could write their own
+    // reference or close their own dispute would be filling in their own
+    // assessment.
+    'reference:readOwn',
+    'dispute:readOwn',
+    'ususuLedger:readOwn',
     'property:readOwn',
     'lease:readOwn',
     'payment:readOwn',
@@ -736,6 +818,184 @@ const publicUser = define({
   ],
 });
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Marketplace
+//
+// Four roles in two pairs, and the pairing is the whole design.
+//
+// A **Merchant** is an account — a trading business trading on the LRMC
+// marketplace. A **Seller** is a person who acts for one. Likewise a
+// **Customer** is an account and a **Buyer** is a person who purchases against
+// it.
+//
+// **Nobody supervises them in the field.** Coordinators supervise vendors —
+// maintenance workers on properties, dispatched against work orders. The
+// marketplace parties are governed by the platform's own rules instead, which
+// is a deliberate scaling choice: onboarding a merchant must not require a
+// human in their region, or the marketplace grows only as fast as LRMC can
+// hire.
+//
+// What "the system supervises them" means concretely, and where each rule
+// lives:
+//
+//   verification    `listingRules.canPublish` refuses to publish anything for
+//                   an unverified merchant, so an unverified account can exist
+//                   but cannot trade.
+//   catalogue       publish eligibility is checked on every submission, and a
+//                   product that hits zero stock leaves the catalogue on its
+//                   own (`autoUnpublish`).
+//   money           escrow is held and released by rule, not by permission —
+//                   `orderLifecycle` gives no actor a path to release funds to
+//                   themselves, and `AUTO_RELEASE_DAYS` stops a silent buyer
+//                   stranding a merchant's settlement.
+//   disputes        the one place a human is required. Only Back Office can
+//                   resolve one, because a dispute either party could quietly
+//                   clear is not a dispute.
+//
+// Why not collapse each pair into one role: a merchant with three staff needs
+// all three able to sell without sharing one login, and needs one of them
+// removed on a Friday without the other two losing access. The account is what
+// holds the trading relationship, the bank details and the coordinator's
+// supervision; the person is what holds the password. Merging them makes the
+// first staff change a data-migration problem.
+//
+// These are **not vendors**. A vendor does maintenance work on a property under
+// a work order. A merchant trades goods and services in the marketplace under
+// an order with money held in escrow. Different relationship, different money
+// flow, deliberately different role.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const merchant = define({
+  role: 'merchant',
+  label: 'Merchant',
+  serviceLine: 'LRMC',
+  accessScope: 'organizational',
+  isOrganizational: true,
+  requiresVerification: true,
+  profileModel: 'MerchantProfile',
+  permissions: [
+    ...selfService('merchantProfile'),
+    // The account owns its catalogue outright.
+    all('listing'),
+    'order:read',
+    'order:update',
+    // Not `order:create`. A merchant creating orders against itself is how a
+    // marketplace's numbers stop meaning anything.
+    'payout:read',
+    'payment:readOwn',
+    'notification:readOwn',
+    'document:create',
+    'document:readOwn',
+    'document:updateOwn',
+    'marketplace:read',
+  ],
+  allowedZones: ['MEMBER_PORTAL'],
+  allowedActions: [
+    'manageCatalogue',
+    'publishListing',
+    'unpublishListing',
+    'manageSellers',
+    'acceptOrder',
+    'declineOrder',
+    'fulfilOrder',
+    'viewSettlements',
+    'updateOwnRates',
+  ],
+});
+
+const seller = define({
+  role: 'seller',
+  label: 'Seller',
+  serviceLine: 'LRMC',
+  accessScope: 'organizational',
+  isOrganizational: false,
+  requiresVerification: true,
+  profileModel: 'MerchantProfile',
+  permissions: [
+    'merchantProfile:readOwn',
+    'listing:create',
+    'listing:read',
+    'listing:update',
+    // No `listing:delete`. A seller withdrawing a listing unpublishes it,
+    // which is reversible; destroying the merchant's catalogue is not a thing
+    // one member of staff should be able to do alone.
+    'order:read',
+    'order:update',
+    'notification:readOwn',
+    'document:create',
+    'document:readOwn',
+    'marketplace:read',
+  ],
+  allowedZones: ['MEMBER_PORTAL'],
+  allowedActions: [
+    'manageCatalogue',
+    'publishListing',
+    'unpublishListing',
+    'acceptOrder',
+    'declineOrder',
+    'fulfilOrder',
+  ],
+});
+
+const customer = define({
+  role: 'customer',
+  label: 'Customer',
+  serviceLine: 'LRMC',
+  accessScope: 'organizational',
+  isOrganizational: true,
+  requiresVerification: false,
+  profileModel: 'CustomerProfile',
+  permissions: [
+    ...selfService('customerProfile'),
+    'listing:read',
+    'order:create',
+    'order:read',
+    'order:updateOwn',
+    'payment:readOwn',
+    'notification:readOwn',
+    'document:create',
+    'document:readOwn',
+    'marketplace:read',
+  ],
+  allowedZones: ['MEMBER_PORTAL'],
+  allowedActions: [
+    'browseMarketplace',
+    'placeOrder',
+    'cancelOrder',
+    'confirmReceipt',
+    'raiseDispute',
+    'manageBuyers',
+  ],
+});
+
+const buyer = define({
+  role: 'buyer',
+  label: 'Buyer',
+  serviceLine: 'LRMC',
+  accessScope: 'organizational',
+  isOrganizational: false,
+  requiresVerification: false,
+  profileModel: 'CustomerProfile',
+  permissions: [
+    'customerProfile:readOwn',
+    'listing:read',
+    'order:create',
+    'order:read',
+    'order:updateOwn',
+    'notification:readOwn',
+    'marketplace:read',
+  ],
+  allowedZones: ['MEMBER_PORTAL'],
+  allowedActions: [
+    'browseMarketplace',
+    'placeOrder',
+    'cancelOrder',
+    'confirmReceipt',
+    'raiseDispute',
+  ],
+});
+
 export const ROLE_DEFINITIONS: Record<Role, RoleDefinition> = {
   founder,
   hqExecutive,
@@ -751,6 +1011,10 @@ export const ROLE_DEFINITIONS: Record<Role, RoleDefinition> = {
   driver,
   rider,
   advertiser,
+  merchant,
+  seller,
+  customer,
+  buyer,
   publicUser,
 };
 

@@ -7,23 +7,19 @@ import {
 } from '../../shared/validationFragments.js';
 
 /** Roles a person may claim for themselves. Everything else is appointed. */
-export const SELF_REGISTERABLE_ROLES = [
-  'tenant',
-  'landlord',
-  'rider',
-  'driver',
-  'vendor',
-  'advertiser',
-  'airbnbHost',
-  'hotelManager',
-  'resortManager',
-  'rentalCarCompany',
-  'publicUser',
-] as const;
+// The list lives in `config/registration.ts`, which is pure — the verify
+// suite must import it without pulling in Zod.
+export { SELF_REGISTERABLE_ROLES, type SelfRegisterableRole } from '../../config/registration.js';
+import {
+  SELF_REGISTERABLE_ROLES as ROLE_LIST,
+  PASSWORD_MIN_LENGTH,
+  EXTRA_LABELS,
+  missingExtras,
+} from '../../config/registration.js';
 
 const password = z
   .string()
-  .min(10, 'Password must be at least 10 characters')
+  .min(PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters`)
   .max(200)
   .refine((v) => /[a-z]/.test(v) && /[A-Z]/.test(v) && /\d/.test(v), {
     message: 'Password must contain upper case, lower case and a digit',
@@ -36,7 +32,7 @@ export const registerSchema = z
     phone: zPhone,
     WhatsApp: zOptionalPhone,
     password,
-    role: z.enum(SELF_REGISTERABLE_ROLES),
+    role: z.enum(ROLE_LIST),
     /** Required for organisational roles. */
     businessName: z.string().trim().min(2).max(200).optional(),
     region: z.string().trim().max(120).optional(),
@@ -47,7 +43,30 @@ export const registerSchema = z
     /** Advertisers must declare a business type at signup. */
     businessType: z.string().trim().max(60).optional(),
   })
-  .strict();
+  .strict()
+  /**
+   * The extras are optional *in the shape* because which ones apply depends on
+   * the role, and there is one shape for thirteen roles. They are not optional
+   * in fact: `REGISTRATION_EXTRAS` says what each role must declare, and this
+   * is where that table is enforced.
+   *
+   * Without it the table would only ever have shaped the form, and a driver
+   * posting directly to the API could arrive with no vehicle — which the
+   * dispatch side has no way to handle and no way to have prevented.
+   *
+   * The issue is raised on the field itself, so the browser can put the
+   * message beside the input rather than in a banner the person has to
+   * translate back into "which box did I miss".
+   */
+  .superRefine((value, ctx) => {
+    for (const field of missingExtras(value.role, value as Record<string, unknown>)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [field],
+        message: `${EXTRA_LABELS[field] ?? field} is required for ${value.role}`,
+      });
+    }
+  });
 
 export const loginSchema = z
   .object({
@@ -57,6 +76,20 @@ export const loginSchema = z
   .strict();
 
 export const refreshSchema = z.object({ refreshToken: z.string().min(10) }).strict();
+
+/**
+ * Signing out.
+ *
+ * `refreshToken` is **optional**, and that is the whole design of this schema.
+ * A person pressing sign-out has asked to leave; requiring the token would turn
+ * "your storage was already cleared" into a 400 on the way out, and a browser
+ * that hit it would leave the person apparently signed in. Present means the
+ * session is revoked server-side; absent means the local session is cleared and
+ * the reply says so plainly.
+ */
+export const logoutSchema = z
+  .object({ refreshToken: z.string().min(10).optional() })
+  .strict();
 
 export const changePasswordSchema = z
   .object({

@@ -49,7 +49,7 @@ export type Ad = (LifecycleFields & {
   clickCap?: number;
   dailyImpressionCap?: number;
   budgetAmount?: number;
-  budgetCurrency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  budgetCurrency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   spend?: number;
   impressions?: number;
   clicks?: number;
@@ -87,7 +87,7 @@ export type AdInput = (LifecycleFieldsInput & {
   clickCap?: number;
   dailyImpressionCap?: number;
   budgetAmount?: number;
-  budgetCurrency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  budgetCurrency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
 });
 
 /** Founder-owned, versioned and never edited in place. */
@@ -96,7 +96,7 @@ export interface AdPolicy {
   version?: number;
   isActive?: boolean;
   effectiveFrom?: string;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   pricing?: {
     placement: string;
     cpm?: number;
@@ -131,7 +131,7 @@ export interface AdPolicy {
 /** Request variant of `AdPolicy` — server-controlled fields removed. */
 export interface AdPolicyInput {
   effectiveFrom?: string;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   pricing?: {
     placement: string;
     cpm?: number;
@@ -225,7 +225,7 @@ export type Advertiser = (ContactFields & LocationFields & LifecycleFields & Ver
   businessType: "realEstate" | "construction" | "financialServices" | "telecom" | "retail" | "hospitality" | "transport" | "automotive" | "healthcare" | "education" | "agriculture" | "government" | "ngo" | "other";
   website?: string;
   logo?: string;
-  billingCurrency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  billingCurrency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   /** Founder-set. */
   creditLimit?: number;
   outstandingBalance?: number;
@@ -248,7 +248,7 @@ export type AdvertiserInput = (ContactFields & LocationFields & LifecycleFieldsI
   businessType: "realEstate" | "construction" | "financialServices" | "telecom" | "retail" | "hospitality" | "transport" | "automotive" | "healthcare" | "education" | "agriculture" | "government" | "ngo" | "other";
   website?: string;
   logo?: string;
-  billingCurrency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  billingCurrency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
 });
 
 /** Founder-set commercial terms. Outside the advertiser’s own reach. */
@@ -293,6 +293,81 @@ export type AirbnbHostInput = (ContactFields & LocationFields & LifecycleFieldsI
   contractEnd?: string;
   serviceTier?: "basic" | "standard" | "premium";
 });
+
+export interface AnomalyFeed {
+  findings: {
+    signal: string;
+    /** The ceiling is `escalate`. Nothing here blocks or locks. */
+    action: "watch" | "escalate";
+    count: number;
+    windowMinutes?: number;
+    subject?: string;
+    address?: string;
+    summary: string;
+  }[];
+  /** Says that counts are per process, so a reader knows why they look low. */
+  note?: string;
+  reportsPerBrowserPerWindow?: number;
+}
+
+/** A tenancy application. LRMC scores it; a named person decides it. `decision` carries both the author and the reason, for an approval as much as for a refusal. */
+export interface Application {
+  _id?: string;
+  property: string;
+  applicant: string;
+  landlord?: string;
+  coordinator?: string;
+  status: "submitted" | "underReview" | "awaitingApplicant" | "approved" | "rejected" | "withdrawn" | "leaseIssued";
+  proposedRent?: number;
+  currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  proposedStart?: string;
+  termMonths?: number;
+  householdSize?: number;
+  message?: string;
+  documentKeys?: string[];
+  assessment?: Assessment;
+  decision?: {
+    outcome?: "approved" | "rejected";
+    decidedBy?: string;
+    decidedAt?: string;
+    reason?: string;
+    /** Recorded so a decision taken against the score is findable later. */
+    againstRecommendation?: boolean;
+  };
+  lease?: string;
+  outstandingRequest?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ApplicationAssessment {
+  assessment: Assessment;
+  application: Application;
+}
+
+export type ApplicationList = Application[];
+
+export interface ApplicationStats {
+  totalApplications: number;
+  underReview: number;
+  approved: number;
+  declined: number;
+  withdrawn?: number;
+  unclassified?: number;
+}
+
+/** A recommendation, never a decision. Stored on the application as a snapshot of what the decider was looking at — recomputing on read would rewrite history every time somebody paid their rent. */
+export interface Assessment {
+  factors: EligibilityFactor[];
+  score: number;
+  recommendation: "recommend" | "review" | "decline";
+  blockedBy?: string[];
+  missing?: string[];
+  summary: string;
+  evidence?: EvidenceBundle;
+  takenAt?: string;
+  takenBy?: string;
+}
 
 /** Posts a coordinator to a set of properties, replacing the current assignment. */
 export interface AssignPropertiesRequest {
@@ -440,7 +515,7 @@ export interface BroadcastResult {
 /** A query, not a list of lines. The server reads the ledger and computes the amounts — a client that could post its own line amounts could pay itself. */
 export interface BuildPayoutBatchRequest {
   kind: "driverPayout" | "landlordPayout" | "refund";
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   periodStart?: string;
   periodEnd?: string;
   maxRows?: number;
@@ -454,6 +529,10 @@ export interface CampaignKpis {
   clicks: number;
   clickThroughRate: number;
   spend?: number;
+}
+
+export interface CancelOrderRequest {
+  reason: string;
 }
 
 export interface CancelPayoutBatchRequest {
@@ -515,7 +594,7 @@ export type CommercialClient = (ContactFields & LocationFields & VerificationFie
   contractEnd?: string;
   contractStatus?: "prospect" | "negotiating" | "active" | "renewing" | "suspended" | "ended";
   contractValue?: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   billingFrequency?: "monthly" | "quarterly" | "annually";
   negotiatedFeePercent?: number;
   slaHours?: number;
@@ -538,7 +617,7 @@ export type CommercialClientInput = (ContactFields & LocationFields & Verificati
   contractEnd?: string;
   contractStatus?: "prospect" | "negotiating" | "active" | "renewing" | "suspended" | "ended";
   contractValue?: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   billingFrequency?: "monthly" | "quarterly" | "annually";
   negotiatedFeePercent?: number;
   slaHours?: number;
@@ -553,7 +632,7 @@ export type CommercialClientListInput = CommercialClientInput[];
 /** Stamps the fare, splits the commission and writes the ledger row. */
 export interface CompleteRideRequest {
   finalFare: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   distanceKm?: number;
   durationMin?: number;
   notes?: string;
@@ -603,6 +682,28 @@ export type CoordinatorInput = (ContactFields & LocationFields & LifecycleFields
   startDate?: string;
 });
 
+/** What the applicant states. Notably absent: whether their income is evidenced, their payment history, and whether a dispute is open — those LRMC looks up, never accepts. */
+export interface CreateApplicationRequest {
+  property: string;
+  proposedRent?: number;
+  proposedStart?: string;
+  termMonths?: number;
+  householdSize?: number;
+  /** Declared, not evidenced. */
+  monthlyIncome?: number;
+  message?: string;
+  documentKeys?: string[];
+}
+
+export interface CreateUsusuGroupRequest {
+  name: string;
+  members?: string[];
+  contributionAmount?: number;
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  region?: string;
+  note?: string;
+}
+
 /** Everything a frontend needs on boot: identity, grants, zones, actions. */
 export interface CurrentActor {
   user?: Record<string, unknown> | null;
@@ -614,6 +715,72 @@ export interface CurrentActor {
     allowedActions?: string[];
   };
   zones?: Record<string, unknown>[];
+}
+
+/** A buying account on the LRMC marketplace. Buyers act for it. */
+export interface Customer {
+  _id?: string;
+  user: string;
+  accountName: string;
+  buyers?: string[];
+  /** Ceiling on what a named buyer may spend without the account owner. Absent means no ceiling. */
+  buyerOrderLimit?: number;
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  totalOrders?: number;
+  totalSpend?: number;
+  email?: string;
+  phone?: string;
+  region?: string;
+  city?: string;
+  verificationStatus?: "unsubmitted" | "pending" | "inReview" | "verified" | "rejected" | "suspended";
+  status?: "draft" | "active" | "inactive" | "suspended" | "archived";
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** Who may purchase against this customer account. */
+export interface CustomerBuyersRequest {
+  buyerIds: string[];
+}
+
+export type CustomerList = Customer[];
+
+/** Required for an approval as much as for a refusal. An approval nobody signed is the thing that cannot be defended later. */
+export interface DecideApplicationRequest {
+  reason: string;
+}
+
+export interface Dispute {
+  _id?: string;
+  subject: string;
+  raisedBy: string;
+  kind: "rent" | "damage" | "conduct" | "marketplace" | "ride" | "other";
+  severity: number;
+  summary: string;
+  status: "open" | "resolved" | "withdrawn";
+  resolution?: string;
+  resolvedBy?: string;
+  resolvedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface DisputeEvidenceView {
+  subject: string;
+  evidence: DisputesEvidence;
+  disputes: Dispute[];
+}
+
+export interface DisputeOrderRequest {
+  reason: string;
+}
+
+export interface DisputesEvidence {
+  disputesOpen: number;
+  disputesResolved: number;
+  /** The worst open dispute, not the sum. Three minor ones are not one severe one. */
+  disputeSeverity: number;
+  hasRecord: boolean;
 }
 
 export type Document = (LifecycleFields & {
@@ -978,10 +1145,63 @@ export interface DriverVerificationQueueInput {
   meta?: PageMeta;
 }
 
+/** One scored factor, with the reason in words the applicant could be shown. */
+export interface EligibilityFactor {
+  factor: "identity" | "employment" | "references" | "paymentHistory" | "ususuContributions" | "disputes";
+  label: string;
+  /** `unknown` means LRMC has no evidence, which is not the same as bad evidence and is never scored as a failure. */
+  status: "pass" | "concern" | "fail" | "unknown";
+  points: number;
+  max: number;
+  reason: string;
+}
+
 export interface EmergencyContactFields {
   emergencyContactName?: string;
   emergencyContactPhone?: string;
   emergencyContactRelationship?: string;
+}
+
+export interface ErrorReceipt {
+  received: boolean;
+}
+
+export interface ErrorReport {
+  id: string;
+  kind: string;
+  severity: "noise" | "degraded" | "blocking";
+  message: string;
+  /** A path template, never a real URL. */
+  path: string;
+  source?: string;
+  line?: number;
+  stack?: string;
+  control?: string;
+  /** Null for a fault reported before sign-in. */
+  reportedBy?: string;
+  /** Plain English, computed on read. Never a stack — a coordinator is being asked whether a member is stuck, not to debug. */
+  summary?: string;
+  createdAt?: string;
+  /** 90 days. A retention decision, not a storage one. */
+  expiresAt?: string;
+}
+
+export type ErrorReportList = ErrorReport[];
+
+export interface ErrorReportRequest {
+  /** `deadPath` is the one nothing throws for: a control that should do something and does not. It is the most valuable kind here — a member meeting it has no vocabulary to report it. */
+  kind: "uncaught" | "unhandledRejection" | "frameworkMissing" | "networkFailure" | "deadPath" | "assetFailure";
+  message: string;
+  /** The script. Code, not data. */
+  source?: string;
+  line?: number;
+  column?: number;
+  /** Truncated and redacted before storage. */
+  stack?: string;
+  /** Reduced to a path template server-side. Never stored raw — a query string is where a name goes. */
+  url?: string;
+  /** Which control, for a dead path. */
+  control?: string;
 }
 
 /** Every failure, in one shape. */
@@ -996,6 +1216,15 @@ export interface ErrorResponse {
       code?: string;
     }[];
   };
+}
+
+/** All five kinds, always present. */
+export interface EvidenceBundle {
+  identityEvidence: IdentityEvidence;
+  referencesEvidence: ReferencesEvidence;
+  disputesEvidence: DisputesEvidence;
+  ususuEvidence: UsusuEvidence;
+  paymentsEvidence: PaymentsEvidence;
 }
 
 /** Zone B, in one call. */
@@ -1238,7 +1467,7 @@ export interface FleetVehicle {
   year?: number;
   color?: string;
   dailyRate?: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   insuranceProvider?: string;
   insuranceExpiry?: string;
   roadworthyExpiry?: string;
@@ -1279,6 +1508,10 @@ export type FounderInput = (ContactFields & LocationFields & LifecycleFieldsInpu
   /** Never leaves Zone A — select:false and stripped in toJSON. */
   securityNotes?: string;
 });
+
+export interface FulfilOrderRequest {
+  note?: string;
+}
 
 /** A component with no data is excluded, not scored zero. A missing or expired code caps the composite — a green bar over a platform with no code in force is worse than no bar at all. */
 export interface GovernanceHealth {
@@ -1430,6 +1663,14 @@ export type HotelInput = (ContactFields & LocationFields & LifecycleFieldsInput 
   businessRegistrationNumber?: string;
 });
 
+export interface IdentityEvidence {
+  identityVerified: boolean;
+  /** Documents submitted, not yet reviewed. */
+  identityPending: boolean;
+  /** False means LRMC has never checked, which is not a failure. */
+  hasRecord: boolean;
+}
+
 /** National identity. Never returned by the API. */
 export interface IdentityFields {
   IDType?: "ghanaCard" | "passport" | "driversLicense" | "votersId" | "nationalId" | "ssnit" | "other";
@@ -1495,7 +1736,7 @@ export type Landlord = (ContactFields & LocationFields & LifecycleFields & Verif
   propertiesOwned?: string[];
   diasporaStatus?: "resident" | "diaspora" | "returnee" | "dualBased";
   payoutMethod?: "mobileMoney" | "bankTransfer" | "cash" | "card" | "cheque" | "crypto";
-  payoutCurrency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  payoutCurrency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   managementFeePercent?: number;
   statementFrequency?: "monthly" | "quarterly" | "annually";
 });
@@ -1507,7 +1748,7 @@ export type LandlordInput = (ContactFields & LocationFields & LifecycleFieldsInp
   diasporaStatus?: "resident" | "diaspora" | "returnee" | "dualBased";
   payoutMethod?: "mobileMoney" | "bankTransfer" | "cash" | "card" | "cheque" | "crypto";
   payoutAccountRef?: string;
-  payoutCurrency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  payoutCurrency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   managementFeePercent?: number;
   statementFrequency?: "monthly" | "quarterly" | "annually";
 });
@@ -1522,7 +1763,7 @@ export type Lease = (LifecycleFields & {
   leaseStart: string;
   leaseEnd: string;
   monthlyRent: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   paymentDayOfMonth?: number;
   securityDeposit?: number;
   depositHeldBy?: "LRMC" | "landlord" | "escrow";
@@ -1539,7 +1780,7 @@ export type Lease = (LifecycleFields & {
   terminationReason?: string;
   daysRemaining?: number | null;
   isInArrears?: boolean;
-  status?: "draft" | "pendingSignature" | "active" | "inArrears" | "expiring" | "ended" | "terminated";
+  status?: "draft" | "pendingSignature" | "active" | "inArrears" | "expiring" | "completed" | "terminated";
 });
 
 /** Request variant of `Lease`. */
@@ -1551,7 +1792,7 @@ export type LeaseInput = (LifecycleFieldsInput & {
   leaseStart: string;
   leaseEnd: string;
   monthlyRent: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   paymentDayOfMonth?: number;
   securityDeposit?: number;
   depositHeldBy?: "LRMC" | "landlord" | "escrow";
@@ -1563,8 +1804,12 @@ export type LeaseInput = (LifecycleFieldsInput & {
   signedByTenantAt?: string;
   signedByLandlordAt?: string;
   terminationReason?: string;
-  status?: "draft" | "pendingSignature" | "active" | "inArrears" | "expiring" | "ended" | "terminated";
+  status?: "draft" | "pendingSignature" | "active" | "inArrears" | "expiring" | "completed" | "terminated";
 });
+
+export interface LeaseActionRequest {
+  lease: string;
+}
 
 /** The lease totals after a payment, recomputed rather than incremented. */
 export interface LeaseBalance {
@@ -1574,7 +1819,7 @@ export interface LeaseBalance {
   arrearsAmount: number;
   creditBalance?: number;
   nextDueDate?: string | Record<string, unknown>;
-  status: "draft" | "pendingSignature" | "active" | "inArrears" | "expiring" | "ended" | "terminated";
+  status: "draft" | "pendingSignature" | "active" | "inArrears" | "expiring" | "completed" | "terminated";
   escalation?: "none" | "reminder" | "firstNotice" | "finalNotice" | "legalReferral";
 }
 
@@ -1587,7 +1832,7 @@ export type LeaseListInput = LeaseInput[];
 export interface LeaseSchedule {
   leaseId: string;
   reference?: string;
-  currency: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   monthlyRent: number;
   paymentDayOfMonth?: number;
   instalmentsDue?: number;
@@ -1598,11 +1843,17 @@ export interface LeaseSchedule {
   /** Paid ahead of schedule. Never negative; arrears is the other direction. */
   creditBalance?: number;
   nextDueDate?: string | Record<string, unknown>;
-  status?: "draft" | "pendingSignature" | "active" | "inArrears" | "expiring" | "ended" | "terminated";
+  status?: "draft" | "pendingSignature" | "active" | "inArrears" | "expiring" | "completed" | "terminated";
   escalation?: "none" | "reminder" | "firstNotice" | "finalNotice" | "legalReferral";
   /** True when the term is longer than the schedule window returned. */
   truncated?: boolean;
   entries: RentScheduleEntry[];
+}
+
+export interface LeaseTerminateRequest {
+  lease: string;
+  /** Required. The tenant is told, and a terminated lease with no stated reason is a fact about somebody's housing that nobody has to defend. */
+  reason: string;
 }
 
 export interface LifecycleFields {
@@ -1629,6 +1880,31 @@ export interface LinkedProfile {
   label?: string;
 }
 
+/** A product or a service offered by a merchant. Services carry no stock — a plumber does not run out of plumbing. */
+export interface Listing {
+  _id?: string;
+  merchant: string;
+  createdBySeller?: string;
+  kind: "product" | "service";
+  status: "draft" | "pending" | "published" | "suspended" | "archived";
+  title: string;
+  description?: string;
+  unitPrice: number;
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  /** Null on a service. */
+  stock?: Record<string, unknown>;
+  unit?: string;
+  category?: string;
+  imageKeys?: string[];
+  publishedAt?: string;
+  suspendedReason?: string;
+  totalOrdered?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type ListingList = Listing[];
+
 export interface LocationFields {
   nationality?: string;
   residenceCountry?: string;
@@ -1640,6 +1916,11 @@ export interface LocationFields {
 export interface LoginRequest {
   email: string;
   password: string;
+}
+
+export interface LogoutRequest {
+  /** The session's refresh token. Send it: revoking it is what makes signing out mean anything server-side. Omitted, the reply says nothing was revoked. */
+  refreshToken?: string;
 }
 
 export type MaintenanceRequest = (LifecycleFields & {
@@ -1658,7 +1939,7 @@ export type MaintenanceRequest = (LifecycleFields & {
   quotedAmount?: number;
   approvedAmount?: number;
   finalAmount?: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   approvedBy?: string;
   approvedAt?: string;
   photosBefore?: string[];
@@ -1689,7 +1970,7 @@ export type MaintenanceRequestInput = (LifecycleFieldsInput & {
   quotedAmount?: number;
   approvedAmount?: number;
   finalAmount?: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   photosBefore?: string[];
   photosAfter?: string[];
   scheduledFor?: string;
@@ -1726,6 +2007,16 @@ export interface MaintenanceSla {
   escalation: "none" | "notifyVendor" | "notifyCoordinator" | "notifyBackOffice" | "notifyHQ";
 }
 
+export interface MaintenanceStats {
+  totalRequests: number;
+  openRequests: number;
+  inProgress: number;
+  completed: number;
+  /** On hold or cancelled. */
+  stalled?: number;
+  unclassified?: number;
+}
+
 export interface MaintenanceStatusEntry {
   status: string;
   at: string;
@@ -1733,8 +2024,109 @@ export interface MaintenanceStatusEntry {
   note?: string;
 }
 
+export interface MaintenanceSummary {
+  total: number;
+  open: number;
+  inProgress: number;
+  completed: number;
+  /** On hold or cancelled. Reported so the parts sum to the total. */
+  stalled: number;
+  /** A status no bucket claims. Should always be 0; visible so it cannot hide. */
+  unclassified?: number;
+  /** Computed on every read from the current state, never stored. An unassigned emergency, a breached SLA, or a job parked past 72 hours. */
+  needsEscalation: number;
+  /** NULL over nothing resolved — never 0, which would read as an instant turnaround. */
+  averageResolutionHours: Record<string, unknown>;
+}
+
 export interface MarkNotificationRequest {
   read: boolean;
+}
+
+export interface MarketplaceOverview {
+  side: "merchant" | "customer" | "observer";
+  account?: {
+    id?: string;
+    name?: string;
+    verified?: boolean;
+  };
+  orders: {
+    total?: number;
+    byStatus?: Record<string, number>;
+    escrowHeldCount?: number;
+    /** What is currently tied up. */
+    escrowHeldValue?: number;
+    settledValue?: number;
+    /** Merchant view only; null for a customer. */
+    commissionPaid?: number;
+  };
+  awaitingAction?: {
+    _id?: string;
+    reference?: string;
+    status?: "pending" | "paid" | "accepted" | "fulfilled" | "confirmed" | "released" | "cancelled" | "refunded" | "disputed";
+    statusLabel?: string;
+    total?: number;
+    currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+    createdAt?: string;
+  }[];
+}
+
+export interface MemberCreateLeaseRequest {
+  property: string;
+  /** The tenant, as a USER id. The server joins to their profile. */
+  tenant: string;
+  monthlyRent: number;
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  leaseStart: string;
+  /** OPTIONAL. Absent or null means a month-to-month tenancy, which is ordinary in The Gambia. A required end date would force whoever writes the lease to invent one that then looks like a commitment. */
+  leaseEnd?: Record<string, unknown>;
+  paymentDayOfMonth?: number;
+  securityDeposit?: number;
+}
+
+/** A trading account on the LRMC marketplace. Sellers act for it. */
+export interface Merchant {
+  _id?: string;
+  user: string;
+  tradingName: string;
+  category: "homeGoods" | "buildingMaterials" | "furnishing" | "appliances" | "cleaning" | "security" | "landscaping" | "professionalServices" | "logistics" | "other";
+  registrationNumber?: string;
+  sellers?: string[];
+  /** Negotiated rate. Absent means the platform default at time of order. */
+  commissionPercent?: number;
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  totalOrders?: number;
+  totalSales?: number;
+  email?: string;
+  phone?: string;
+  region?: string;
+  city?: string;
+  verificationStatus?: "unsubmitted" | "pending" | "inReview" | "verified" | "rejected" | "suspended";
+  status?: "draft" | "active" | "inactive" | "suspended" | "archived";
+  rating?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface MerchantCatalogue {
+  merchant: string;
+  tradingName?: string;
+  /** An unverified merchant cannot publish anything. */
+  verified?: boolean;
+  counts?: {
+    total?: number;
+    published?: number;
+    draft?: number;
+    suspended?: number;
+  };
+  listings: Listing[];
+}
+
+export type MerchantList = Merchant[];
+
+/** Who may sell for this merchant account. */
+export interface MerchantSellersRequest {
+  sellerIds: string[];
 }
 
 export type Notification = (LifecycleFields & {
@@ -1807,6 +2199,86 @@ export interface OpenApiDocument {
   components?: Record<string, unknown>;
 }
 
+export interface OpenDisputeRequest {
+  subject: string;
+  kind: "rent" | "damage" | "conduct" | "marketplace" | "ride" | "other";
+  severity: number;
+  summary: string;
+}
+
+/** Escrow order. LRMC holds the money from `paid` until `released`, `refunded` or `cancelled`. */
+export interface Order {
+  _id?: string;
+  /** ORD-YYYY-NNNNNNN. Sortable and legible on a receipt. */
+  reference: string;
+  merchant: string;
+  customer: string;
+  placedByBuyer?: string;
+  acceptedBySeller?: string;
+  status: "pending" | "paid" | "accepted" | "fulfilled" | "confirmed" | "released" | "cancelled" | "refunded" | "disputed";
+  lines: OrderLine[];
+  subtotal?: number;
+  deliveryFee?: number;
+  /** What the buyer pays. */
+  total: number;
+  commissionPercent?: number;
+  /** LRMC's cut. Charged on goods, never on delivery. */
+  platformFee?: number;
+  /** What the merchant is owed on completion. */
+  merchantNet?: number;
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  deliveryAddress?: string;
+  note?: string;
+  placedAt?: string;
+  paidAt?: string;
+  acceptedAt?: string;
+  fulfilledAt?: string;
+  confirmedAt?: string;
+  releasedAt?: string;
+  cancelledAt?: string;
+  refundedAt?: string;
+  disputedAt?: string;
+  autoReleaseAt?: string;
+  disputeReason?: string;
+  disputeRuling?: string;
+  refundAmount?: number;
+  events?: OrderEvent[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** An order plus what *this* caller may do with it next. */
+export type OrderDetail = Order;
+
+/** Append-only. Every status change, who made it, and when. */
+export interface OrderEvent {
+  at: string;
+  from: "pending" | "paid" | "accepted" | "fulfilled" | "confirmed" | "released" | "cancelled" | "refunded" | "disputed";
+  to: "pending" | "paid" | "accepted" | "fulfilled" | "confirmed" | "released" | "cancelled" | "refunded" | "disputed";
+  by?: string;
+  actorKind: "buyer" | "merchant" | "backOffice" | "system";
+  note?: string;
+}
+
+/** Title and price are **copied at order time**, not referenced. A price change next Tuesday must not alter what was agreed last Friday. */
+export interface OrderLine {
+  listing: string;
+  title: string;
+  unitPrice: number;
+  quantity: number;
+  lineTotal: number;
+}
+
+export type OrderList = Order[];
+
+/** The result of releasing or refunding an order. */
+export type OrderSettlement = Order;
+
+/** The provider's reference, not an amount. The server already knows what the order costs; letting the client restate it would mean deciding which number to believe. */
+export interface PayOrderRequest {
+  paymentRef: string;
+}
+
 export type Payment = (LifecycleFields & {
   /** Auto-generated: PAY-<6 hex>. */
   reference?: string;
@@ -1818,7 +2290,7 @@ export type Payment = (LifecycleFields & {
   payee?: string;
   payeeKind?: string;
   amount: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   method?: "mobileMoney" | "bankTransfer" | "cash" | "card" | "cheque" | "crypto";
   platformFee?: number;
   netAmount?: number;
@@ -1840,7 +2312,7 @@ export type PaymentInput = (LifecycleFieldsInput & {
   payee?: string;
   payeeKind?: string;
   amount: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   method?: "mobileMoney" | "bankTransfer" | "cash" | "card" | "cheque" | "crypto";
   platformFee?: number;
   /** Identifies the payment instrument. Never returned. */
@@ -1858,12 +2330,61 @@ export type PaymentList = Payment[];
 /** Request variant of `PaymentList`. */
 export type PaymentListInput = PaymentInput[];
 
+export interface PaymentStats {
+  totalPayments: number;
+  settled?: number;
+  onTime: number;
+  late: number;
+  awaiting?: number;
+  failed?: number;
+  /** Of settled instalments. Null when none have settled. */
+  reliability: Record<string, unknown>;
+  /** The period `collected` covers. Label the figure from this rather than assuming 30. */
+  collectionWindowDays: number;
+  /** Money settled inside the window, grouped by currency and deliberately NOT summed into one figure: the ledger carries several currencies and there is no exchange rate on this platform. An empty array means nothing settled in the window. */
+  collected: {
+    currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+    amount: number;
+    payments: number;
+  }[];
+}
+
+export interface PaymentSummary {
+  total: number;
+  settled: number;
+  onTime: number;
+  late: number;
+  failed?: number;
+  /** Raised, not yet settled. Excluded from every rate. */
+  awaiting?: number;
+  /** (onTime / (onTime + late)) * 100. NULL when nothing has settled — never 0, which would tell somebody on their first day that none of their payments were on time. Not the same as `paymentReliability` in an assessment, which counts missed instalments too. */
+  onTimeRate: Record<string, unknown>;
+  /** One entry per currency, deliberately not summed. There is no exchange rate on this platform, so a single total would not be an amount of anything. */
+  settledByCurrency: {
+    currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+    amount: number;
+    payments: number;
+  }[];
+  /** Whose rows these totals cover. */
+  scope: "all" | "recordedByMe";
+  /** True when the totals cover only part of the person's history — a coordinator seeing their own receipts. Say so on screen; a partial total read as a whole one is worse than no total. */
+  partial: boolean;
+}
+
+export interface PaymentsEvidence {
+  paymentsOnTime: number;
+  paymentsLate: number;
+  paymentsMissed: number;
+  paymentReliability: number;
+  hasRecord: boolean;
+}
+
 export type PayoutBatch = (LifecycleFields & {
   _id?: string;
   /** PYT-xxxxxx, server-assigned. */
   reference?: string;
   kind: "driverPayout" | "landlordPayout" | "refund";
-  currency: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   periodStart?: string;
   periodEnd?: string;
   lines?: PayoutLine[];
@@ -1887,7 +2408,7 @@ export type PayoutBatch = (LifecycleFields & {
 export type PayoutBatchInput = (LifecycleFieldsInput & {
   _id?: string;
   kind: "driverPayout" | "landlordPayout" | "refund";
-  currency: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   periodStart?: string;
   periodEnd?: string;
   lines?: PayoutLineInput[];
@@ -1911,7 +2432,7 @@ export interface PayoutLine {
   _id?: string;
   payee: string;
   payeeKind?: string;
-  currency: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   sourcePayments?: string[];
   gross: number;
   platformFee?: number;
@@ -1927,7 +2448,7 @@ export interface PayoutLineInput {
   _id?: string;
   payee: string;
   payeeKind?: string;
-  currency: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   sourcePayments?: string[];
   gross: number;
   platformFee?: number;
@@ -1953,6 +2474,17 @@ export interface PayoutSettlementInput {
   transfers: TransferSummary;
 }
 
+/** Listing ids and quantities only. Prices are read from the listings server-side — a client that could name its own prices would name zero. */
+export interface PlaceOrderRequest {
+  merchant: string;
+  lines: {
+    listing: string;
+    quantity: number;
+  }[];
+  deliveryAddress?: string;
+  note?: string;
+}
+
 export interface PlatformIndex {
   platform?: string;
   version?: string;
@@ -1969,7 +2501,7 @@ export interface PortfolioAnalytics {
   clientId: string;
   clientName?: string;
   clientKind?: "hospitalityGroup" | "propertyCompany" | "mobilityOperator" | "agency" | "corporate" | "government" | "ngo";
-  currency: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   window?: {
     from?: string | Record<string, unknown>;
     to?: string | Record<string, unknown>;
@@ -1999,7 +2531,7 @@ export type Property = (LocationFields & LifecycleFields & {
   amenities?: string[];
   photos?: string[];
   rentAmount?: number;
-  rentCurrency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  rentCurrency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   rentPeriod?: "monthly" | "nightly" | "yearly";
   occupancyStatus?: "vacant" | "occupied" | "maintenance" | "offMarket";
   listedPublicly?: boolean;
@@ -2023,13 +2555,25 @@ export type PropertyInput = (LocationFields & LifecycleFieldsInput & {
   amenities?: string[];
   photos?: string[];
   rentAmount?: number;
-  rentCurrency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  rentCurrency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   rentPeriod?: "monthly" | "nightly" | "yearly";
   occupancyStatus?: "vacant" | "occupied" | "maintenance" | "offMarket";
   listedPublicly?: boolean;
   lastInspectionAt?: string;
   nextInspectionDue?: string;
 });
+
+export interface PropertyStats {
+  totalProperties: number;
+  occupied: number;
+  vacant: number;
+  /** Under maintenance or off-market. */
+  unavailable?: number;
+  /** A status no bucket claims. Should be zero. */
+  unclassified?: number;
+  /** Of lettable properties. Null when there are none. */
+  occupancyRate: Record<string, unknown>;
+}
 
 export type PublicContent = (LifecycleFields & {
   slug: string;
@@ -2112,6 +2656,17 @@ export interface PushTokenRegistrationInput {
   locale?: string;
 }
 
+export interface RaiseMaintenanceRequest {
+  property: string;
+  title: string;
+  description?: string;
+  serviceType: string;
+  /** How urgent the person reporting it thinks it is. Triage may change it. */
+  priority?: "low" | "normal" | "high" | "emergency";
+  /** Storage keys, never URLs. An address a client supplies is an address a client controls. */
+  photosBefore?: string[];
+}
+
 export interface RatingFields {
   rating?: number;
   ratingCount?: number;
@@ -2120,13 +2675,55 @@ export interface RatingFields {
 /** Request variant of `RatingFields`. */
 export type RatingFieldsInput = Record<string, never>;
 
+export interface RecordPaymentRequest {
+  /** The member the money came from, as a USER id. The server joins to their profile. */
+  payer: string;
+  /** The lease the money is against, where there is one. */
+  subject?: string;
+  subjectKind?: "Lease" | "MaintenanceRequest";
+  /** Only these two. A payout recorded by hand would mark money as sent that was never sent. */
+  kind: "rent" | "deposit";
+  method?: "cash" | "mobileMoney" | "bankTransfer";
+  amount: number;
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  /** When the money changed hands, which is not when it was typed in. A future date is refused. */
+  paidAt?: string;
+  notes?: string;
+}
+
 /** Records a rent payment and rolls the lease totals forward in the same request. */
 export interface RecordRentPaymentRequest {
   amount: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   method?: "mobileMoney" | "bankTransfer" | "cash" | "card" | "cheque" | "crypto";
   paidAt?: string;
   notes?: string;
+}
+
+export interface Reference {
+  _id?: string;
+  subject: string;
+  refereeName: string;
+  relationship?: string;
+  status: "requested" | "received" | "declined" | "expired";
+  score?: number;
+  comment?: string;
+  respondedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ReferenceEvidenceView {
+  subject: string;
+  evidence: ReferencesEvidence;
+  references: Reference[];
+}
+
+export interface ReferencesEvidence {
+  referenceRequested: boolean;
+  referenceReceived: boolean;
+  referenceScore: Record<string, unknown>;
+  hasRecord: boolean;
 }
 
 export interface RefreshRequest {
@@ -2241,10 +2838,22 @@ export type RentalCarCompanyInput = (ContactFields & LocationFields & LifecycleF
   contractEnd?: string;
 });
 
+export interface RequestFromApplicantRequest {
+  outstandingRequest: string;
+}
+
 /** Asking for more without saying what is the single most common way a queue stalls. */
 export interface RequestInfoRequest {
   reason: string;
   missingFields?: "holderName" | "counterpartyName" | "documentNumber" | "issuingAuthority" | "issuedOn" | "expiresOn" | "dateOfBirth" | "nationality" | "address" | "city" | "region" | "employerName" | "jobTitle" | "monthlyIncome" | "amount" | "currency" | "periodStart" | "periodEnd" | "relationship" | "outcome" | "notes"[];
+}
+
+export interface RequestReferenceRequest {
+  subject: string;
+  refereeName: string;
+  refereeEmail?: string;
+  refereePhone?: string;
+  relationship?: string;
 }
 
 /** The rider states where and when. Fare and driver are the server's to decide. */
@@ -2261,6 +2870,28 @@ export interface RequestRideRequest {
   estimatedDistanceKm?: number;
   estimatedDurationMin?: number;
   notes?: string;
+}
+
+/** `localHour` is required rather than derived: the server runs in UTC and the tenant does not, so the hour a person meant cannot be recovered from an instant without their offset. */
+export interface RequestViewingRequest {
+  property: string;
+  requestedFor: string;
+  localHour: number;
+  alternateFor?: string;
+  alternateLocalHour?: number;
+  note?: string;
+}
+
+/** A refund ruling must carry an amount; the other two must not. Commission is returned pro rata. */
+export interface ResolveDisputeRequest {
+  outcome: "release" | "refund" | "cancel";
+  ruling: string;
+  refundAmount?: number;
+}
+
+/** Closing a dispute raised against a person. Distinct from the marketplace `ResolveDisputeRequest`, which settles an order and carries a refund decision — two different acts that happened to want the same name. */
+export interface ResolveMemberDisputeRequest {
+  resolution: string;
 }
 
 /** Founder debug: what a hypothetical role combination resolves to. */
@@ -2307,8 +2938,14 @@ export type ResortInput = (ContactFields & LocationFields & LifecycleFieldsInput
   businessRegistrationNumber?: string;
 });
 
+export interface RespondToReferenceRequest {
+  reference: string;
+  score: number;
+  comment?: string;
+}
+
 export interface RevenueKpis {
-  currency: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   /** Contracted monthly rent across live leases — the run rate. */
   monthlyRentRoll: number;
   collected: number;
@@ -2350,7 +2987,7 @@ export type Ride = (LifecycleFields & {
   estimatedDurationMin?: number;
   estimatedFare?: number;
   finalFare?: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   /** Percentage withheld. */
   platformCommission?: number;
   driverEarnings?: number;
@@ -2386,7 +3023,7 @@ export type RideInput = (LifecycleFieldsInput & {
   estimatedDistanceKm?: number;
   estimatedDurationMin?: number;
   estimatedFare?: number;
-  currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   /** Percentage withheld. */
   platformCommission?: number;
   paymentMethod?: "mobileMoney" | "bankTransfer" | "cash" | "card" | "cheque" | "crypto";
@@ -2542,6 +3179,15 @@ export interface SettlePayoutBatchRequest {
   notes?: string;
 }
 
+export interface SignOutOutcome {
+  /** Always true. The local session ends regardless of what could be revoked. */
+  signedOut: boolean;
+  /** Whether a refresh token was presented and is now denied. False means any refresh token for this session remains valid until it expires. */
+  refreshRevoked: boolean;
+  /** Present when nothing was revoked, explaining why. */
+  note?: string;
+}
+
 export interface SlaEscalationRun {
   asOf: string;
   dryRun?: boolean;
@@ -2569,6 +3215,10 @@ export interface SubmitDocumentRequest {
   fields?: DocumentFields;
   storageKey?: string;
   note?: string;
+}
+
+export interface SuspendListingRequest {
+  reason: string;
 }
 
 export interface SystemHealth {
@@ -2599,7 +3249,7 @@ export type Tenant = (ContactFields & LocationFields & LifecycleFields & Verific
   leaseStart?: string;
   leaseEnd?: string;
   monthlyRent?: number;
-  rentCurrency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  rentCurrency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   securityDeposit?: number;
   paymentMethod?: "mobileMoney" | "bankTransfer" | "cash" | "card" | "cheque" | "crypto";
   rentDueDay?: number;
@@ -2621,7 +3271,7 @@ export type TenantInput = (ContactFields & LocationFields & LifecycleFieldsInput
   leaseStart?: string;
   leaseEnd?: string;
   monthlyRent?: number;
-  rentCurrency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  rentCurrency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   securityDeposit?: number;
   paymentMethod?: "mobileMoney" | "bankTransfer" | "cash" | "card" | "cheque" | "crypto";
   rentDueDay?: number;
@@ -2690,11 +3340,23 @@ export interface TransitionRequirements {
   gated: boolean;
 }
 
+export interface UpdateMaintenanceStatusRequest {
+  request: string;
+  status: "open" | "triaged" | "assigned" | "quoted" | "approved" | "inProgress" | "onHold" | "completed" | "verified" | "cancelled";
+  /** REQUIRED when cancelling or parking a request, and when sending one back from completed. Whoever raised it is told what happened, and a bare status change reads as an accident. */
+  note?: string;
+}
+
 export interface UpdateRideRequest {
   driver?: string;
   region?: string;
   notes?: string;
   estimatedFare?: number;
+}
+
+/** The tenant's own note. Status moves through the action routes. */
+export interface UpdateViewingRequest {
+  note?: string;
 }
 
 /** The account. One credential, one or more roles; profiles are separate documents. */
@@ -2747,6 +3409,124 @@ export interface UserInput {
   timezone?: string;
 }
 
+export interface UsusuContributionRequest {
+  subject: string;
+  period: string;
+  amount?: number;
+  currency?: string;
+  note?: string;
+}
+
+export interface UsusuEntry {
+  _id?: string;
+  subject: string;
+  kind: "contribution" | "miss";
+  amount?: number;
+  currency?: string;
+  period: string;
+  note?: string;
+  createdAt?: string;
+}
+
+export interface UsusuEvidence {
+  contributionsMade: number;
+  contributionsMissed: number;
+  /** Counted backwards from the most recent period. */
+  streak: number;
+  groupHealth: number;
+  hasRecord: boolean;
+}
+
+export interface UsusuEvidenceView {
+  subject: string;
+  evidence: UsusuEvidence;
+  entries: UsusuEntry[];
+}
+
+export interface UsusuGroup {
+  id: string;
+  name: string;
+  /** The coordinator who runs it. Holds the register, not the money. */
+  createdBy: string;
+  members: string[];
+  status: "forming" | "active" | "paused" | "closed";
+  contributionAmount?: number;
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  region?: string;
+  note?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UsusuGroupContributionRequest {
+  group: string;
+  member: string;
+  /** YYYY-MM. What a streak is counted over and what makes a duplicate detectable. */
+  period: string;
+  amount: number;
+  currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  note?: string;
+}
+
+export type UsusuGroupList = UsusuGroup[];
+
+export interface UsusuGroupMemberRequest {
+  group: string;
+  member: string;
+}
+
+export interface UsusuGroupMissRequest {
+  group: string;
+  member: string;
+  period: string;
+  note?: string;
+}
+
+export interface UsusuGroupSummary {
+  group?: UsusuGroup;
+  memberCount: number;
+  contributions: number;
+  misses: number;
+  /** 100 minus five per miss, floored at zero. NULL when nobody has contributed yet — a circle formed on Tuesday is not in perfect health and is not in bad health. */
+  groupHealth: Record<string, unknown>;
+  /** Consecutive contributions per member, counted BACKWARDS from the latest period. A member in the circle with no entries gets a real 0. */
+  streaks: Record<string, number>;
+  /** One entry per currency, never summed. There is no exchange rate on this platform. */
+  contributedByCurrency?: {
+    currency: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+    amount: number;
+    entries: number;
+  }[];
+  /** Whether anything has been recorded at all. */
+  hasActivity: boolean;
+  /** Oldest first, so a page renders the history in the order it happened. */
+  entries?: {
+    member: string;
+    kind: "contribution" | "miss";
+    period: string;
+    amount?: number;
+    currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+  }[];
+}
+
+export interface UsusuMissRequest {
+  subject: string;
+  period: string;
+  note?: string;
+}
+
+export interface UsusuStats {
+  /** Savings circles this caller can see. NOT every circle on the platform — a coordinator sees only the ones they steward or belong to. */
+  totalGroups?: number;
+  /** Forming, active or paused. */
+  activeGroups?: number;
+  /** People with a ledger, not groups — there is no group entity. */
+  totalMembers: number;
+  avgGroupHealth: Record<string, unknown>;
+  totalContributions: number;
+  totalMisses: number;
+}
+
 export type Vendor = (ContactFields & LocationFields & LifecycleFields & VerificationFields & IdentityFields & RatingFields & {
   fullName: string;
   businessName: string;
@@ -2760,7 +3540,7 @@ export type Vendor = (ContactFields & LocationFields & LifecycleFields & Verific
     item: string;
     unit?: string;
     amount: number;
-    currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+    currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   }[];
   completedJobs?: number;
   openJobs?: number;
@@ -2783,7 +3563,7 @@ export type VendorInput = (ContactFields & LocationFields & LifecycleFieldsInput
     item: string;
     unit?: string;
     amount: number;
-    currency?: "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
+    currency?: "GMD" | "GHS" | "USD" | "EUR" | "GBP" | "NGN" | "XOF";
   }[];
   averageResponseHours?: number;
   businessRegistrationNumber?: string;
@@ -2817,6 +3597,42 @@ export interface VerifyFacCodeRequest {
   code: string;
 }
 
+/** A tenant asking to see a property, and LRMC agreeing to be there. `localHour` is stored alongside `requestedFor` because the server runs in UTC and the tenant does not — the hour a person meant is not recoverable from an instant without their offset. */
+export interface Viewing {
+  _id?: string;
+  property: string;
+  /** The User who asked. Not a TenantProfile — an applicant may not have one yet. */
+  requestedBy: string;
+  landlord?: string;
+  coordinator?: string;
+  requestedFor: string;
+  /** The hour the tenant meant, in their own day. */
+  localHour: number;
+  alternateFor?: string;
+  alternateLocalHour?: number;
+  status: "requested" | "confirmed" | "declined" | "completed" | "cancelled" | "noShow";
+  /** What the tenant said when asking. */
+  note?: string;
+  decisionReason?: string;
+  /** LRMC's account, kept apart from the tenant's. */
+  outcomeNote?: string;
+  decidedBy?: string;
+  decidedAt?: string;
+  outcomeRecordedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ViewingDecisionRequest {
+  reason?: string;
+}
+
+export type ViewingList = Viewing[];
+
+export interface ViewingOutcomeRequest {
+  outcomeNote?: string;
+}
+
 export interface VisibilityMatrix {
   rows: VisibilityMatrixRow[];
 }
@@ -2829,6 +3645,17 @@ export interface VisibilityMatrixRow {
   sealEligible: boolean;
   facRequired: boolean;
   adminAccess: "full" | "partial" | "limited" | "none";
+}
+
+export interface WebhookAck {
+  /** Always true when the signature verified. */
+  received: boolean;
+  /** What was done: settled, alreadyApplied, inFlight, retryStale, ignoredType, unknownOrder, refused, recorded, unparseable or noEventId. */
+  outcome: string;
+  /** The gateway's event id, echoed for correlation. */
+  eventId?: string;
+  /** The event type, when it was not acted on. */
+  type?: string;
 }
 
 export interface ZoneDirectory {

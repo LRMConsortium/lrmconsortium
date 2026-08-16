@@ -68,7 +68,7 @@ const advertiserProfileSchema = new Schema<IAdvertiserProfile>(
     website: { type: String, trim: true },
     logo: { type: String, trim: true },
 
-    billingCurrency: { type: String, enum: CURRENCIES, default: 'GHS' },
+    billingCurrency: { type: String, enum: CURRENCIES, default: 'GMD' },
     creditLimit: { type: Number, min: 0, default: 0 },
     outstandingBalance: { type: Number, default: 0 },
     totalSpend: { type: Number, min: 0, default: 0 },

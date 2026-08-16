@@ -22,12 +22,12 @@ import { client, withMeta, type ListOptions, type RequestOptions } from './_runt
 export const META = {
   archiveContent: { operationId: 'deletePublicAdminContentByContentId', method: 'DELETE' as const, pathTemplate: '/public/admin/content/{contentId}', zone: 'PUBLIC_PORTAL' as const, roles: ["founder"] as Role[], permissions: ["publicContent:delete"], ownership: 'none' as const, auth: 'required' as const },
   createContent: { operationId: 'postPublicAdminContent', method: 'POST' as const, pathTemplate: '/public/admin/content', zone: 'PUBLIC_PORTAL' as const, roles: ["founder"] as Role[], permissions: ["publicContent:create"], ownership: 'none' as const, auth: 'required' as const },
-  getContent: { operationId: 'getPublicContentBySlug', method: 'GET' as const, pathTemplate: '/public/content/{slug}', zone: 'PUBLIC_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'optional' as const },
+  getContent: { operationId: 'getPublicContentBySlug', method: 'GET' as const, pathTemplate: '/public/content/{slug}', zone: 'PUBLIC_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'optional' as const },
   listAllContent: { operationId: 'getPublicAdminContent', method: 'GET' as const, pathTemplate: '/public/admin/content', zone: 'PUBLIC_PORTAL' as const, roles: ["founder","publicUser"] as Role[], permissions: ["publicContent:read"], ownership: 'none' as const, auth: 'required' as const },
-  listContent: { operationId: 'getPublicContent', method: 'GET' as const, pathTemplate: '/public/content', zone: 'PUBLIC_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'optional' as const },
+  listContent: { operationId: 'getPublicContent', method: 'GET' as const, pathTemplate: '/public/content', zone: 'PUBLIC_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'optional' as const },
   metrics: { operationId: 'getPublicMetrics', method: 'GET' as const, pathTemplate: '/public/metrics', zone: 'PUBLIC_PORTAL' as const, roles: ["founder","hqExecutive","publicUser"] as Role[], permissions: ["publicMetrics:read"], ownership: 'none' as const, auth: 'required' as const },
   publishContent: { operationId: 'postPublicAdminContentByContentIdPublish', method: 'POST' as const, pathTemplate: '/public/admin/content/{contentId}/publish', zone: 'PUBLIC_PORTAL' as const, roles: ["founder"] as Role[], permissions: ["publicContent:publish"], ownership: 'none' as const, auth: 'required' as const },
-  track: { operationId: 'postPublicTrack', method: 'POST' as const, pathTemplate: '/public/track', zone: 'PUBLIC_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'optional' as const },
+  track: { operationId: 'postPublicTrack', method: 'POST' as const, pathTemplate: '/public/track', zone: 'PUBLIC_PORTAL' as const, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'optional' as const },
   updateContent: { operationId: 'patchPublicAdminContentByContentId', method: 'PATCH' as const, pathTemplate: '/public/admin/content/{contentId}', zone: 'PUBLIC_PORTAL' as const, roles: ["founder"] as Role[], permissions: ["publicContent:update"], ownership: 'none' as const, auth: 'required' as const },
 } satisfies Record<string, OperationMeta>;
 
@@ -63,7 +63,7 @@ export const publicApi = {
    *
    * `GET /public/content/{slug}`
    * Zone: PUBLIC_PORTAL
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, publicUser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer, publicUser
    * Ownership: none
    */
   getContent(slug: string, options?: RequestOptions): Promise<PublicContent> {
@@ -88,7 +88,7 @@ export const publicApi = {
    *
    * `GET /public/content`
    * Zone: PUBLIC_PORTAL
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, publicUser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer, publicUser
    * Ownership: none
    */
   listContent(options?: ListOptions): Promise<Page<PublicContent>> {
@@ -126,7 +126,7 @@ export const publicApi = {
    *
    * `POST /public/track`
    * Zone: PUBLIC_PORTAL
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, publicUser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer, publicUser
    * Ownership: none
    */
   track(body: TrafficEventRequest, options?: RequestOptions): Promise<TrackAccepted> {

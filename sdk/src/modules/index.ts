@@ -9,12 +9,15 @@ import { adPolicy } from './adPolicy.js';
 import { ads } from './ads.js';
 import { advertisers } from './advertisers.js';
 import { airbnbHosts } from './airbnbHosts.js';
+import { application } from './application.js';
 import { auth } from './auth.js';
 import { blueprint } from './blueprint.js';
 import { commercialClients } from './commercialClients.js';
 import { coordinators } from './coordinators.js';
+import { customer } from './customer.js';
 import { documents } from './documents.js';
 import { drivers } from './drivers.js';
+import { evidence } from './evidence.js';
 import { fac } from './fac.js';
 import { founders } from './founders.js';
 import { governance } from './governance.js';
@@ -24,6 +27,8 @@ import { hqExecutives } from './hqExecutives.js';
 import { landlords } from './landlords.js';
 import { leases } from './leases.js';
 import { maintenanceRequests } from './maintenanceRequests.js';
+import { marketplace } from './marketplace.js';
+import { merchant } from './merchant.js';
 import { notifications } from './notifications.js';
 import { payments } from './payments.js';
 import { payoutBatches } from './payoutBatches.js';
@@ -34,20 +39,26 @@ import { rentalCarCompanies } from './rentalCarCompanies.js';
 import { resorts } from './resorts.js';
 import { riders } from './riders.js';
 import { rides } from './rides.js';
+import { security } from './security.js';
 import { staff } from './staff.js';
+import { stats } from './stats.js';
 import { tenants } from './tenants.js';
 import { vendors } from './vendors.js';
+import { viewing } from './viewing.js';
 
 export { adPolicy, META as adPolicyMeta, type AdPolicyApi } from './adPolicy.js';
 export { ads, META as adsMeta, type AdsApi } from './ads.js';
 export { advertisers, META as advertisersMeta, type AdvertisersApi } from './advertisers.js';
 export { airbnbHosts, META as airbnbHostsMeta, type AirbnbHostsApi } from './airbnbHosts.js';
+export { application, META as applicationMeta, type ApplicationApi } from './application.js';
 export { auth, META as authMeta, type AuthApi } from './auth.js';
 export { blueprint, META as blueprintMeta, type BlueprintApi } from './blueprint.js';
 export { commercialClients, META as commercialClientsMeta, type CommercialClientsApi } from './commercialClients.js';
 export { coordinators, META as coordinatorsMeta, type CoordinatorsApi } from './coordinators.js';
+export { customer, META as customerMeta, type CustomerApi } from './customer.js';
 export { documents, META as documentsMeta, type DocumentsApi } from './documents.js';
 export { drivers, META as driversMeta, type DriversApi } from './drivers.js';
+export { evidence, META as evidenceMeta, type EvidenceApi } from './evidence.js';
 export { fac, META as facMeta, type FacApi } from './fac.js';
 export { founders, META as foundersMeta, type FoundersApi } from './founders.js';
 export { governance, META as governanceMeta, type GovernanceApi } from './governance.js';
@@ -57,6 +68,8 @@ export { hqExecutives, META as hqExecutivesMeta, type HqExecutivesApi } from './
 export { landlords, META as landlordsMeta, type LandlordsApi } from './landlords.js';
 export { leases, META as leasesMeta, type LeasesApi } from './leases.js';
 export { maintenanceRequests, META as maintenanceRequestsMeta, type MaintenanceRequestsApi } from './maintenanceRequests.js';
+export { marketplace, META as marketplaceMeta, type MarketplaceApi } from './marketplace.js';
+export { merchant, META as merchantMeta, type MerchantApi } from './merchant.js';
 export { notifications, META as notificationsMeta, type NotificationsApi } from './notifications.js';
 export { payments, META as paymentsMeta, type PaymentsApi } from './payments.js';
 export { payoutBatches, META as payoutBatchesMeta, type PayoutBatchesApi } from './payoutBatches.js';
@@ -67,9 +80,12 @@ export { rentalCarCompanies, META as rentalCarCompaniesMeta, type RentalCarCompa
 export { resorts, META as resortsMeta, type ResortsApi } from './resorts.js';
 export { riders, META as ridersMeta, type RidersApi } from './riders.js';
 export { rides, META as ridesMeta, type RidesApi } from './rides.js';
+export { security, META as securityMeta, type SecurityApi } from './security.js';
 export { staff, META as staffMeta, type StaffApi } from './staff.js';
+export { stats, META as statsMeta, type StatsApi } from './stats.js';
 export { tenants, META as tenantsMeta, type TenantsApi } from './tenants.js';
 export { vendors, META as vendorsMeta, type VendorsApi } from './vendors.js';
+export { viewing, META as viewingMeta, type ViewingApi } from './viewing.js';
 
 /**
  * The whole API, grouped by module.
@@ -82,12 +98,15 @@ export const api = {
   ads,
   advertisers,
   airbnbHosts,
+  application,
   auth,
   blueprint,
   commercialClients,
   coordinators,
+  customer,
   documents,
   drivers,
+  evidence,
   fac,
   founders,
   governance,
@@ -97,6 +116,8 @@ export const api = {
   landlords,
   leases,
   maintenanceRequests,
+  marketplace,
+  merchant,
   notifications,
   payments,
   payoutBatches,
@@ -107,9 +128,12 @@ export const api = {
   resorts,
   riders,
   rides,
+  security,
   staff,
+  stats,
   tenants,
   vendors,
+  viewing,
 } as const;
 
 export type Api = typeof api;

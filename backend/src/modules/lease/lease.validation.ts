@@ -77,3 +77,63 @@ export const runRentRemindersSchema = z
     limit: z.number().int().min(1).max(2000).optional(),
   })
   .strict();
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * The member-portal surface
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Drawing up a lease from inside the portal.
+ *
+ * Deliberately smaller than `createLeaseSchema`, which is the Back Office route
+ * and accepts the full record. Note what is **absent** and cannot be supplied:
+ *
+ *   `landlord`   — taken from the property. A body that could name the landlord
+ *                  would let somebody draw up a lease over a building they have
+ *                  nothing to do with.
+ *   `status`     — always `draft`. A create that could land straight in `active`
+ *                  would skip the one moment either party gets to look at it.
+ *   `totalPaid` /
+ *   `arrears`    — rolled forward by the rent ledger, never asserted.
+ *   `reference`  — derived.
+ *
+ * `.strict()`, so sending one is a refusal rather than a silent drop. A field
+ * ignored and a field honoured look identical from a client.
+ */
+export const memberCreateLeaseSchema = z
+  .object({
+    property: zObjectId,
+    /** The tenant, as a **user** id. The server joins to their profile. */
+    tenant: zObjectId,
+    monthlyRent: zMoney,
+    currency: zCurrency.optional(),
+    leaseStart: zDate,
+    /**
+     * Optional, and that is the point. Month-to-month is ordinary in The
+     * Gambia, and a required end date forces whoever writes the lease to invent
+     * one — which then looks like a commitment and eventually ends a tenancy
+     * nobody meant to end.
+     */
+    leaseEnd: zDate.nullish(),
+    paymentDayOfMonth: z.number().int().min(1).max(31).optional(),
+    securityDeposit: zMoney.optional(),
+  })
+  .strict();
+
+/** Activating or completing. The id, and nothing else to get wrong. */
+export const leaseActionSchema = z.object({ lease: zObjectId }).strict();
+
+/**
+ * Terminating.
+ *
+ * `reason` is required *here* as well as in `transitionProblems`, so a caller
+ * that somehow reaches the handler without the rules module still cannot end
+ * somebody's tenancy anonymously. A terminated lease with no stated reason is a
+ * fact about a person's housing that nobody has to defend.
+ */
+export const leaseTerminateSchema = z
+  .object({
+    lease: zObjectId,
+    reason: z.string().trim().min(4).max(600),
+  })
+  .strict();

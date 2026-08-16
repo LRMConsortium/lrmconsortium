@@ -1,0 +1,15 @@
+/* LRMC — TAILWIND
+ *
+ * Tailwind is loaded from the CDN in each layout, per the LRMC stack decision
+ * (no bundlers, no build tools). The palette is taught to it by the inline
+ * `tailwind.config` block in every layout <head>.
+ *
+ * This file exists as the place to put Tailwind @layer overrides if you ever
+ * do add a build step. Until then, component styling belongs in
+ * utilities.css and tokens belong in theme.css.
+ *
+ * If you later switch to compiled Tailwind, generate into this file:
+ *   npx tailwindcss -i src/input.css -o assets/css/tailwind.css --minify
+ * and add <link rel="stylesheet" href="/assets/css/tailwind.css"> before
+ * theme.css in each layout.
+ */

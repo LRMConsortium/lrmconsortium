@@ -29,11 +29,11 @@ export const META = {
   list: { operationId: 'getAds', method: 'GET' as const, pathTemplate: '/ads', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","advertiser"] as Role[], permissions: ["ad:read","ad:readOwn"], ownership: 'scoped' as const, auth: 'required' as const },
   reports: { operationId: 'getAdsReports', method: 'GET' as const, pathTemplate: '/ads/reports', zone: 'MEMBER_PORTAL' as const, roles: ["founder","hqExecutive","advertiser"] as Role[], permissions: ["adReport:read","adReport:readOwn"], ownership: 'scoped' as const, auth: 'required' as const },
   review: { operationId: 'patchAdByAdIdReview', method: 'PATCH' as const, pathTemplate: '/ad/{adId}/review', zone: 'HQ_EXECUTIVE' as const, roles: ["founder","hqExecutive"] as Role[], permissions: ["ad:approve"], ownership: 'none' as const, auth: 'required' as const },
-  serve: { operationId: 'getAdsServe', method: 'GET' as const, pathTemplate: '/ads/serve', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'optional' as const },
+  serve: { operationId: 'getAdsServe', method: 'GET' as const, pathTemplate: '/ads/serve', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'optional' as const },
   setStatus: { operationId: 'patchAdByAdIdStatus', method: 'PATCH' as const, pathTemplate: '/ad/{adId}/status', zone: 'MEMBER_PORTAL' as const, roles: ["founder","advertiser"] as Role[], permissions: ["ad:updateOwn","ad:update"], ownership: 'scoped' as const, auth: 'required' as const },
   submitForReview: { operationId: 'postAdByAdIdSubmit', method: 'POST' as const, pathTemplate: '/ad/{adId}/submit', zone: 'MEMBER_PORTAL' as const, roles: ["founder","advertiser"] as Role[], permissions: ["ad:updateOwn","ad:update"], ownership: 'scoped' as const, auth: 'required' as const },
-  trackClick: { operationId: 'postAdsTrackClick', method: 'POST' as const, pathTemplate: '/ads/track/click', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'optional' as const },
-  trackImpression: { operationId: 'postAdsTrackImpression', method: 'POST' as const, pathTemplate: '/ads/track/impression', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'optional' as const },
+  trackClick: { operationId: 'postAdsTrackClick', method: 'POST' as const, pathTemplate: '/ads/track/click', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'optional' as const },
+  trackImpression: { operationId: 'postAdsTrackImpression', method: 'POST' as const, pathTemplate: '/ads/track/impression', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'optional' as const },
   update: { operationId: 'patchAdByAdId', method: 'PATCH' as const, pathTemplate: '/ad/{adId}', zone: 'MEMBER_PORTAL' as const, roles: ["founder","advertiser"] as Role[], permissions: ["ad:update","ad:updateOwn"], ownership: 'scoped' as const, auth: 'required' as const },
 } satisfies Record<string, OperationMeta>;
 
@@ -127,7 +127,7 @@ export const ads = {
    *
    * `GET /ads/serve`
    * Zone: —
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, publicUser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer, publicUser
    * Ownership: none
    */
   serve(options?: RequestOptions): Promise<ServeAdsResponse> {
@@ -167,7 +167,7 @@ export const ads = {
    *
    * `POST /ads/track/click`
    * Zone: —
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, publicUser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer, publicUser
    * Ownership: none
    */
   trackClick(body: AdTrackRequest, options?: RequestOptions): Promise<TrackResult> {
@@ -181,7 +181,7 @@ export const ads = {
    *
    * `POST /ads/track/impression`
    * Zone: —
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, publicUser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer, publicUser
    * Ownership: none
    */
   trackImpression(body: AdTrackRequest, options?: RequestOptions): Promise<TrackResult> {

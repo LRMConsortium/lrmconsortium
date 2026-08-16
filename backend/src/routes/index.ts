@@ -36,8 +36,19 @@ import { payoutModule } from '../modules/payout/index.js';
 import { notificationModule } from '../modules/notification/index.js';
 import { documentModule } from '../modules/document/index.js';
 import { facModule } from '../modules/fac/index.js';
+import {
+  customerModule,
+  listingModule,
+  merchantModule,
+  orderModule,
+} from '../modules/marketplace/index.js';
 import { commercialClientModule } from '../modules/commercialClient/index.js';
 import { publicPortalModule } from '../modules/publicPortal/index.js';
+import { viewingModule } from '../modules/viewing/index.js';
+import { applicationModule } from '../modules/application/index.js';
+import { evidenceModule } from '../modules/evidence/index.js';
+import { statsModule } from '../modules/stats/index.js';
+import { securityModule } from '../modules/security/index.js';
 
 /**
  * Single mount point for the whole API.
@@ -91,8 +102,19 @@ export const MODULES = [
   adModule,
   adPolicyModule,
 
+  // Marketplace
+  merchantModule,
+  customerModule,
+  listingModule,
+  orderModule,
+
   // Public
   publicPortalModule,
+  viewingModule,
+  applicationModule,
+  evidenceModule,
+  statsModule,
+  securityModule,
 ] as const;
 
 export function buildApiRouter(): Router {

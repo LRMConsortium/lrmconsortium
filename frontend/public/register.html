@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<!--
+ ═══════════════════════════════════════════════════════════════════════════
+ LEGACY RENTAL MANAGEMENT CONSORTIUM (LRMC)
+ REGISTER
+
+ Extends layouts/auth.html. Posts to POST /api/v1/auth/register through the
+ LRMC SDK — like sign-in, this is a flow whose response has to be stored and
+ acted on, not swapped into the page.
+
+ The shape of the problem: LRMC serves thirteen kinds of member, and they need
+ different things at signup. A driver must declare a vehicle; a vendor a
+ service; a merchant a trading name. Asking everyone every question produces a
+ form nobody finishes.
+
+ So the form is **two steps**. Step one asks who you are. Step two asks only
+ what that answer makes necessary. Which extras belong to which role is read
+ from the same table the API validates against — `config/registration.ts` —
+ so the form and the server cannot disagree about what a driver has to supply.
+
+ Four other decisions worth not undoing:
+
+ 1. **Password strength is shown as you type**, with the rule stated up front
+    rather than revealed by rejection. Ten characters, upper, lower, digit —
+    the same rule the server enforces, quoted from the same constant.
+
+ 2. **Field errors land on their field.** The API returns `details[]` with a
+    `path`; each one is written beside the input it belongs to and the first
+    is focused. A single banner saying "validation failed" makes somebody hunt
+    through eleven fields.
+
+ 3. **"Already registered" is safe to say here.** Unlike sign-in, an
+    enumeration guard would break the flow — a person who cannot be told their
+    email is taken cannot resolve it. The trade is deliberate and the wording
+    routes them to sign-in rather than dead-ending.
+
+ 4. **Merchants are told they arrive unverified.** They can build a catalogue
+    immediately and publish nothing until LRMC checks them. Saying so at
+    signup prevents the support ticket that otherwise arrives on day two.
+ ═══════════════════════════════════════════════════════════════════════════
+-->
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Register · Legacy Rental Management Consortium</title>
+  <meta name="description" content="Create an LRMC account as a tenant, landlord, driver, vendor or merchant. Two steps, and only the questions your role needs." />
+
+  <link rel="canonical" href="https://lrmconsortium.com/public/register.html" />
+  <link rel="icon" href="/assets/img/lrmc-favicon.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/assets/img/lrmc-apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: {
+      colors: {
+        /* LRMC branding-locked palette */
+        lrmc: { blue:'#1E3A8A', gold:'#D4AF37', slate:'#334155' },
+        blue: { 100:'#DBEAFE', 300:'#93C5FD', 500:'#3B82F6', 600:'#2563EB', 700:'#1D4ED8', 800:'#1E3A8A', 900:'#172554' },
+        slate:{ 50:'#F8FAFC', 100:'#F1F5F9', 200:'#E2E8F0', 300:'#CBD5E1', 400:'#94A3B8', 500:'#64748B', 700:'#334155', 800:'#1E293B', 900:'#0F172A' },
+        emerald:{ 50:'#ECFDF5', 100:'#D1FAE5', 500:'#10B981', 600:'#059669', 700:'#047857' },
+        amber:{ 50:'#FFFBEB', 100:'#FEF3C7', 500:'#F59E0B', 600:'#D97706', 700:'#B45309' },
+        rose:{ 50:'#FFF1F2', 100:'#FFE4E6', 600:'#E11D48', 700:'#BE123C' },
+        gold: { 100:'#FBF6E5', 500:'#D4AF37', 700:'#8A6D1C' },
+      },
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+    } } };
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/theme.css" />
+  <link rel="stylesheet" href="/assets/css/utilities.css" />
+
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="/assets/js/sdk.js" defer></script>
+  <script src="/assets/js/auth.js" defer></script>
+  <script src="/assets/js/ui.js" defer></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+
+  <style>[x-cloak] { display: none !important; }</style>
+</head>
+
+<!-- `my-auto` on the panel rather than `justify-center` on the body. Both
+     centre it; only one survives content taller than the screen. A centred
+     flex container pushes the overflow *above* scroll position zero, where
+     nothing can reach it — on this form that hides the logo and the step
+     indicator outright, and only on small screens. -->
+<body class="h-full antialiased flex flex-col items-center p-4 py-10">
+
+  <main id="lrmc-main" class="w-full max-w-lg my-auto">
+
+    <!-- The lockup carries the institution's name; repeating it as text would
+         put it on screen twice. The name reaches assistive technology once,
+         through the hidden line. -->
+    <div class="flex flex-col items-center mb-8">
+      <img src="/assets/img/lrmc-logo.png" alt="" class="w-64" />
+      <span class="lrmc-sr-only">Legacy Rental Management Consortium</span>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-md p-6" x-data="lrmcRegister">
+
+      <!-- Step indicator. Two steps, both named, current one marked — a
+           progress bar with no labels tells somebody how far they are but not
+           what is coming. -->
+      <ol class="flex items-center gap-2 mb-6 text-sm" aria-label="Registration progress">
+        <li class="flex items-center gap-2" :aria-current="step === 1 ? 'step' : null">
+          <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold"
+                :class="step === 1 ? 'bg-blue-600 text-white' : 'bg-emerald-100 text-emerald-700'"
+                x-text="step === 1 ? '1' : '✓'">1</span>
+          <span :class="step === 1 ? 'font-medium text-slate-900' : 'text-slate-500'">Who you are</span>
+        </li>
+        <li class="flex-1 h-px bg-slate-200" aria-hidden="true"></li>
+        <li class="flex items-center gap-2" :aria-current="step === 2 ? 'step' : null">
+          <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold"
+                :class="step === 2 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'">2</span>
+          <span :class="step === 2 ? 'font-medium text-slate-900' : 'text-slate-500'">Your details</span>
+        </li>
+      </ol>
+
+      <div id="register-error" role="alert" aria-live="assertive"
+           class="mb-4 px-4 py-3 rounded-lg bg-rose-50 text-rose-700 text-sm" hidden></div>
+
+      <!-- ── STEP ONE — role ──────────────────────────────────────────────
+           A radio group, not a <select>. Thirteen options behind a dropdown
+           on a phone is a scroll wheel; as cards they are scannable, each
+           with a line saying what it is for.
+      -->
+      <!-- One heading for the document, whose text follows the step. Two
+           <h1> elements — one per step, one of them hidden — read as two page
+           titles to anything navigating by heading. -->
+      <h1 class="text-xl font-semibold text-slate-900 mb-1"
+          x-text="step === 1 ? 'Create your LRMC account' : 'Your details'">Create your LRMC account</h1>
+
+      <div x-show="step === 1">
+        <p class="text-sm text-slate-600 mb-5">First, tell us how you will use the platform.</p>
+
+        <fieldset>
+          <legend class="lrmc-sr-only">What describes you?</legend>
+          <div class="space-y-2 max-h-[22rem] overflow-y-auto pr-1">
+            <template x-for="r in roles" :key="r.value">
+              <label class="flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition"
+                     :class="role === r.value
+                       ? 'border-blue-600 bg-blue-100/40'
+                       : 'border-slate-200 hover:bg-slate-50'">
+                <input type="radio" name="role" class="mt-1 w-4 h-4 text-blue-600"
+                       :value="r.value" x-model="role" />
+                <span class="min-w-0">
+                  <span class="block text-sm font-medium text-slate-900" x-text="r.label"></span>
+                  <span class="block text-sm text-slate-500" x-text="r.blurb"></span>
+                </span>
+              </label>
+            </template>
+          </div>
+        </fieldset>
+
+        <button type="button" class="lrmc-btn lrmc-btn-primary w-full mt-5"
+                :disabled="!role" @click="next()">
+          Continue
+        </button>
+      </div>
+
+      <!-- ── STEP TWO — details ─────────────────────────────────────────── -->
+      <form x-show="step === 2" x-cloak id="register-form" method="post"
+            action="/api/v1/auth/register" class="space-y-4" @submit.prevent="submit()">
+
+        <div class="flex items-center justify-end -mt-8">
+          <button type="button" class="text-sm font-medium text-blue-600 hover:text-blue-700"
+                  @click="back()">Change</button>
+        </div>
+
+        <p class="text-sm text-slate-600">
+          Registering as <span class="font-medium text-slate-900" x-text="roleLabel"></span>.
+        </p>
+
+        <!-- A merchant who does not know they arrive unverified opens a
+             support ticket on day two asking why nothing publishes. -->
+        <div x-show="role === 'merchant'" x-cloak
+             class="flex items-start gap-3 px-4 py-3 rounded-lg bg-amber-50 text-amber-700 text-sm">
+          <i data-lucide="info" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
+          <span>You can build your catalogue straight away. Listings go live once LRMC verifies your business.</span>
+        </div>
+
+        <div>
+          <label class="lrmc-label" for="fullName">Full name</label>
+          <input class="lrmc-input" id="fullName" name="fullName" type="text"
+                 autocomplete="name" required maxlength="120" />
+          <p class="lrmc-field-error" data-error-for="fullName" hidden></p>
+        </div>
+
+        <div>
+          <label class="lrmc-label" for="email">Email</label>
+          <input class="lrmc-input" id="email" name="email" type="email"
+                 autocomplete="email" required />
+          <p class="lrmc-field-error" data-error-for="email" hidden></p>
+        </div>
+
+        <div>
+          <label class="lrmc-label" for="phone">Phone</label>
+          <input class="lrmc-input" id="phone" name="phone" type="tel"
+                 autocomplete="tel" required placeholder="+220 000 0000" />
+          <p class="lrmc-field-hint">Include the country code.</p>
+          <p class="lrmc-field-error" data-error-for="phone" hidden></p>
+        </div>
+
+        <!-- Role-driven extras. Which appear is read from the same table the
+             API validates against, so the two cannot drift apart. -->
+        <!-- One field, two questions. A marketplace customer is an account
+             that buyers act for, so it does need a name — but asking a
+             household for its "business name" reads as a form they are not
+             allowed to fill in, and they stop. -->
+        <div x-show="needs('businessName')" x-cloak>
+          <label class="lrmc-label" for="businessName" x-text="businessNameLabel">Business name</label>
+          <input class="lrmc-input" id="businessName" name="businessName" type="text"
+                 maxlength="200" :required="needs('businessName')" />
+          <p class="lrmc-field-hint" x-show="role === 'customer'" x-cloak>
+            Your own name is fine. Buyers you add later will order under it.
+          </p>
+          <p class="lrmc-field-error" data-error-for="businessName" hidden></p>
+        </div>
+
+        <div x-show="needs('vehicleType')" x-cloak>
+          <label class="lrmc-label" for="vehicleType">Vehicle type</label>
+          <select class="lrmc-select" id="vehicleType" name="vehicleType"
+                  :required="needs('vehicleType')">
+            <option value="">Choose…</option>
+            <template x-for="v in vehicleTypes" :key="v">
+              <option :value="v" x-text="v"></option>
+            </template>
+          </select>
+          <p class="lrmc-field-error" data-error-for="vehicleType" hidden></p>
+        </div>
+
+        <div x-show="needs('serviceType')" x-cloak>
+          <label class="lrmc-label" for="serviceType">Service you provide</label>
+          <select class="lrmc-select" id="serviceType" name="serviceType"
+                  :required="needs('serviceType')">
+            <option value="">Choose…</option>
+            <template x-for="v in serviceTypes" :key="v">
+              <option :value="v" x-text="v"></option>
+            </template>
+          </select>
+          <p class="lrmc-field-error" data-error-for="serviceType" hidden></p>
+        </div>
+
+        <div x-show="needs('businessType')" x-cloak>
+          <label class="lrmc-label" for="businessType">Business type</label>
+          <input class="lrmc-input" id="businessType" name="businessType" type="text"
+                 maxlength="60" :required="needs('businessType')" />
+          <p class="lrmc-field-error" data-error-for="businessType" hidden></p>
+        </div>
+
+        <div>
+          <label class="lrmc-label" for="region">Region</label>
+          <select class="lrmc-select" id="region" name="region">
+            <option value="">Choose…</option>
+            <template x-for="v in regions" :key="v">
+              <option :value="v" x-text="v"></option>
+            </template>
+          </select>
+          <p class="lrmc-field-hint">Where you mainly operate. You can change this later.</p>
+        </div>
+
+        <div>
+          <label class="lrmc-label" for="password">Password</label>
+          <div class="relative" x-data="{ shown: false }">
+            <input class="lrmc-input pr-12" id="password" name="password"
+                   :type="shown ? 'text' : 'password'" type="password"
+                   autocomplete="new-password" required :minlength="minLength"
+                   x-model="password" />
+            <button type="button" @click="shown = !shown"
+                    class="absolute inset-y-0 right-0 px-3 flex items-center text-slate-400
+                           hover:text-slate-600 transition rounded-r-lg"
+                    :aria-label="shown ? 'Hide password' : 'Show password'"
+                    aria-label="Show password">
+              <i data-lucide="eye" class="w-4 h-4" x-show="!shown"></i>
+              <i data-lucide="eye-off" class="w-4 h-4" x-show="shown" x-cloak></i>
+            </button>
+          </div>
+
+          <!-- The rule is stated up front, and each part ticks as it is met.
+               Revealing requirements by rejection is how people end up trying
+               four passwords. -->
+          <ul class="mt-2 space-y-1" aria-live="polite">
+            <template x-for="rule in passwordRules" :key="rule.label">
+              <li class="flex items-center gap-2 text-sm"
+                  :class="rule.met ? 'text-emerald-700' : 'text-slate-500'">
+                <i :data-lucide="rule.met ? 'check' : 'circle'" class="w-3.5 h-3.5"></i>
+                <span x-text="rule.label"></span>
+              </li>
+            </template>
+          </ul>
+          <p class="lrmc-field-error" data-error-for="password" hidden></p>
+        </div>
+
+        <div class="flex items-start gap-2 pt-1">
+          <input type="checkbox" id="terms" required
+                 class="mt-1 w-4 h-4 rounded border-slate-300 text-blue-600" />
+          <label for="terms" class="text-sm text-slate-600">
+            I agree to the LRMC
+            <a href="/public/terms.html" class="font-medium text-blue-600 hover:text-blue-700">terms</a>
+            and
+            <a href="/public/privacy.html" class="font-medium text-blue-600 hover:text-blue-700">privacy notice</a>.
+          </label>
+        </div>
+
+        <button type="submit" id="register-submit" class="lrmc-btn lrmc-btn-primary w-full">
+          <span id="register-submit-label">Create account</span>
+          <span id="register-spinner" hidden>
+            <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+          </span>
+        </button>
+      </form>
+
+      <p class="text-sm text-slate-600 text-center mt-6">
+        Already registered?
+        <a href="/public/login.html" class="font-medium text-blue-600 hover:text-blue-700">Sign in</a>
+      </p>
+    </div>
+
+    <p class="text-sm text-slate-500 text-center mt-6">
+      © <span class="lrmc-year"></span> Legacy Rental Management Consortium
+    </p>
+  </main>
+
+  <div id="lrmc-toasts" aria-live="polite" class="fixed top-4 right-4 z-50 flex flex-col gap-2 items-end"></div>
+
+<script>
+document.querySelectorAll('.lrmc-year').forEach(function (el) {
+  el.textContent = new Date().getFullYear();
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Which roles may register, and what each one is asked for.
+ *
+ * Mirrors `backend/src/config/registration.ts`. The blurbs are the frontend's
+ * own — the backend has no business holding marketing copy — but the *values*
+ * and the *extras* must match, or the form asks a question the API ignores, or
+ * omits one it requires.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+var ROLES = [
+  { value: 'tenant',            label: 'Tenant',              blurb: 'Rent a home through LRMC' },
+  { value: 'landlord',          label: 'Landlord',            blurb: 'List and manage your properties' },
+  { value: 'driver',            label: 'Ususu driver',        blurb: 'Earn by driving on Ususu' },
+  { value: 'rider',             label: 'Ususu rider',         blurb: 'Book rides across the city' },
+  { value: 'vendor',            label: 'Vendor',              blurb: 'Take maintenance work on LRMC properties' },
+  { value: 'merchant',          label: 'Merchant',            blurb: 'Sell goods and services in the marketplace' },
+  { value: 'customer',          label: 'Marketplace customer',blurb: 'Buy from LRMC merchants' },
+  { value: 'airbnbHost',        label: 'Short-let host',      blurb: 'Manage short-stay listings' },
+  { value: 'hotelManager',      label: 'Hotel',               blurb: 'Manage hotel inventory and bookings' },
+  { value: 'resortManager',     label: 'Resort',              blurb: 'Manage resort inventory and bookings' },
+  { value: 'rentalCarCompany',  label: 'Rental car company',  blurb: 'Manage a rental fleet' },
+  { value: 'advertiser',        label: 'Advertiser',          blurb: 'Advertise across LRMC surfaces' },
+  { value: 'publicUser',        label: 'Just browsing',       blurb: 'Look around before deciding' },
+];
+
+var EXTRAS = {
+  driver: ['vehicleType'],
+  vendor: ['serviceType'],
+  advertiser: ['businessType', 'businessName'],
+  merchant: ['businessName'],
+  hotelManager: ['businessName'],
+  resortManager: ['businessName'],
+  rentalCarCompany: ['businessName'],
+  airbnbHost: ['businessName'],
+  customer: ['businessName'],
+};
+
+var PASSWORD_MIN = 10;
+
+/* The Gambia — launch market. Ordered by population, so the commonest answers
+ * are nearest the top of a phone dropdown. */
+var REGIONS = [
+  'Banjul', 'Kanifing', 'Brikama', 'Mansakonko',
+  'Kerewan', 'Kuntaur', 'Janjanbureh', 'Basse',
+];
+
+var VEHICLE_TYPES = ['Car', 'Minibus', 'Motorcycle', 'Tricycle', 'Van', 'Pickup'];
+var SERVICE_TYPES = [
+  'Plumbing', 'Electrical', 'Carpentry', 'Masonry', 'Painting', 'Cleaning',
+  'Landscaping', 'Pest control', 'Security', 'Air conditioning', 'Appliance repair',
+  'Roofing', 'General maintenance', 'Vehicle maintenance', 'Other',
+];
+
+document.addEventListener('alpine:init', function () {
+  Alpine.data('lrmcRegister', function () {
+    return {
+      step: 1,
+      role: '',
+      password: '',
+      roles: ROLES,
+      regions: REGIONS,
+      vehicleTypes: VEHICLE_TYPES,
+      serviceTypes: SERVICE_TYPES,
+      minLength: PASSWORD_MIN,
+
+      get roleLabel() {
+        var found = ROLES.filter(function (r) { return r.value === this.role; }, this)[0];
+        return found ? found.label : '';
+      },
+
+      /* Same field, same validation, different question. See the markup. */
+      get businessNameLabel() {
+        return this.role === 'customer' ? 'Account name' : 'Business name';
+      },
+
+      /** Does the chosen role have to answer this? */
+      needs: function (field) {
+        return (EXTRAS[this.role] || []).indexOf(field) !== -1;
+      },
+
+      /* Stated up front and ticked as met, rather than revealed by rejection.
+       * Same four conditions the server enforces. */
+      get passwordRules() {
+        var p = this.password || '';
+        return [
+          { label: 'At least ' + PASSWORD_MIN + ' characters', met: p.length >= PASSWORD_MIN },
+          { label: 'A capital letter', met: /[A-Z]/.test(p) },
+          { label: 'A small letter', met: /[a-z]/.test(p) },
+          { label: 'A number', met: /\d/.test(p) },
+        ];
+      },
+
+      next: function () {
+        if (!this.role) return;
+        this.step = 2;
+        /* Move focus into the new step. Somebody using a keyboard or a screen
+         * reader would otherwise be left at the bottom of a panel that just
+         * disappeared. */
+        this.$nextTick(function () {
+          var el = document.getElementById('fullName');
+          if (el) el.focus();
+          if (window.lucide) window.lucide.createIcons();
+        });
+      },
+
+      back: function () {
+        this.step = 1;
+        this.$nextTick(function () { if (window.lucide) window.lucide.createIcons(); });
+      },
+
+      submit: function () { submitRegistration(this.role); },
+    };
+  });
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Submit
+ * ──────────────────────────────────────────────────────────────────────── */
+
+function clearFieldErrors() {
+  document.querySelectorAll('[data-error-for]').forEach(function (el) {
+    el.textContent = ''; el.hidden = true;
+    var input = document.getElementById(el.getAttribute('data-error-for'));
+    if (input) input.removeAttribute('aria-invalid');
+  });
+  var box = document.getElementById('register-error');
+  box.hidden = true; box.textContent = '';
+}
+
+/**
+ * Put each error beside the field it belongs to.
+ *
+ * The API returns `details[]` carrying a path. A single banner saying
+ * "validation failed" makes somebody hunt through eleven inputs for the one
+ * that is wrong; this points at it, marks it `aria-invalid`, and focuses the
+ * first so a screen reader lands on it.
+ */
+function showFieldErrors(details) {
+  var firstInput = null;
+  var unplaced = [];
+
+  (details || []).forEach(function (d) {
+    /* The LRMC validator emits `{ field, message, code }` with `field` already
+     * flattened by `path.join('.')`. `path` is accepted too, in either form,
+     * so a detail from anywhere else in the stack still lands on its input
+     * instead of silently becoming a banner. */
+    var field = d.field
+      || (Array.isArray(d.path) ? d.path.join('.') : d.path)
+      || null;
+    var target = field ? document.querySelector('[data-error-for="' + field + '"]') : null;
+    if (!target) { unplaced.push(d.message); return; }
+
+    target.textContent = d.message;
+    target.hidden = false;
+    var input = document.getElementById(field);
+    if (input) {
+      input.setAttribute('aria-invalid', 'true');
+      if (!firstInput) firstInput = input;
+    }
+  });
+
+  if (firstInput) firstInput.focus();
+  return unplaced;
+}
+
+function showBanner(message) {
+  var box = document.getElementById('register-error');
+  box.textContent = message;
+  box.hidden = false;
+  box.scrollIntoView({ block: 'nearest' });
+}
+
+function busy(on) {
+  document.getElementById('register-submit').disabled = on;
+  document.getElementById('register-submit-label').hidden = on;
+  document.getElementById('register-spinner').hidden = !on;
+}
+
+function submitRegistration(role) {
+  clearFieldErrors();
+
+  var body = { role: role };
+  ['fullName', 'email', 'phone', 'businessName', 'vehicleType',
+   'serviceType', 'businessType', 'region', 'password'].forEach(function (name) {
+    var el = document.getElementById(name);
+    /* Only send what is on screen and filled. The register schema is
+     * `.strict()`, so an empty string for a field this role never had would
+     * be rejected outright. */
+    if (el && el.offsetParent !== null && el.value !== '') body[name] = el.value.trim
+      ? el.value.trim() : el.value;
+  });
+
+  busy(true);
+
+  Lrmc.auth.register(body)
+    .then(function (data) {
+      /* `POST /auth/register` returns the same token pair sign-in does, so the
+       * account is genuinely authenticated from this moment. Adopting it and
+       * landing them in their portal is the honest reading of that; bouncing
+       * to the sign-in form would ask for a password they typed ten seconds
+       * ago and add a step that proves nothing. */
+      var actor = LrmcAuth.adopt(data);
+      LrmcUI.toast('Welcome to LRMC. Your account is ready.', 'success');
+      /* `replace`, not `assign`: the back button must not return somebody to
+       * a registration form they have already completed. */
+      location.replace(LrmcAuth.homeFor(actor));
+    })
+    .catch(function (err) {
+      busy(false);
+
+      if (err.code === 'DUPLICATE_KEY' || err.status === 409) {
+        /* Sign-in must not confirm which emails exist. Registration has to —
+         * a person who cannot be told their address is taken cannot resolve
+         * it. The wording routes them onward rather than dead-ending. */
+        showBanner('That email is already registered. Sign in instead, or use another address.');
+        return;
+      }
+      if (err.status === 422 || err.code === 'VALIDATION_FAILED') {
+        var unplaced = showFieldErrors(err.details);
+        if (unplaced.length) showBanner(unplaced.join(' '));
+        else if (!(err.details || []).length) showBanner(err.message || 'Please check the form.');
+        return;
+      }
+      if (err.status === 429) {
+        showBanner('Too many attempts. Wait a few minutes and try again.');
+        return;
+      }
+      showBanner('We could not create your account just now. Please try again shortly.');
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  if (window.lucide) window.lucide.createIcons();
+  /* Somebody already signed in has no business on a registration form — and
+   * belongs in their own portal, not the member one by default. */
+  if (window.LrmcAuth && LrmcAuth.isSignedIn()) {
+    location.replace(LrmcAuth.homeFor(LrmcAuth.actor()));
+  }
+});
+</script>
+</body>
+</html>

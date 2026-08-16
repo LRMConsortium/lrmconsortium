@@ -1,6 +1,7 @@
 import { Router, type RequestHandler } from 'express';
 import type { Model } from 'mongoose';
 import {
+  auditTrail,
   authenticate,
   enterZone,
   requireOwnership,
@@ -10,13 +11,36 @@ import {
 import { ApiError } from '../../shared/ApiError.js';
 import { BaseService } from '../../shared/BaseService.js';
 import { createCrudController } from '../../shared/BaseController.js';
-import { asyncHandler, paginated } from '../../shared/http.js';
+import { asyncHandler, created, ok, paginated } from '../../shared/http.js';
 import { aliasIdParam, listQuery, namedIdParam } from '../../shared/moduleFactory.js';
+import { LAUNCH_CURRENCY } from '../../config/currencies.js';
+import { User } from '../../models/User.js';
+import { recordObservation } from '../security/index.js';
+import {
+  historyScope, recordingProblems, receiptReference, summarisePayments,
+  futureDatedBy, type HistoryScope, type RecordInput,
+} from './paymentRules.js';
+import { recordPaymentSchema } from './payment.validation.js';
 import { AdvertiserProfile } from '../advertising/advertiser.model.js';
 import { DriverProfile } from '../driver/driver.model.js';
 import { LandlordProfile } from '../landlord/landlord.model.js';
 import { TenantProfile } from '../tenant/tenant.model.js';
 import { Payment, type IPayment } from './payment.model.js';
+import { env } from '../../config/env.js';
+import { logger } from '../../config/logger.js';
+import type { Currency } from '../../config/currencies.js';
+import { toMinorUnits, verifyWebhookSignature } from '../../shared/providers/checkout.js';
+import { Order } from '../marketplace/marketplace.model.js';
+import { settleOrderPaid } from '../marketplace/index.js';
+import { ProcessedWebhookEvent } from './webhookEvent.model.js';
+import {
+  intakeDecision,
+  isAcknowledgeOnly,
+  isHandledEvent,
+  maySettle,
+  reconcile,
+  type ClaimRecord,
+} from './webhookEvents.js';
 
 export const paymentService = new BaseService<IPayment>(Payment, {
   label: 'Payment',
@@ -34,6 +58,9 @@ const itemRouter = Router();
 
 const paymentId = namedIdParam('paymentId');
 const aliasPayment = aliasIdParam('paymentId');
+/* `:userId` on the member surface. Validated as an id like any other, so a
+ * path segment cannot carry a Mongo operator into a query. */
+const userIdParam = namedIdParam('userId');
 
 // Payments are read-only over HTTP. They are written by the flows that cause
 // them — a rent payment by `POST /lease/{leaseId}/payments`, a fare by ride
@@ -109,6 +136,414 @@ const advertiserRouter = Router();
 advertiserRouter.get('/me/payments', ...member, ownPermission, validate({ query: listQuery }),
   ownLedger(AdvertiserProfile as never, 'Advertiser profile', 'payer', ['adSpend']));
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * The member-portal surface: one person's history, one person's summary, and
+ * a receipt for money taken in a room.
+ *
+ * The rules — who may read whose, who may write one down, what a summary
+ * means — are all in `paymentRules.ts`, which has no Mongoose and is asserted
+ * without a database. This section resolves ids and runs queries.
+ *
+ * ── `:userId` is a user id; the ledger is in profile ids ──────────────────
+ * `payer` and `payee` point at a *profile* (a TenantProfile, a LandlordProfile),
+ * not at a user, because one person can be both a tenant and a landlord and
+ * their two ledgers are genuinely different. The member portal speaks in user
+ * ids. `profileIdsFor` is the join, and it is done once per request rather
+ * than being guessed at per query.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/** Every profile document this user owns, as ids. The ledger's side of the join. */
+async function profileIdsFor(userId: string): Promise<string[]> {
+  const user = await User.findOne({ _id: userId, deletedAt: null })
+    .select('profiles')
+    .lean()
+    .exec();
+  if (!user) return [];
+  return (user.profiles ?? []).map((p) => String(p.profileId));
+}
+
+/**
+ * The Mongo filter for "payments about this person", narrowed by what the
+ * caller is allowed to see.
+ *
+ * Returns `null` when the answer is "nothing", so a caller cannot mistake an
+ * empty filter for an unrestricted one — the same trap as `DENY_ALL` in the
+ * stats module, and the same reason for making it a distinct value rather than
+ * an empty object.
+ */
+function historyFilter(
+  scope: HistoryScope,
+  profileIds: string[],
+  actorId: string,
+): Record<string, unknown> | null {
+  if (scope === 'none') return null;
+  /* A person with no profile has no ledger rows. An `$in: []` matches nothing,
+   * which is right — but it is worth being explicit that this is "no rows",
+   * not "no filter". */
+  const sides = { $or: [{ payer: { $in: profileIds } }, { payee: { $in: profileIds } }] };
+  if (scope === 'all') return { deletedAt: null, ...sides };
+  /* A coordinator sees the receipts they wrote and nothing else. Recording and
+   * reading are different powers; holding the first does not grant the second. */
+  return { deletedAt: null, recordedBy: actorId, ...sides };
+}
+
+const historyRouter = Router();
+
+historyRouter.get(
+  '/:userId/history',
+  ...member,
+  auditTrail('payment'),
+  ownPermission,
+  validate({ params: userIdParam, query: listQuery }),
+  asyncHandler(async (req, res) => {
+    const actor = req.actor!;
+    const subjectId = String(req.params.userId);
+    const scope = historyScope(
+      { userId: actor.userId, roles: actor.roles as string[] },
+      subjectId,
+    );
+
+    /* Refused rather than answered empty. An empty list and "you may not see
+     * this" are different facts, and returning the first for the second teaches
+     * a caller that the person has no payments. */
+    if (scope === 'none') {
+      throw ApiError.forbidden('You may not read this person\'s payment history');
+    }
+
+    const profileIds = await profileIdsFor(subjectId);
+    const filters = historyFilter(scope, profileIds, actor.userId);
+    if (!filters) throw ApiError.forbidden('You may not read this person\'s payment history');
+
+    /* Reading somebody else's ledger. One is ordinary — a coordinator checking
+     * a receipt. Eighty different people in ten minutes is somebody walking the
+     * member list. */
+    if (subjectId !== actor.userId) {
+      recordObservation({ signal: 'enumeration', subject: actor.userId, at: Date.now() });
+    }
+
+    /* `serverFilters`, not `filters`. `historyFilter` is the authorization
+     * decision for this route, and `filters` is passed through the
+     * `filterableFields` allowlist — which does not list `$or` or `recordedBy`
+     * and therefore dropped both, silently, leaving `{ deletedAt: null }` and
+     * answering with the whole platform's ledger. See `ListParams`. */
+    const { items, meta } = await paymentService.list({
+      serverFilters: filters,
+      limit: Number(req.query.limit ?? 20),
+      page: Number(req.query.page ?? 1),
+    });
+    return paginated(res, items, meta);
+  }),
+);
+
+historyRouter.get(
+  '/:userId/summary',
+  ...member,
+  auditTrail('payment'),
+  ownPermission,
+  validate({ params: userIdParam }),
+  asyncHandler(async (req, res) => {
+    const actor = req.actor!;
+    const subjectId = String(req.params.userId);
+    const scope = historyScope(
+      { userId: actor.userId, roles: actor.roles as string[] },
+      subjectId,
+    );
+    if (scope === 'none') {
+      throw ApiError.forbidden('You may not read this person\'s payment summary');
+    }
+
+    const profileIds = await profileIdsFor(subjectId);
+    const filters = historyFilter(scope, profileIds, actor.userId);
+    if (!filters) throw ApiError.forbidden('You may not read this person\'s payment summary');
+
+    /* The whole set, not a page. A summary computed over twenty rows is the
+     * exact bug the aggregate endpoints were built to remove, and it would be
+     * worse here: a rate over a page reads as a rate over a history.
+     *
+     * `.lean()` and four fields, so this stays cheap even for a long-standing
+     * tenant. If it ever stops being cheap the answer is an aggregation, not a
+     * page. */
+    const rows = await Payment.find(filters)
+      .select('status amount currency dueDate paidAt')
+      .lean()
+      .exec();
+
+    return ok(res, {
+      ...summarisePayments(rows as never, LAUNCH_CURRENCY),
+      /* Said out loud, because a coordinator reading a total that covers only
+       * their own receipts would otherwise reasonably read it as the whole. */
+      scope,
+      partial: scope !== 'all',
+    });
+  }),
+);
+
+/**
+ * Write down money that changed hands in a room.
+ *
+ * See the header of `paymentRules.ts` for why this exists at all — the short
+ * version is that refusing to record cash would push The Gambia's informal
+ * economy out of the evidence base, and that population is who LRMC is for.
+ *
+ * Everything that makes it safe is in the rules module and asserted there. What
+ * happens here is the two things that need a database: the idempotency
+ * collision, and resolving a payer's user id to the profile the ledger indexes.
+ */
+historyRouter.post(
+  '/record',
+  ...member,
+  auditTrail('payment'),
+  requirePermission('payment:record'),
+  validate({ body: recordPaymentSchema }),
+  asyncHandler(async (req, res) => {
+    const actor = req.actor!;
+    const input = req.body as RecordInput & { notes?: string; subject?: string };
+
+    const problems = recordingProblems(
+      { userId: actor.userId, roles: actor.roles as string[] },
+      input,
+    );
+    /* A receipt dated tomorrow is a promise, not a payment, and it would sort
+     * to the top of a history as the most recent thing that happened. Checked
+     * here because it needs a clock and the rules module deliberately has none. */
+    if (futureDatedBy(input.paidAt, Date.now()) > 0) {
+      problems.push({
+        field: 'paidAt', code: 'future',
+        message: 'A payment cannot be recorded as having happened in the future.',
+      });
+    }
+    if (problems.length) throw ApiError.validation('Request validation failed', problems);
+
+    const payerProfiles = await profileIdsFor(String(input.payer));
+    if (!payerProfiles.length) {
+      throw ApiError.validation('Request validation failed', [{
+        field: 'payer', code: 'no-profile',
+        message: 'That member has no profile to record a payment against.',
+      }]);
+    }
+
+    const reference = receiptReference(input);
+    const existing = await Payment.findOne({ reference }).select('_id').lean().exec();
+    if (existing) {
+      /* Surfaced, not swallowed. A retry on a bad connection and a genuine
+       * second identical payment on the same day look the same from here, and
+       * silently accepting either would double a tenant's rent or lose a real
+       * receipt. The caller is told which row it collided with so a person can
+       * decide. */
+      throw ApiError.conflict(
+        'A receipt with these details already exists for that day. If this is a second, separate payment, add a note to tell them apart.',
+      );
+    }
+
+    const payment = await Payment.create({
+      reference,
+      kind: input.kind,
+      subjectKind: input.subjectKind ?? (input.subject ? 'Lease' : undefined),
+      subject: input.subject,
+      payer: payerProfiles[0],
+      payerKind: 'TenantProfile',
+      amount: input.amount,
+      currency: input.currency ?? LAUNCH_CURRENCY,
+      method: input.method ?? 'cash',
+      /* The money is already in hand. That is what recording one means — this
+       * is not an instruction to collect, it is a receipt for a collection. */
+      status: 'succeeded',
+      paidAt: input.paidAt ? new Date(input.paidAt as string) : new Date(),
+      /* From the token, never from the body. A hand-written money record with
+       * no named author is not evidence of anything. */
+      recordedBy: actor.userId,
+      notes: input.notes,
+      createdBy: actor.userId,
+    });
+
+    /* A coordinator writing up a week of collections on a Friday might enter
+     * twenty receipts in an hour. Sixty is a lot of compounds, and it is the
+     * shape a compromised coordinator account would make. Advisory only —
+     * `abuse.ts` caps the outcome at telling somebody. */
+    recordObservation({ signal: 'recordingBurst', subject: actor.userId, at: Date.now() });
+
+    return created(res, payment);
+  }),
+);
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * The gateway's webhook
+ *
+ * The only thing on this platform that may move an order to `paid`.
+ *
+ * Four things have to be true before a single row is written, and each one has
+ * been somebody's breach somewhere:
+ *
+ *   1. The signature verifies over the **raw** body. `app.ts` mounts
+ *      `express.raw` for this path alone, before the JSON parser, so the bytes
+ *      survive. A re-serialised body does not verify, and the tempting fix for
+ *      that is to weaken the check.
+ *   2. The event is **claimed** by a unique index before any work happens.
+ *      Stripe retries anything that is not 2xx, for days, and delivers
+ *      duplicates in ordinary operation. A handler that books income per
+ *      delivery pays a merchant twice on a slow afternoon.
+ *   3. The intent is **reconciled** against the order — amount, currency,
+ *      subject. An authentic event about somebody else's order, or about this
+ *      order at the wrong price, settles nothing.
+ *   4. Side effects happen **after** the money is recorded, never before.
+ *
+ * It answers 200 to almost everything on purpose. A 4xx tells Stripe to retry,
+ * and retrying will not fix a duplicate, an unhandled type, or an event about
+ * an order that no longer exists. The one thing that gets a 4xx is a bad
+ * signature, because that is not Stripe.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+const webhookRouter = Router();
+
+webhookRouter.post(
+  '/webhooks/stripe',
+  /* Audited like every other mutation on this platform. There is no actor —
+   * a gateway is not a person — and `auditTrail` already tolerates that,
+   * recording the request without putting a name against a decision nobody
+   * made. Money moving with no audit entry is not answerable, and this route
+   * moves more of it than any other. */
+  auditTrail('payment'),
+  asyncHandler(async (req, res) => {
+    const raw = (req as unknown as { body?: unknown }).body;
+    const rawBody: Uint8Array | string =
+      raw instanceof Uint8Array ? raw : typeof raw === 'string' ? raw : '';
+
+    const check = verifyWebhookSignature(
+      rawBody,
+      req.header('stripe-signature'),
+      env.STRIPE_WEBHOOK_SECRET,
+      Math.floor(Date.now() / 1000),
+    );
+    if (!check.ok) {
+      /* The only 4xx here. Deliberately says nothing about which of the five
+       * ways it failed — a caller probing for the difference between "no
+       * secret configured" and "signature mismatch" learns something worth
+       * knowing, and Stripe itself never sees this branch. */
+      logger.warn('Stripe webhook rejected', { reason: check.failure });
+      throw ApiError.unauthenticated('Signature verification failed');
+    }
+
+    let event: { id?: string; type?: string; data?: { object?: Record<string, unknown> } };
+    try {
+      /* `TextDecoder` is a runtime global the sandbox's trimmed `@types/node`
+       * omits; reached through globalThis rather than widening the suite's
+       * typecheck filter for one line. */
+      const decode = (bytes: Uint8Array) =>
+        new (globalThis as unknown as {
+          TextDecoder: new () => { decode(b: Uint8Array): string };
+        }).TextDecoder().decode(bytes);
+      event = JSON.parse(typeof rawBody === 'string' ? rawBody : decode(rawBody));
+    } catch {
+      /* Signed, and not JSON. Nothing to retry. */
+      return ok(res, { received: true, outcome: 'unparseable' });
+    }
+
+    const eventId = String(event.id ?? '');
+    const type = String(event.type ?? '');
+    if (!eventId) return ok(res, { received: true, outcome: 'noEventId' });
+
+    if (!isHandledEvent(type)) {
+      return ok(res, { received: true, outcome: 'ignoredType', type });
+    }
+
+    /* ── Claim it ────────────────────────────────────────────────────────
+     * The unique index does the work. A duplicate key means somebody else has
+     * this event, and the honest answer is 200 with nothing done. */
+    const now = new Date();
+    let existing: ClaimRecord | null = null;
+    try {
+      await ProcessedWebhookEvent.create({
+        eventId, source: 'stripe', type, claimedAt: now,
+      });
+    } catch (err) {
+      if ((err as { code?: number }).code !== 11000) throw err;
+      const row = await ProcessedWebhookEvent.findOne({ eventId }).lean().exec();
+      existing = row
+        ? { eventId, appliedAt: row.appliedAt ?? null, claimedAt: row.claimedAt ?? null }
+        : null;
+    }
+
+    const decision = intakeDecision(type, existing, Date.now());
+    if (isAcknowledgeOnly(decision)) {
+      return ok(res, { received: true, outcome: decision, eventId });
+    }
+
+    /* ── Reconcile against the order ─────────────────────────────────────── */
+    const object = (event.data?.object ?? {}) as Record<string, unknown>;
+    const metadata = (object.metadata ?? {}) as Record<string, unknown>;
+    const orderId = String(metadata.orderId ?? '');
+    const order = orderId
+      ? await Order.findOne({ _id: orderId, deletedAt: null }).lean().exec()
+      : null;
+
+    if (!order) {
+      await ProcessedWebhookEvent.updateOne({ eventId },
+        { $set: { appliedAt: new Date(), outcome: 'no such order' } }).exec();
+      return ok(res, { received: true, outcome: 'unknownOrder', eventId });
+    }
+
+    if (type !== 'payment_intent.succeeded') {
+      /* Failures and refunds are recorded and left for a person. Moving an
+       * order on a failed intent is how a buyer loses goods they did pay for
+       * when a first attempt was declined and a second succeeded. */
+      await ProcessedWebhookEvent.updateOne({ eventId },
+        { $set: { appliedAt: new Date(), order: order._id, outcome: `recorded ${type}` } }).exec();
+      logger.warn('Stripe reported a payment problem', { eventId, type, orderId });
+      return ok(res, { received: true, outcome: 'recorded', type, eventId });
+    }
+
+    const currency = order.currency as Currency;
+    const problems = reconcile(
+      {
+        orderId: String(order._id),
+        total: order.total,
+        currency,
+        status: order.status,
+      },
+      {
+        orderId,
+        amountMinor: typeof object.amount_received === 'number'
+          ? object.amount_received
+          : (object.amount as number | undefined),
+        currency: typeof object.currency === 'string'
+          ? (object.currency.toUpperCase() as Currency)
+          : undefined,
+        status: String(object.status ?? ''),
+      },
+      toMinorUnits(order.total, currency),
+    );
+
+    if (!maySettle(problems)) {
+      /* Applied, because re-running will not change the answer, and recorded
+       * in full so a person can see why LRMC holds money it did not settle. */
+      const detail = problems.map((p) => p.code).join(', ');
+      await ProcessedWebhookEvent.updateOne({ eventId },
+        { $set: { appliedAt: new Date(), order: order._id, outcome: `refused: ${detail}` } }).exec();
+      logger.error('A signed payment did not reconcile', {
+        eventId, orderId, problems: problems.map((p) => p.message),
+      });
+      return ok(res, { received: true, outcome: 'refused', problems, eventId });
+    }
+
+    const settled = await settleOrderPaid(
+      order as never,
+      /* No actor. The gateway is not a person, and recording one would put a
+       * name against a decision nobody made. */
+      String(order.customer),
+      String(object.id ?? eventId),
+    );
+
+    await ProcessedWebhookEvent.updateOne({ eventId },
+      { $set: { appliedAt: new Date(), order: order._id, outcome: 'settled' } }).exec();
+
+    logger.info('Order settled from a verified webhook', {
+      eventId, orderId, reference: settled.reference,
+    });
+    return ok(res, { received: true, outcome: 'settled', eventId });
+  }),
+);
+
 export const paymentModule = {
   collectionPath: 'payments',
   itemPath: 'payment',
@@ -118,6 +553,8 @@ export const paymentModule = {
   controller,
   mounts: [
     { path: 'payments', router: collectionRouter },
+    { path: 'payments', router: historyRouter },
+    { path: 'payments', router: webhookRouter },
     { path: 'payment', router: itemRouter },
     { path: 'tenant', router: tenantRouter },
     { path: 'landlord', router: landlordRouter },

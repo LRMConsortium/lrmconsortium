@@ -58,7 +58,7 @@ const landlordProfileSchema = new Schema<ILandlordProfile>(
 
     payoutMethod: { type: String, enum: PAYMENT_METHODS, default: 'bankTransfer' },
     payoutAccountRef: { type: String, trim: true, select: false },
-    payoutCurrency: { type: String, default: 'GHS' },
+    payoutCurrency: { type: String, default: 'GMD' },
     managementFeePercent: { type: Number, min: 0, max: 100, default: 10 },
     statementFrequency: {
       type: String,

@@ -73,7 +73,7 @@ const fleetVehicleSchema = new Schema<IFleetVehicle>(
     color: { type: String, trim: true },
     vin: { type: String, trim: true, select: false },
     dailyRate: { type: Number, min: 0 },
-    currency: { type: String, enum: CURRENCIES, default: 'GHS' },
+    currency: { type: String, enum: CURRENCIES, default: 'GMD' },
     insuranceProvider: { type: String, trim: true },
     insuranceExpiry: { type: Date },
     roadworthyExpiry: { type: Date },

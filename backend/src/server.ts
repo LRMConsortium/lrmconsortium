@@ -1,13 +1,51 @@
 import type { Server } from 'node:http';
+import Stripe from 'stripe';
 import { createApp } from './app.js';
-import { connectDatabase, disconnectDatabase } from './config/database.js';
+import { assertIndexesBuilt, connectDatabase, disconnectDatabase } from './config/database.js';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
+import { createStripeCheckoutProvider, setCheckoutProvider } from './shared/providers/checkout.js';
 
 let server: Server | null = null;
 
+/**
+ * The one place a Stripe client is constructed.
+ *
+ * The key is read from the environment and never from source. `preflight.ts`
+ * already refuses a production boot whose key does not look like one, and
+ * `.gitignore` keeps `.env` out of the repository; a literal here would defeat
+ * both at once.
+ *
+ * No `apiVersion` is pinned. The SDK's types pin the version it was generated
+ * against, so naming a different one is a compile error rather than a silent
+ * mismatch — and naming the same one is noise that goes stale on every upgrade.
+ * Pin here only to deliberately hold an older version, and expect a cast.
+ *
+ * Left unset, `checkoutProvider()` stays the stub that refuses. That is the
+ * correct behaviour for an unconfigured deployment: `POST /order/:id/pay`
+ * answers "no checkout provider is configured" instead of taking an order
+ * nobody can pay for.
+ */
+function configureCheckout(): void {
+  if (!env.STRIPE_SECRET_KEY) {
+    logger.warn('No STRIPE_SECRET_KEY — checkout will refuse every payment');
+    return;
+  }
+  setCheckoutProvider(createStripeCheckoutProvider(new Stripe(env.STRIPE_SECRET_KEY)));
+  logger.info('Checkout provider configured', { provider: 'stripe' });
+}
+
 async function start(): Promise<void> {
   await connectDatabase();
+
+  configureCheckout();
+
+  /* Production builds no indexes at boot — correctly, since two servers should
+   * not race to create them and `syncIndexes` also *drops* ones no longer
+   * declared. But nothing called the migration either, so production ran with
+   * no index beyond `_id` and every uniqueness guard in the codebase was inert.
+   * This only looks, and refuses to serve traffic if the migration was missed. */
+  if (env.isProduction) await assertIndexesBuilt();
 
   const app = createApp();
   const instance: Server = app.listen(env.PORT, () => {

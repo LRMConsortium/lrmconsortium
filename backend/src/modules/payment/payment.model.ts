@@ -8,26 +8,18 @@ import {
   type TimestampShape,
 } from '../../shared/schemaFragments.js';
 
-export const PAYMENT_KINDS = [
-  'rent',
-  'deposit',
-  'ride',
-  'driverPayout',
-  'landlordPayout',
-  'adSpend',
-  'vendorInvoice',
-  'managementFee',
-  'refund',
-] as const;
+/* Canonical in `ledger.ts`, which is Mongoose-free and so can be asserted
+ * without a database — the same reason the statuses live in lifecycles.ts.
+ * `PAYOUT_SOURCES` there names these very strings, so a kind added here and
+ * not there would be a payout source pointing at nothing. */
+export { PAYMENT_KINDS } from './ledger.js';
+import { PAYMENT_KINDS } from './ledger.js';
 
-export const PAYMENT_STATUSES = [
-  'pending',
-  'processing',
-  'succeeded',
-  'failed',
-  'refunded',
-  'cancelled',
-] as const;
+/* The vocabulary is canonical in config/lifecycles.ts, which is Mongoose-free
+ * and so can be asserted against without a database. Re-exported here because
+ * callers reasonably look for a collection's statuses next to its schema. */
+import { PAYMENT_STATUSES } from '../../config/lifecycles.js';
+export { PAYMENT_STATUSES };
 
 /**
  * One ledger for every movement of money on the platform — rent, ride fares,
@@ -61,6 +53,17 @@ export interface IPayment extends Omit<LifecycleShape, 'status'>, TimestampShape
 
   providerReference?: string;
   providerName?: string;
+  /**
+   * Who wrote this row down by hand, if anybody did.
+   *
+   * Absent on a payment the platform generated — a rent instalment from the
+   * lease schedule, a fare from a completed ride. Present, and permanent, on a
+   * receipt a coordinator entered for cash taken in a compound. A hand-written
+   * money record with no named author is not evidence of anything, and this is
+   * also what lets a coordinator read back what they recorded without being
+   * given the rest of somebody's finances.
+   */
+  recordedBy?: Types.ObjectId;
   paidAt?: Date;
   failureReason?: string;
   receiptUrl?: string;
@@ -82,7 +85,7 @@ const paymentSchema = new Schema<IPayment>(
     payeeKind: { type: String },
 
     amount: { type: Number, required: true, min: 0 },
-    currency: { type: String, enum: CURRENCIES, default: 'GHS' },
+    currency: { type: String, enum: CURRENCIES, default: 'GMD' },
     method: { type: String, enum: PAYMENT_METHODS, default: 'mobileMoney' },
     platformFee: { type: Number, min: 0, default: 0 },
     netAmount: { type: Number, min: 0, default: 0 },
@@ -90,6 +93,7 @@ const paymentSchema = new Schema<IPayment>(
     /** Never logged, never returned — it identifies the payment instrument. */
     providerReference: { type: String, trim: true, select: false },
     providerName: { type: String, trim: true },
+    recordedBy: { type: Schema.Types.ObjectId, index: true },
     paidAt: { type: Date, index: true },
     failureReason: { type: String, trim: true },
     receiptUrl: { type: String, trim: true },

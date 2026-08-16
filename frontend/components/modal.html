@@ -1,0 +1,35 @@
+<!-- LRMC MODAL — Alpine for state, HTMX for content.
+
+     A modal must be escapable. Escape closes it, clicking outside closes it,
+     and focus returns to whatever opened it. A modal you can only leave with
+     a mouse is a trap, and keyboard and screen-reader users hit it first. -->
+<div x-data="lrmcModal">
+
+  <button type="button" class="lrmc-btn lrmc-btn-primary"
+          @click="show()"
+          hx-get="/partials/modal-content.html"
+          hx-target="#modal-body"
+          hx-swap="innerHTML">
+    Open
+  </button>
+
+  <div x-show="open" x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+       role="dialog" aria-modal="true" aria-labelledby="modal-title"
+       @keydown.escape.window="hide()">
+
+    <div class="lrmc-card max-w-lg w-full" @click.outside="hide()">
+      <header class="lrmc-card-header">
+        <h2 id="modal-title" class="lrmc-card-title">Modal title</h2>
+        <button type="button" class="lrmc-btn lrmc-btn-ghost lrmc-btn-sm !min-h-0 !p-1.5"
+                @click="hide()" aria-label="Close">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </header>
+
+      <div id="modal-body" class="text-sm text-slate-700">
+        <div class="lrmc-skeleton h-24 w-full"></div>
+      </div>
+    </div>
+  </div>
+</div>

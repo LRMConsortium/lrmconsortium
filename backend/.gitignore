@@ -4,6 +4,12 @@ coverage/
 .env
 .env.*
 !.env.example
+# The per-market template. The root `.gitignore` already un-ignores it, and
+# that was not enough: a nested `.gitignore` wins for the files beneath it, so
+# `.env.*` here quietly re-ignored the one file the runbook tells an operator
+# to copy on the server. It was untracked for a week and nobody could see it,
+# because an ignored file does not appear in `git status`.
+!.env.example.market
 *.log
 npm-debug.log*
 .DS_Store

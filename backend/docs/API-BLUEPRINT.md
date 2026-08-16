@@ -7,7 +7,7 @@
 
 All paths are relative to `API_PREFIX` (default `/api/v1`).
 
-**266 endpoints** — 123 from the generic profile surface across 14 collections, 143 hand-mounted.
+**363 endpoints** — 141 from the generic profile surface across 16 collections, 222 hand-mounted.
 
 ---
 
@@ -59,7 +59,8 @@ The **Own** column says which ownership rule applies:
 |---|---|---|---|---|
 | `FN` founder | `EX` hqExecutive | `BO` backOfficeStaff | `CO` coordinator | `VE` vendor |
 | `LL` landlord | `TE` tenant | `AH` airbnbHost | `HO` hotelManager | `RE` resortManager |
-| `RC` rentalCarCompany | `DR` driver | `RI` rider | `AD` advertiser | `PU` publicUser |
+| `RC` rentalCarCompany | `DR` driver | `RI` rider | `AD` advertiser | `ME` merchant |
+| `SE` seller | `CU` customer | `BU` buyer | `PU` publicUser |  |
 
 ---
 
@@ -83,7 +84,7 @@ by `publicContent:*` / `publicMetrics:read`, which no member role holds.
 
 ## The generic profile surface
 
-`defineProfileModule` mounts the same routes for all 14 profile collections,
+`defineProfileModule` mounts the same routes for all 16 profile collections,
 in the LRMC convention — **plural for collections, singular for items, with a**
 **named id parameter** — and in this registration order (`/me` before the id
 route, or Express parses `me` as an id):
@@ -113,6 +114,8 @@ in — one line in the factory instead of a special case in nine handlers.
 
 | Collection (plural) | Item (singular) | Resource | Admin zone | Member zone | Verifiable |
 |---|---|---|---|---|---|
+| `/merchants` | `/merchant/:merchantId` | `merchantProfile` | C · Back Office | D · Member | yes |
+| `/customers` | `/customer/:customerId` | `customerProfile` | C · Back Office | D · Member | yes |
 | `/founders` | `/founder/:founderId` | `founderProfile` | A · Founder | A · Founder | no |
 | `/hq-executives` | `/hq-executive/:executiveId` | `hqExecutiveProfile` | A · Founder | B · HQ Exec | no |
 | `/staff-members` | `/staff-member/:staffId` | `backOfficeStaffProfile` | C · Back Office | D · Member | yes |
@@ -139,6 +142,8 @@ get the clauses below, OR-ed together.
 
 | Collection | `ownerPath` | `organizationPath` | Effect |
 |---|---|---|---|
+| `/merchants` | `user` | `_id` | organizational callers see only their own merchant record (matched on `user` or on the record's own id) |
+| `/customers` | `user` | `_id` | organizational callers see only their own customer record (matched on `user` or on the record's own id) |
 | `/founders` | `user` | — | own-scoped callers see only the founder profiles whose `user` is their own account id |
 | `/hq-executives` | `user` | — | own-scoped callers see only the executive profiles whose `user` is their own account id |
 | `/staff-members` | `user` | — | own-scoped callers see only the staff records whose `user` is their own account id |
@@ -170,6 +175,215 @@ get the clauses below, OR-ed together.
 
 ## Endpoints by module
 
+### stats
+
+| Method | Path | Zone | Permission (any of) | Own | Request | Roles |
+|---|---|---|---|---|---|---|
+| `GET` | `/api/v1/stats/properties` | D · Member | `analytics:read`<br>`property:readOwn`<br>`property:read` | scoped | — | _all except_ RC DR RI AD ME SE CU BU PU |
+| `GET` | `/api/v1/stats/payments` | D · Member | `analytics:read`<br>`payment:readOwn`<br>`payment:read` | scoped | — | _all except_ SE BU PU |
+| `GET` | `/api/v1/stats/maintenance` | D · Member | `analytics:read`<br>`maintenanceRequest:readOwn`<br>`maintenanceRequest:read` | scoped | — | _all except_ DR RI AD ME SE CU BU PU |
+| `GET` | `/api/v1/stats/applications` | D · Member | `analytics:read`<br>`application:readOwn`<br>`application:read` | scoped | — | FN EX BO CO LL TE |
+| `GET` | `/api/v1/stats/ususu` | D · Member | `analytics:read`<br>`ususuLedger:readOwn`<br>`ususuLedger:read` | scoped | — | FN EX BO CO TE |
+
+**Notes**
+
+- **`GET /api/v1/stats/properties`** — Scoped to the caller from the token, never from a parameter: a landlord gets their own portfolio, a coordinator their region, Back Office everything. Occupancy is of lettable properties — an off-market unit is not a vacancy.
+- **`GET /api/v1/stats/payments`** — Reliability is of *settled* instalments; dividing by every row would drag it down each time one fell due. `succeeded` is the ledger’s word for settled — `paid` belongs to the marketplace order lifecycle.
+- **`GET /api/v1/stats/maintenance`** — Ten statuses into four buckets, and `stalled` is reported rather than hidden so the buckets sum to the total.
+- **`GET /api/v1/stats/applications`** — A landlord sees applications on their own properties.
+- **`GET /api/v1/stats/ususu`** — Reports `totalMembers`, not `totalGroups`: the ledger records contributions per person and there is no group entity to count.
+
+
+### evidence
+
+| Method | Path | Zone | Permission (any of) | Own | Request | Roles |
+|---|---|---|---|---|---|---|
+| `POST` | `/api/v1/references/request` | D · Member | `reference:create` | — | body: `requestReferenceSchema` | FN BO CO |
+| `POST` | `/api/v1/references/respond` | D · Member | `reference:update` | — | body: `respondToReferenceSchema` | FN BO CO |
+| `GET` | `/api/v1/references/:subjectId` | D · Member | `reference:readOwn`<br>`reference:read` | scoped | — | FN BO CO TE |
+| `POST` | `/api/v1/disputes/open` | D · Member | `dispute:create` | — | body: `openDisputeSchema` | FN BO CO |
+| `POST` | `/api/v1/dispute/:disputeId/resolve` | D · Member | `dispute:approve` | scoped | body: `resolveMemberDisputeSchema` | FN BO |
+| `GET` | `/api/v1/disputes/:subjectId` | D · Member | `dispute:readOwn`<br>`dispute:read` | scoped | — | FN BO CO TE |
+| `POST` | `/api/v1/ususu/group/create` | D · Member | `ususuLedger:create` | — | body: `createUsusuGroupSchema` | FN BO CO |
+| `POST` | `/api/v1/ususu/group/add-member` | D · Member | `ususuLedger:create` | — | body: `groupMemberSchema` | FN BO CO |
+| `POST` | `/api/v1/ususu/group/remove-member` | D · Member | `ususuLedger:create` | — | body: `groupMemberSchema` | FN BO CO |
+| `POST` | `/api/v1/ususu/group/contribute` | D · Member | `ususuLedger:create` | — | body: `groupContributionSchema` | FN BO CO |
+| `POST` | `/api/v1/ususu/group/miss` | D · Member | `ususuLedger:create` | — | body: `groupMissSchema` | FN BO CO |
+| `GET` | `/api/v1/ususu/group/user/:userId` | D · Member | _auth only_ | scoped | — | _all except_ PU |
+| `GET` | `/api/v1/ususu/group/:groupId` | D · Member | _auth only_ | scoped | — | _all except_ PU |
+| `GET` | `/api/v1/ususu/group/:groupId/summary` | D · Member | _auth only_ | scoped | — | _all except_ PU |
+| `POST` | `/api/v1/ususu/contribute` | D · Member | `ususuLedger:create` | — | body: `ususuContributionSchema` | FN BO CO |
+| `POST` | `/api/v1/ususu/miss` | D · Member | `ususuLedger:create` | — | body: `ususuMissSchema` | FN BO CO |
+| `GET` | `/api/v1/ususu/:subjectId` | D · Member | `ususuLedger:readOwn`<br>`ususuLedger:read` | scoped | — | FN BO CO TE |
+
+**Notes**
+
+- **`POST /api/v1/references/request`** — LRMC asks; the subject cannot request their own, because then they choose the referee.
+- **`POST /api/v1/references/respond`** — Nobody scores their own. A referee who will not score is a decline, not a zero.
+- **`GET /api/v1/references/:subjectId`** — Your own, or anybody’s if you are staff. A landlord sees the assessment, not the referee comments behind it.
+- **`POST /api/v1/disputes/open`** — Severity 1–3, set when opened. An open dispute blocks a tenancy recommendation whatever its grade.
+- **`POST /api/v1/dispute/:disputeId/resolve`** — Not by its subject: an open dispute blocks them, and closing your own block is not a thing.
+- **`POST /api/v1/ususu/group/create`** — Coordinators and LRMC only — an ordinary member cannot open a circle on the platform. Always lands in `forming`; a circle created already `active` would be a claim that people have agreed to put money in. The steward is added to their own register from the first second, so "who is in this" and "who is answerable for this" cannot drift apart. `status`, `groupHealth` and any streak are refused by the strict schema: all three are derived from the ledger and none is stored.
+- **`POST /api/v1/ususu/group/add-member`** — The steward who runs the circle, or LRMC. Not an ordinary member: a circle where anybody can add anybody is one where a disagreement is settled by whoever reaches their phone first. A closed circle refuses — its register is history, and adding somebody to a finished round would credit them with contributions they never made.
+- **`POST /api/v1/ususu/group/remove-member`** — REMOVING A MEMBER NEVER DELETES THEIR CONTRIBUTIONS. Somebody who paid into a circle for a year and then left has a year of evidence; the register changes and the append-only ledger does not. The steward cannot be removed from their own circle — close it instead, because there is no succession and a circle with no keeper is a register nobody can manage.
+- **`POST /api/v1/ususu/group/contribute`** — NOBODY RECORDS THEIR OWN CONTRIBUTION. Same rule as every other kind of evidence: a contribution somebody wrote down about themselves is a claim, not a record, and it is the one claim nobody else can check. Without it the fastest route to a high Ususu score is to open a circle and pay yourself on paper. `period` is required and shaped YYYY-MM — it is what a streak is counted over and what makes a duplicate detectable. A second entry for the same member, circle and period is a 409 for a person to resolve, never silently accepted. Recording the first contribution moves a `forming` circle to `active`.
+- **`POST /api/v1/ususu/group/miss`** — Resets that member's streak, because a streak is consecutive contributions counting back from the latest period and a miss ends the run. Costs the circle 5 points of group health. Same self-recording rule as a contribution — and it matters more here, because a member who could record their own misses could also decline to.
+- **`GET /api/v1/ususu/group/user/:userId`** — A person reads their own; Back Office, HQ and the founder read anyone's. A COORDINATOR READS NOBODY ELSE'S — this is narrower than a coordinator's reach anywhere else on the platform, deliberately. A savings circle is a private financial arrangement between named people, and stewarding one in Serrekunda is no reason to read the register of one in Basse.
+- **`GET /api/v1/ususu/group/:groupId`** — The steward, the members, and LRMC. Anybody else is refused rather than answered with an empty object.
+- **`GET /api/v1/ususu/group/:groupId/summary`** — Computed over the whole ledger, never a page — a group health over twenty rows reads as a group health over a history. `groupHealth` is 100 minus five per miss, floored at zero, and is NULL when nobody has contributed yet: a circle formed on Tuesday is not in perfect health and is not in bad health, it has no health to report. Streaks are counted BACKWARDS from the latest period; counting forwards returns the length of somebody's first good run, so a member who missed once in month seven and has paid for two years since would be reported with a streak of six. Money is grouped by currency and never summed.
+- **`POST /api/v1/ususu/contribute`** — One line per person per period per kind. A month recorded twice would inflate a streak nobody earned.
+- **`GET /api/v1/ususu/:subjectId`** — Streak and group health are computed from the ledger on read, never stored — a running total is a number somebody can correct by hand.
+
+
+### security
+
+| Method | Path | Zone | Permission (any of) | Own | Request | Roles |
+|---|---|---|---|---|---|---|
+| `POST` | `/api/v1/security/errors` | E · Public | _auth only_ | — | body: `errorReportSchema` | _all roles_ |
+| `GET` | `/api/v1/security/errors` | C · Back Office | `auditLog:read`<br>`analytics:read` | — | — | FN EX BO |
+| `GET` | `/api/v1/security/anomalies` | C · Back Office | `auditLog:read`<br>`analytics:read` | — | — | FN EX BO |
+
+**Notes**
+
+- **`POST /api/v1/security/errors`** — UNAUTHENTICATED ON PURPOSE. The most valuable report is the one from a page that broke before the member could sign in, and requiring a token would discard exactly those. NOTHING ON THIS ROUTE CAN ACT AGAINST A MEMBER — no block, no lock, no throttle that removes the application. Past a per-browser storage bound the report is dropped and the session is entirely unaffected; the reply is still 201, because telling a client it is being dropped invites a retry and a page in a render loop needs no encouragement. The reply carries nothing about the outcome: an intake that echoed its own grading would be a way to discover the thresholds. `severity` is derived from `kind` and cannot be supplied — a client that could set it could page a coordinator at will. URLs are reduced to path templates and every free-text field is redacted before storage, because an error log that quietly becomes a second copy of the tenant database is what every naive implementation produces.
+- **`GET /api/v1/security/errors`** — Append-only: there is no update route and no delete route, because an error log somebody can edit is one nobody can rely on and the first thing anybody wants to do with an embarrassing entry is tidy it away. Rows expire after 90 days by TTL index — a retention decision, not a storage one, since these carry fragments of what members were doing. Each row carries a plain-English summary computed on read rather than stored, so a change to the wording reaches old rows.
+- **`GET /api/v1/security/anomalies`** — Read-only, and the only way to see the pipeline. Counts are held IN MEMORY PER PROCESS: with two C4 servers a threshold is effectively halved per node, so the signals are conservative — the failure direction is a missed alert, never a false one. That is said in the reply itself so a reader comparing against a log knows why the numbers are low rather than concluding the pipeline is broken. The ceiling is `escalate`; nothing here locks, blocks or throttles anybody.
+
+
+### viewing
+
+| Method | Path | Zone | Permission (any of) | Own | Request | Roles |
+|---|---|---|---|---|---|---|
+| `POST` | `/api/v1/viewings` | D · Member | `viewing:create` | — | body: `requestViewingSchema` | FN BO TE |
+| `GET` | `/api/v1/viewings` | D · Member | `viewing:readOwn`<br>`viewing:read` | scoped | query: `viewingQuerySchema` | FN BO CO LL TE |
+| `GET` | `/api/v1/viewing/:viewingId` | D · Member | `viewing:readOwn`<br>`viewing:read` | scoped | — | FN BO CO LL TE |
+| `PATCH` | `/api/v1/viewing/:viewingId` | D · Member | `viewing:updateOwn` | scoped | body: `updateViewingSchema` | FN BO CO TE |
+| `POST` | `/api/v1/viewing/:viewingId/confirm` | D · Member | `viewing:approve` | scoped | body: `viewingDecisionSchema` | FN BO CO |
+| `POST` | `/api/v1/viewing/:viewingId/decline` | D · Member | `viewing:approve` | scoped | body: `viewingDecisionSchema` | FN BO CO |
+| `POST` | `/api/v1/viewing/:viewingId/cancel` | D · Member | `viewing:readOwn` | scoped | body: `viewingDecisionSchema` | FN BO CO LL TE |
+| `POST` | `/api/v1/viewing/:viewingId/complete` | D · Member | `viewing:update` | scoped | body: `viewingOutcomeSchema` | FN BO CO |
+| `POST` | `/api/v1/viewing/:viewingId/no-show` | D · Member | `viewing:update` | scoped | body: `viewingOutcomeSchema` | FN BO CO |
+
+**Notes**
+
+- **`POST /api/v1/viewings`** — Refuses a slot outside viewing hours, inside the notice window, or beyond the booking horizon — see `viewingRules.slotProblem`. Also refuses a second live request on the same property.
+- **`GET /api/v1/viewings`** — A tenant sees their own, a landlord sees those on their properties, a coordinator sees their region, Back Office sees all.
+- **`PATCH /api/v1/viewing/:viewingId`** — The tenant’s own words only. Status moves through the action routes.
+- **`POST /api/v1/viewing/:viewingId/cancel`** — No permission gate: `viewingRules.mayAct` is what stops a landlord cancelling on a tenant’s behalf, which would leave a record reading as though the tenant lost interest.
+- **`POST /api/v1/viewing/:viewingId/complete`** — Refused before the slot has passed. An outcome recorded early is a prediction.
+- **`POST /api/v1/viewing/:viewingId/no-show`** — Refused before the slot has passed, and it lands on a tenant’s record where it counts at application time.
+
+
+### application
+
+| Method | Path | Zone | Permission (any of) | Own | Request | Roles |
+|---|---|---|---|---|---|---|
+| `POST` | `/api/v1/applications` | D · Member | `application:create` | — | body: `createApplicationSchema` | FN BO TE |
+| `GET` | `/api/v1/applications` | D · Member | `application:readOwn`<br>`application:read` | scoped | query: `applicationQuerySchema` | FN BO CO LL TE |
+| `GET` | `/api/v1/application/:applicationId` | D · Member | `application:readOwn`<br>`application:read` | scoped | — | FN BO CO LL TE |
+| `PATCH` | `/api/v1/application/:applicationId` | D · Member | `application:updateOwn` | scoped | body: `updateApplicationSchema` | FN BO CO TE |
+| `POST` | `/api/v1/application/:applicationId/assess` | D · Member | `application:update` | scoped | — | FN BO CO |
+| `POST` | `/api/v1/application/:applicationId/review` | D · Member | `application:update` | scoped | — | FN BO CO |
+| `POST` | `/api/v1/application/:applicationId/request-information` | D · Member | `application:update` | scoped | body: `requestFromApplicantSchema` | FN BO CO |
+| `POST` | `/api/v1/application/:applicationId/approve` | D · Member | `application:approve` | scoped | body: `decideApplicationSchema` | FN BO CO |
+| `POST` | `/api/v1/application/:applicationId/reject` | D · Member | `application:approve` | scoped | body: `decideApplicationSchema` | FN BO CO |
+| `POST` | `/api/v1/application/:applicationId/withdraw` | D · Member | `application:readOwn` | scoped | — | FN BO CO LL TE |
+| `POST` | `/api/v1/application/:applicationId/lease` | D · Member | `lease:create` | scoped | — | FN BO CO LL |
+
+**Notes**
+
+- **`POST /api/v1/applications`** — Scored on submission by `eligibility.assessApplication`, which recommends and never decides. One live application per person per property.
+- **`GET /api/v1/applications`** — A landlord sees who applied for their property and what LRMC made of them; they do not decide.
+- **`PATCH /api/v1/application/:applicationId`** — Re-scored on change. Refused once the application has been decided.
+- **`POST /api/v1/application/:applicationId/assess`** — The stored assessment is a snapshot of what the decider saw, not a live view — this is how it is deliberately refreshed.
+- **`POST /api/v1/application/:applicationId/approve`** — A landlord cannot: LRMC carries the tenancy, holds the deposit and answers for the decision. A reason is required for an approval, not only for a refusal.
+- **`POST /api/v1/application/:applicationId/withdraw`** — Only the applicant. LRMC does not withdraw on somebody’s behalf — it rejects, which is a different word with a different record.
+- **`POST /api/v1/application/:applicationId/lease`** — Only from `approved`. The lease itself is created through `POST /leases`.
+
+
+### marketplace
+
+| Method | Path | Zone | Permission (any of) | Own | Request | Roles |
+|---|---|---|---|---|---|---|
+| `GET` | `/api/v1/listings` | D · Member | `listing:read` | — | query: `listingQuery` | FN EX BO ME SE CU BU |
+| `POST` | `/api/v1/listings` | D · Member | `listing:create` | — | body: `createListingSchema` | FN BO ME SE |
+| `GET` | `/api/v1/listings/me` | D · Member | `listing:read` | self | — | FN EX BO ME SE CU BU |
+| `GET` | `/api/v1/listing/:listingId` | D · Member | `listing:read` | — | — | FN EX BO ME SE CU BU |
+| `PATCH` | `/api/v1/listing/:listingId` | D · Member | `listing:update` | scoped | body: `updateListingSchema` | FN BO ME SE |
+| `POST` | `/api/v1/listing/:listingId/publish` | D · Member | `listing:update` | scoped | — | FN BO ME SE |
+| `POST` | `/api/v1/listing/:listingId/unpublish` | D · Member | `listing:update` | scoped | — | FN BO ME SE |
+| `POST` | `/api/v1/listing/:listingId/suspend` | C · Back Office | `listing:review`<br>`listing:update` | — | body: `suspendListingSchema` | FN BO |
+| `GET` | `/api/v1/orders` | D · Member | `order:read` | scoped | query: `orderQuery` | FN EX BO ME SE CU BU |
+| `POST` | `/api/v1/orders` | D · Member | `order:create` | — | body: `placeOrderSchema` | FN BO CU BU |
+| `GET` | `/api/v1/order/:orderId` | D · Member | `order:read` | scoped | — | FN EX BO ME SE CU BU |
+| `POST` | `/api/v1/order/:orderId/pay` | D · Member | `order:updateOwn`<br>`order:update` | scoped | body: `payOrderSchema` | FN BO ME SE CU BU |
+| `POST` | `/api/v1/order/:orderId/accept` | D · Member | `order:update` | scoped | — | FN BO ME SE |
+| `POST` | `/api/v1/order/:orderId/fulfil` | D · Member | `order:update` | scoped | body: `fulfilOrderSchema` | FN BO ME SE |
+| `POST` | `/api/v1/order/:orderId/confirm` | D · Member | `order:updateOwn`<br>`order:update` | scoped | — | FN BO ME SE CU BU |
+| `POST` | `/api/v1/order/:orderId/cancel` | D · Member | `order:updateOwn`<br>`order:update` | scoped | body: `cancelOrderSchema` | FN BO ME SE CU BU |
+| `POST` | `/api/v1/order/:orderId/dispute` | D · Member | `order:updateOwn`<br>`order:update` | scoped | body: `disputeOrderSchema` | FN BO ME SE CU BU |
+| `POST` | `/api/v1/order/:orderId/resolve` | C · Back Office | `order:update` | — | body: `resolveDisputeSchema` | FN BO |
+| `GET` | `/api/v1/marketplace/overview` | D · Member | `marketplace:read` | self | — | FN EX BO ME SE CU BU |
+
+**Notes**
+
+- **`GET /api/v1/listings`** — Defaults to published listings. A draft cannot leak into the catalogue because somebody forgot a filter.
+- **`POST /api/v1/listings`** — Merchants and their sellers only. Always created as a draft — a listing goes live when `canPublish` agrees, which is a separate call.
+- **`POST /api/v1/listing/:listingId/publish`** — Refuses with **every** problem at once rather than the first. An unverified merchant cannot publish at all — a marketplace listing unverified merchants owns its first fraud.
+- **`GET /api/v1/orders`** — Scoped in the data layer. A merchant asking for another merchant's orders gets an empty page, not a 403 that confirms the order exists.
+- **`POST /api/v1/orders`** — The client sends listing ids and quantities only. Prices are read from the listings and copied onto the lines — a client that could name its own prices would name zero.
+- **`GET /api/v1/order/:orderId`** — `availableActions` is derived from the lifecycle table for this caller's side, so the client never reimplements the rules to decide which buttons to draw.
+- **`POST /api/v1/order/:orderId/pay`** — Stock comes down here, not at draft — an unpaid order holding stock empties a catalogue without a single sale.
+- **`POST /api/v1/order/:orderId/fulfil`** — Stamps `autoReleaseAt`. Escrow with no time limit does not protect the buyer — it strips the merchant, since a buyer holding their goods has no reason ever to confirm.
+- **`POST /api/v1/order/:orderId/confirm`** — The buyer confirms; the *platform* releases. No transition anywhere lets a merchant release their own escrow.
+- **`POST /api/v1/order/:orderId/cancel`** — A buyer may cancel freely for 24 hours. After that the merchant may have bought materials or turned down other work, so it needs them or Back Office.
+- **`POST /api/v1/order/:orderId/dispute`** — Clears `autoReleaseAt`, so a disputed order cannot quietly pay out while Back Office is reading it.
+- **`POST /api/v1/order/:orderId/resolve`** — The only human step in the marketplace. Commission is returned pro rata on a partial refund — keeping it in full would mean LRMC profits proportionally more the worse the service was.
+- **`GET /api/v1/marketplace/overview`** — Answers as merchant or as customer depending on which account the caller holds.
+
+
+### merchant
+
+| Method | Path | Zone | Permission (any of) | Own | Request | Roles |
+|---|---|---|---|---|---|---|
+| `GET` | `/api/v1/merchant/me` | D · Member | `merchantProfile:readOwn` | self | — | FN EX BO ME SE |
+| `PATCH` | `/api/v1/merchant/me` | D · Member | `merchantProfile:updateOwn` | self | body: `updateMerchantSchema` | FN BO ME |
+| `GET` | `/api/v1/merchants` | C · Back Office | `merchantProfile:read` | scoped | query: `listQuery` | FN EX BO |
+| `POST` | `/api/v1/merchants` | C · Back Office | `merchantProfile:create` | — | body: `createMerchantSchema` | FN BO |
+| `GET` | `/api/v1/merchant/:merchantId` | C · Back Office | `merchantProfile:read`<br>`merchantProfile:readOwn` | scoped | — | FN EX BO |
+| `PATCH` | `/api/v1/merchant/:merchantId` | C · Back Office | `merchantProfile:update`<br>`merchantProfile:updateOwn` | scoped | body: `updateMerchantSchema` | FN BO |
+| `PATCH` | `/api/v1/merchant/:merchantId/verify` | C · Back Office | `merchantProfile:verify` | — | body: `verificationBody` | FN BO |
+| `DELETE` | `/api/v1/merchant/:merchantId` | C · Back Office | `merchantProfile:delete` | — | — | FN BO |
+| `POST` | `/api/v1/merchant/:merchantId/restore` | C · Back Office | `merchantProfile:update` | — | — | FN BO |
+
+**Notes**
+
+- **`GET /api/v1/merchant/me`** — Record resolved from the token, never from the URL. Declared before the `:id` route — otherwise Express parses `me` as an id.
+- **`PATCH /api/v1/merchant/:merchantId/verify`** — Back Office act. `verified` stamps verifiedAt/verifiedBy; `rejected` requires a note.
+- **`DELETE /api/v1/merchant/:merchantId`** — Sets deletedAt and status=archived. Nothing is removed from the collection.
+
+
+### customer
+
+| Method | Path | Zone | Permission (any of) | Own | Request | Roles |
+|---|---|---|---|---|---|---|
+| `GET` | `/api/v1/customer/me` | D · Member | `customerProfile:readOwn` | self | — | FN EX BO CU BU |
+| `PATCH` | `/api/v1/customer/me` | D · Member | `customerProfile:updateOwn` | self | body: `updateCustomerSchema` | FN BO CU |
+| `GET` | `/api/v1/customers` | C · Back Office | `customerProfile:read` | scoped | query: `listQuery` | FN EX BO |
+| `POST` | `/api/v1/customers` | C · Back Office | `customerProfile:create` | — | body: `createCustomerSchema` | FN BO |
+| `GET` | `/api/v1/customer/:customerId` | C · Back Office | `customerProfile:read`<br>`customerProfile:readOwn` | scoped | — | FN EX BO |
+| `PATCH` | `/api/v1/customer/:customerId` | C · Back Office | `customerProfile:update`<br>`customerProfile:updateOwn` | scoped | body: `updateCustomerSchema` | FN BO |
+| `PATCH` | `/api/v1/customer/:customerId/verify` | C · Back Office | `customerProfile:verify` | — | body: `verificationBody` | FN BO |
+| `DELETE` | `/api/v1/customer/:customerId` | C · Back Office | `customerProfile:delete` | — | — | FN BO |
+| `POST` | `/api/v1/customer/:customerId/restore` | C · Back Office | `customerProfile:update` | — | — | FN BO |
+
+**Notes**
+
+- **`GET /api/v1/customer/me`** — Record resolved from the token, never from the URL. Declared before the `:id` route — otherwise Express parses `me` as an id.
+- **`PATCH /api/v1/customer/:customerId/verify`** — Back Office act. `verified` stamps verifiedAt/verifiedBy; `rejected` requires a note.
+- **`DELETE /api/v1/customer/:customerId`** — Sets deletedAt and status=archived. Nothing is removed from the collection.
+
+
 ### Platform
 
 | Method | Path | Zone | Permission (any of) | Own | Request | Roles |
@@ -191,6 +405,7 @@ get the clauses below, OR-ed together.
 | `POST` | `/api/v1/auth/register` | — | _none_ | — | body: `registerSchema` | _anyone_ |
 | `POST` | `/api/v1/auth/login` | — | _none_ | — | body: `loginSchema` | _anyone_ |
 | `POST` | `/api/v1/auth/refresh` | — | _none_ | — | body: `refreshSchema` | _anyone_ |
+| `POST` | `/api/v1/auth/logout` | — | _auth only_ | self | body: `logoutSchema` | _all roles_ |
 | `GET` | `/api/v1/auth/me` | — | _auth only_ | self | — | _all roles_ |
 | `POST` | `/api/v1/auth/change-password` | — | _auth only_ | self | body: `changePasswordSchema` | _all roles_ |
 | `PATCH` | `/api/v1/auth/user/:userId/roles` | A · Founder | _auth only_ | — | body: `assignRoleSchema` | FN |
@@ -201,6 +416,7 @@ get the clauses below, OR-ed together.
 
 - **`POST /api/v1/auth/register`** — Only the 11 self-registerable roles. Appointed roles (founder, hqExecutive, backOfficeStaff, coordinator) are granted in Zone A. Profile creation failure rolls the User back.
 - **`POST /api/v1/auth/login`** — Locks the account for 15 minutes after 8 consecutive failures.
+- **`POST /api/v1/auth/logout`** — Send the refresh token in the body: it carries a session id and revoking that id ends this device's session without touching any other. The access token is a stateless JWT and is NOT revoked — it expires on its own schedule (JWT_EXPIRES_IN), so signing out stops new access tokens being minted but does not kill one already issued. For a credential believed stolen, change the password. The reply says which of the two happened rather than implying more than was done; a sign-out with no token presented still succeeds, because the person asked to leave.
 - **`GET /api/v1/auth/me`** — One call on app boot instead of a permission check per widget.
 - **`PATCH /api/v1/auth/user/:userId/roles`** — Founder-only via `requireFounder`. Appointment is a constitutional act.
 - **`GET /api/v1/auth/resolve`** — Founder-only.
@@ -353,7 +569,7 @@ get the clauses below, OR-ed together.
 
 | Method | Path | Zone | Permission (any of) | Own | Request | Roles |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/v1/vendor/me` | D · Member | `vendorProfile:readOwn` | self | — | _all except_ TE DR RI AD PU |
+| `GET` | `/api/v1/vendor/me` | D · Member | `vendorProfile:readOwn` | self | — | _all except_ TE DR RI AD ME SE CU BU PU |
 | `PATCH` | `/api/v1/vendor/me` | D · Member | `vendorProfile:updateOwn` | self | body: `updateVendorSchema` | FN BO VE |
 | `GET` | `/api/v1/vendors` | C · Back Office | `vendorProfile:read` | scoped | query: `listQuery` | FN EX BO |
 | `POST` | `/api/v1/vendors` | C · Back Office | `vendorProfile:create` | — | body: `createVendorSchema` | FN BO |
@@ -375,9 +591,9 @@ get the clauses below, OR-ed together.
 | Method | Path | Zone | Permission (any of) | Own | Request | Roles |
 |---|---|---|---|---|---|---|
 | `GET` | `/api/v1/properties/public` | E · Public | _auth only_ | — | query: `publicPropertyQuery` | _all roles_ |
-| `GET` | `/api/v1/properties` | D · Member | `property:read`<br>`property:readOwn` | scoped | query: `listQuery` | _all except_ RC DR RI AD PU |
+| `GET` | `/api/v1/properties` | D · Member | `property:read`<br>`property:readOwn` | scoped | query: `listQuery` | _all except_ RC DR RI AD ME SE CU BU PU |
 | `POST` | `/api/v1/properties` | D · Member | `property:create` | — | body: `createPropertySchema` | FN LL AH HO RE |
-| `GET` | `/api/v1/property/:propertyId` | D · Member | `property:read`<br>`property:readOwn` | scoped | — | _all except_ RC DR RI AD PU |
+| `GET` | `/api/v1/property/:propertyId` | D · Member | `property:read`<br>`property:readOwn` | scoped | — | _all except_ RC DR RI AD ME SE CU BU PU |
 | `PATCH` | `/api/v1/property/:propertyId` | D · Member | `property:update`<br>`property:updateOwn` | scoped | body: `updatePropertySchema` | FN BO CO LL AH HO RE |
 | `DELETE` | `/api/v1/property/:propertyId` | D · Member | `property:delete` | scoped | — | FN |
 
@@ -579,6 +795,12 @@ get the clauses below, OR-ed together.
 |---|---|---|---|---|---|---|
 | `GET` | `/api/v1/leases` | C · Back Office | `lease:read` | scoped | query: `listQuery` | FN EX BO |
 | `POST` | `/api/v1/leases` | C · Back Office | `lease:create` | — | body: `createLeaseSchema` | FN BO |
+| `POST` | `/api/v1/leases/create` | D · Member | `lease:create` | — | body: `memberCreateLeaseSchema` | FN BO CO LL |
+| `POST` | `/api/v1/leases/activate` | D · Member | `lease:update`<br>`lease:updateOwn` | — | body: `leaseActionSchema` | FN BO CO LL |
+| `POST` | `/api/v1/leases/complete` | D · Member | `lease:update`<br>`lease:updateOwn` | — | body: `leaseActionSchema` | FN BO CO LL |
+| `POST` | `/api/v1/leases/terminate` | D · Member | `lease:update`<br>`lease:updateOwn` | — | body: `leaseTerminateSchema` | FN BO CO LL |
+| `GET` | `/api/v1/leases/user/:userId` | D · Member | `lease:read`<br>`lease:readOwn` | scoped | query: `listQuery` | FN EX BO CO LL TE |
+| `GET` | `/api/v1/leases/property/:propertyId` | D · Member | `lease:read`<br>`lease:readOwn` | scoped | query: `listQuery` | FN EX BO CO LL TE |
 | `GET` | `/api/v1/lease/:leaseId` | C · Back Office | `lease:read`<br>`lease:readOwn` | scoped | — | FN EX BO |
 | `PATCH` | `/api/v1/lease/:leaseId` | C · Back Office | `lease:update` | scoped | body: `updateLeaseSchema` | FN BO |
 | `POST` | `/api/v1/lease/:leaseId/payments` | D · Member | `payment:create`<br>`rentPayment:create` | scoped | body: `recordRentPaymentSchema` | FN BO CO TE |
@@ -590,6 +812,12 @@ get the clauses below, OR-ed together.
 **Notes**
 
 - **`POST /api/v1/leases`** — leaseEnd must be after leaseStart. `reference` (LSE-xxxxxx) is server-assigned.
+- **`POST /api/v1/leases/create`** — Always lands in `draft`; a create that could go straight to `active` would skip the one moment either party gets to look at it. The landlord is taken from the property, never from the body — a body that could name the landlord would let somebody draw up a lease over a building they have nothing to do with. `leaseEnd` is OPTIONAL: month-to-month is ordinary in The Gambia, and a required end date forces whoever writes the lease to invent one that then looks like a commitment. Nobody may name themselves as the tenant, and a landlord cannot be their own tenant — the same principle as nobody producing evidence about themselves.
+- **`POST /api/v1/leases/activate`** — The landlord's act: it is their property and their commitment. A coordinator is refused with a message saying so rather than a bare 403. The actor's party is resolved from the loaded lease, never from anything the caller asserted.
+- **`POST /api/v1/leases/complete`** — Terminal. A renewal is a NEW lease, not a resurrection of this one — reopening would silently rewrite the tenancy length that feeds an applicant's stability score. Stamps `closedAt`, which is when the tenancy actually stopped, as distinct from `leaseEnd`, which is when the term was meant to run out. A tenancy in arrears is still completable: refusing to close a lease because the tenant owes money would trap both parties in it.
+- **`POST /api/v1/leases/terminate`** — A COORDINATOR'S ACT, NOT A LANDLORD'S. Ending a tenancy early is eviction by another name, and LRMC carries the tenancy, holds the deposit and answers for the outcome — the same principle as a landlord not approving their own applicant. A landlord attempting it is told to ask their coordinator rather than given a bare refusal. A reason is required by both the schema and the lifecycle rules: a terminated lease with no stated reason is a fact about somebody's housing that nobody has to defend.
+- **`GET /api/v1/leases/user/:userId`** — Both sides at once, because the same account can be a tenant of one property and the landlord of another and that is one screen. A person always sees their own; coordinators and staff see anyone's; everybody else is REFUSED rather than answered with an empty list — "you may not see this" and "there is nothing here" are different facts.
+- **`GET /api/v1/leases/property/:propertyId`** — The landlord who owns it, coordinators and staff. A tenant may read their own lease at /leases/user/:userId but NOT the succession of everybody who lived there before them — that is the previous tenants' business, not the current one's.
 - **`POST /api/v1/lease/:leaseId/payments`** — Writes the ledger row and rolls the lease's totalPaid, arrearsAmount and lastPaymentAt forward in the same request; clears `inArrears` when the balance reaches zero.
 - **`GET /api/v1/lease/:leaseId/schedule`** — Computed from the term and the running total — no schedule rows are stored, so a corrected rent or start date reshapes the statement rather than leaving stale instalments behind.
 - **`POST /api/v1/leases/run-rent-reminders`** — Idempotent, and the scheduling is external: a platform cron calls this. `asOf` replays a day the job missed; `dryRun` reports without sending or writing. Doubles as the arrears sweep, so a lease that fell behind overnight is relabelled before anyone looks at it.
@@ -599,18 +827,26 @@ get the clauses below, OR-ed together.
 
 | Method | Path | Zone | Permission (any of) | Own | Request | Roles |
 |---|---|---|---|---|---|---|
-| `GET` | `/api/v1/maintenance-requests` | D · Member | `maintenanceRequest:read`<br>`maintenanceRequest:readOwn` | scoped | query: `listQuery` | _all except_ DR RI AD PU |
+| `GET` | `/api/v1/maintenance-requests` | D · Member | `maintenanceRequest:read`<br>`maintenanceRequest:readOwn` | scoped | query: `listQuery` | _all except_ DR RI AD ME SE CU BU PU |
 | `POST` | `/api/v1/maintenance-requests` | D · Member | `maintenanceRequest:create` | — | body: `createMaintenanceRequestSchema` | FN CO TE AH HO RE RC |
-| `GET` | `/api/v1/maintenance-request/:requestId` | D · Member | `maintenanceRequest:read`<br>`maintenanceRequest:readOwn` | scoped | — | _all except_ DR RI AD PU |
+| `GET` | `/api/v1/maintenance-request/:requestId` | D · Member | `maintenanceRequest:read`<br>`maintenanceRequest:readOwn` | scoped | — | _all except_ DR RI AD ME SE CU BU PU |
 | `PATCH` | `/api/v1/maintenance-request/:requestId` | D · Member | `maintenanceRequest:update` | scoped | body: `updateMaintenanceRequestSchema` | FN BO CO VE |
+| `POST` | `/api/v1/maintenance/request` | D · Member | `maintenanceRequest:create` | — | body: `raiseMaintenanceSchema` | FN CO TE AH HO RE RC |
+| `POST` | `/api/v1/maintenance/update` | D · Member | `maintenanceRequest:update`<br>`maintenanceRequest:updateOwn` | — | body: `updateMaintenanceStatusSchema` | FN BO CO VE |
+| `GET` | `/api/v1/maintenance/:userId/list` | D · Member | `maintenanceRequest:read`<br>`maintenanceRequest:readOwn` | scoped | query: `listQuery` | _all except_ DR RI AD ME SE CU BU PU |
+| `GET` | `/api/v1/maintenance/:userId/summary` | D · Member | `maintenanceRequest:read`<br>`maintenanceRequest:readOwn` | scoped | — | _all except_ DR RI AD ME SE CU BU PU |
 | `POST` | `/api/v1/maintenance-request/:requestId/assign-vendor` | C · Back Office | `maintenanceRequest:assign`<br>`maintenanceRequest:update` | — | body: `assignVendorSchema` | FN BO |
-| `GET` | `/api/v1/maintenance-request/:requestId/sla` | D · Member | `maintenanceRequest:read`<br>`maintenanceRequest:readOwn` | scoped | — | _all except_ DR RI AD PU |
+| `GET` | `/api/v1/maintenance-request/:requestId/sla` | D · Member | `maintenanceRequest:read`<br>`maintenanceRequest:readOwn` | scoped | — | _all except_ DR RI AD ME SE CU BU PU |
 | `POST` | `/api/v1/maintenance-requests/run-sla-escalation` | C · Back Office | `maintenanceRequest:update`<br>`maintenanceRequest:read` | — | body: `runSlaEscalationSchema` | FN EX BO |
-| `GET` | `/api/v1/vendor/me/maintenance-queue` | D · Member | `maintenanceRequest:readOwn`<br>`maintenanceRequest:read` | self | query: `listQuery` | _all except_ DR RI AD PU |
-| `GET` | `/api/v1/property/:propertyId/maintenance-history` | D · Member | `maintenanceRequest:read`<br>`maintenanceRequest:readOwn` | scoped | query: `listQuery` | _all except_ DR RI AD PU |
+| `GET` | `/api/v1/vendor/me/maintenance-queue` | D · Member | `maintenanceRequest:readOwn`<br>`maintenanceRequest:read` | self | query: `listQuery` | _all except_ DR RI AD ME SE CU BU PU |
+| `GET` | `/api/v1/property/:propertyId/maintenance-history` | D · Member | `maintenanceRequest:read`<br>`maintenanceRequest:readOwn` | scoped | query: `listQuery` | _all except_ DR RI AD ME SE CU BU PU |
 
 **Notes**
 
+- **`POST /api/v1/maintenance/request`** — Accepts only what a person standing in front of a broken thing can supply — where, what, how bad. The SLA clock is derived from the priority and the property's standing coordinator is attached, so the request has an owner from the first second rather than waiting for triage to notice it. `slaHours`, `assignedVendor` and every cost field are refused by the strict schema rather than silently dropped: a field ignored and a field honoured look identical from a client. Photographs are storage keys, never URLs.
+- **`POST /api/v1/maintenance/update`** — The request id is in the body rather than the path, which is a departure from this platform's convention and costs a readable audit trail — every update shares one route, so a reader of the log must open the entry to see which request moved. PATCH /maintenance-request/:requestId is the better route for anything programmatic. Safety does not depend on the route shape: the actor's party (raiser, vendor, staff) is resolved from the loaded row, never from anything the caller asserted. A vendor may start, pause and finish; only LRMC may cancel or verify; and the vendor who did the work can never be the one who verifies it. Cancelling or parking a request requires a reason, because whoever raised it is told what happened.
+- **`GET /api/v1/maintenance/:userId/list`** — Covers three relationships at once: raised by them, assigned to them as a vendor, and against a property they own. A landlord's maintenance is the maintenance on their buildings, which is a different question from what they personally reported, so ownership is resolved through the property collection rather than assumed. Reading somebody else's needs a staff role and is refused rather than answered empty.
+- **`GET /api/v1/maintenance/:userId/summary`** — Uses the same buckets as /stats/maintenance, so a tile and a summary can never disagree about what "open" means. `stalled` is reported rather than hidden so the parts sum to the total. `needsEscalation` is computed from the current state on every read and never stored — a request does not become escalated, it becomes somebody's, and a stored flag would go stale the moment a vendor picked the job up. `averageResolutionHours` is null over nothing resolved, never 0: a landlord whose first request is still open has not achieved a nought-hour turnaround.
 - **`POST /api/v1/maintenance-request/:requestId/assign-vendor`** — Refuses a vendor whose verificationStatus is not `verified`, and appends to `statusHistory` so the assignment is answerable after a disputed invoice.
 - **`GET /api/v1/maintenance-request/:requestId/sla`** — `dueAt` is the target; `overdueAt` adds a grace period, after which it escalates to a human. A finished request is judged against when it finished, not against now.
 - **`POST /api/v1/maintenance-requests/run-sla-escalation`** — Notifies only — it never changes a request's status, because "nobody has done this work" is not a state the work order should claim on its own behalf.
@@ -651,15 +887,23 @@ get the clauses below, OR-ed together.
 |---|---|---|---|---|---|---|
 | `GET` | `/api/v1/payments` | C · Back Office | `payment:read` | scoped | query: `listQuery` | FN EX BO |
 | `GET` | `/api/v1/payment/:paymentId` | C · Back Office | `payment:read`<br>`payment:readOwn` | scoped | — | FN EX BO |
-| `GET` | `/api/v1/tenant/me/payments` | D · Member | `payment:readOwn`<br>`payment:read` | self | query: `listQuery` | _all except_ PU |
-| `GET` | `/api/v1/landlord/me/payments` | D · Member | `payment:readOwn`<br>`payment:read` | self | query: `listQuery` | _all except_ PU |
-| `GET` | `/api/v1/driver/me/payments` | D · Member | `payment:readOwn`<br>`payment:read` | self | query: `listQuery` | _all except_ PU |
-| `GET` | `/api/v1/advertiser/me/payments` | D · Member | `payment:readOwn`<br>`payment:read` | self | query: `listQuery` | _all except_ PU |
+| `GET` | `/api/v1/payments/:userId/history` | D · Member | `payment:readOwn`<br>`payment:read` | scoped | query: `listQuery` | _all except_ SE BU PU |
+| `GET` | `/api/v1/payments/:userId/summary` | D · Member | `payment:readOwn`<br>`payment:read` | scoped | — | _all except_ SE BU PU |
+| `POST` | `/api/v1/payments/webhooks/stripe` | E · Public | _none_ | — | — | _anyone_ |
+| `POST` | `/api/v1/payments/record` | D · Member | `payment:record` | — | body: `recordPaymentSchema` | FN EX BO CO |
+| `GET` | `/api/v1/tenant/me/payments` | D · Member | `payment:readOwn`<br>`payment:read` | self | query: `listQuery` | _all except_ SE BU PU |
+| `GET` | `/api/v1/landlord/me/payments` | D · Member | `payment:readOwn`<br>`payment:read` | self | query: `listQuery` | _all except_ SE BU PU |
+| `GET` | `/api/v1/driver/me/payments` | D · Member | `payment:readOwn`<br>`payment:read` | self | query: `listQuery` | _all except_ SE BU PU |
+| `GET` | `/api/v1/advertiser/me/payments` | D · Member | `payment:readOwn`<br>`payment:read` | self | query: `listQuery` | _all except_ SE BU PU |
 
 **Notes**
 
 - **`GET /api/v1/payments`** — One collection for every kind of money movement — rent, deposits, fares, payouts, ad spend, vendor invoices, fees, refunds.
 - **`GET /api/v1/payment/:paymentId`** — `providerReference` is `select: false` and never leaves the server on a read.
+- **`GET /api/v1/payments/:userId/history`** — A person always sees their own. Back Office, HQ and the founder see anyone's. A COORDINATOR SEES ONLY THE RECEIPTS THEY WROTE THEMSELVES — recording a payment and reading a year of somebody's finances are different powers, and holding the first does not grant the second. Anyone else is refused rather than answered with an empty list: "you may not see this" and "there is nothing here" are different facts.
+- **`GET /api/v1/payments/:userId/summary`** — Computed over the whole history, never a page. `onTimeRate` is (onTime / (onTime + late)) * 100 and is NULL when nothing has settled — never 0, which would tell somebody on their first day that none of their payments were on time. NOTE this is not the same figure as `paymentReliability` in an application assessment, which also counts missed instalments in the denominator; the two are labelled differently on purpose and must not be reconciled by relabelling one. `scope` and `partial` say whose rows the totals cover, so a coordinator reading their own receipts does not mistake them for the whole.
+- **`POST /api/v1/payments/webhooks/stripe`** — THE ONLY THING ON THIS PLATFORM THAT MAY MOVE AN ORDER TO PAID. Unauthenticated because Stripe holds no LRMC session; the authentication is the HMAC-SHA256 signature over the RAW body, verified constant-time against STRIPE_WEBHOOK_SECRET with a 300-second replay window. `app.ts` mounts express.raw for this path alone, before the JSON parser, because a re-serialised body does not verify and the tempting fix for that is to weaken the check. Idempotent by a unique index on the event id: the event is CLAIMED before any work and stamped applied after, so a crash in between is retryable and a duplicate delivery does nothing — Stripe retries anything non-2xx for days and delivers duplicates in ordinary operation, so a handler that books income per delivery pays a merchant twice. Every settlement is reconciled against the order for subject, amount and currency, exactly — an overpayment is a support conversation, not a settlement. Answers 200 to duplicates, unhandled types and unknown orders because retrying cannot fix any of them; the only 4xx is a bad signature, which is never Stripe. Side effects (stock, notification) run AFTER the ledger row, so a failed notification can never unwind a payment.
+- **`POST /api/v1/payments/record`** — The ledger is otherwise written only by the flows that cause it. This exists because The Gambia runs on cash and mobile money, and refusing to record a cash rent payment would leave a tenant who has paid on time for two years with `hasRecord: false` in their evidence — pushing the informal economy out of the scoring engine entirely. Fenced accordingly: ONLY rent and deposits (never a payout, which would mark money as sent that was never sent); NOBODY may record a payment they are party to as payer or payee; `recordedBy` comes from the token and can not be supplied; `status` is always succeeded and can not be supplied; the reference is derived from payer, subject, kind, amount and day so a double tap on a bad connection collides instead of doubling a tenant's rent — the collision is returned as a 409 for a person to resolve, never swallowed.
 
 
 ### Payout batches & settlement
@@ -704,11 +948,11 @@ get the clauses below, OR-ed together.
 | Method | Path | Zone | Permission (any of) | Own | Request | Roles |
 |---|---|---|---|---|---|---|
 | `GET` | `/api/v1/documents` | C · Back Office | `document:read` | scoped | query: `documentQuery` | FN EX BO |
-| `POST` | `/api/v1/documents` | D · Member | `document:create` | — | body: `createDocumentSchema` | _all except_ EX PU |
-| `GET` | `/api/v1/document/:documentId` | D · Member | `document:read`<br>`document:readOwn` | scoped | — | _all except_ PU |
-| `PATCH` | `/api/v1/document/:documentId` | D · Member | `document:update`<br>`document:updateOwn` | scoped | body: `updateDocumentSchema` | _all except_ EX CO PU |
+| `POST` | `/api/v1/documents` | D · Member | `document:create` | — | body: `createDocumentSchema` | _all except_ EX BU PU |
+| `GET` | `/api/v1/document/:documentId` | D · Member | `document:read`<br>`document:readOwn` | scoped | — | _all except_ BU PU |
+| `PATCH` | `/api/v1/document/:documentId` | D · Member | `document:update`<br>`document:updateOwn` | scoped | body: `updateDocumentSchema` | _all except_ EX CO SE CU BU PU |
 | `DELETE` | `/api/v1/document/:documentId` | D · Member | `document:delete` | scoped | — | FN |
-| `POST` | `/api/v1/document/:documentId/submit` | D · Member | `document:create`<br>`document:updateOwn` | scoped | body: `submitDocumentSchema` | _all except_ EX PU |
+| `POST` | `/api/v1/document/:documentId/submit` | D · Member | `document:create`<br>`document:updateOwn` | scoped | body: `submitDocumentSchema` | _all except_ EX BU PU |
 | `POST` | `/api/v1/document/:documentId/review` | C · Back Office | `document:review`<br>`document:update` | — | body: `reviewDocumentSchema` | FN EX BO |
 | `POST` | `/api/v1/document/:documentId/request-info` | C · Back Office | `document:review`<br>`document:update` | — | body: `requestInfoSchema` | FN EX BO |
 | `POST` | `/api/v1/document/:documentId/verify` | C · Back Office | `document:verify`<br>`document:review` | — | body: `verifyDocumentSchema` | FN EX BO |
@@ -716,7 +960,7 @@ get the clauses below, OR-ed together.
 | `POST` | `/api/v1/document/:documentId/expire` | C · Back Office | `document:update`<br>`document:review` | — | body: `expireDocumentSchema` | FN EX BO |
 | `POST` | `/api/v1/document/:documentId/reverify` | C · Back Office | `document:verify`<br>`document:review` | — | body: `reverifyDocumentSchema` | FN EX BO |
 | `GET` | `/api/v1/document/:documentId/verification-summary` | C · Back Office | `document:read`<br>`document:readOwn` | scoped | — | FN EX BO |
-| `GET` | `/api/v1/member/me/documents` | D · Member | `document:readOwn`<br>`document:read` | self | query: `documentQuery` | _all except_ PU |
+| `GET` | `/api/v1/member/me/documents` | D · Member | `document:readOwn`<br>`document:read` | self | query: `documentQuery` | _all except_ BU PU |
 | `GET` | `/api/v1/staff/me/document-queue` | C · Back Office | `document:review`<br>`document:read` | self | query: `documentQuery` | FN EX BO |
 | `GET` | `/api/v1/hq/documents` | B · HQ Exec | `document:read` | — | query: `documentQuery` | FN EX |
 | `GET` | `/api/v1/hq/documents/analytics` | B · HQ Exec | `document:read` | — | query: `documentAnalyticsQuery` | FN EX |

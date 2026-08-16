@@ -76,7 +76,7 @@ const payoutLineSchema = new Schema<IPayoutLine>(
   {
     payee: { type: Schema.Types.ObjectId, required: true, index: true },
     payeeKind: { type: String, required: true, trim: true },
-    currency: { type: String, enum: CURRENCIES, default: 'GHS' },
+    currency: { type: String, enum: CURRENCIES, default: 'GMD' },
     sourcePayments: [{ type: Schema.Types.ObjectId, ref: 'Payment' }],
     gross: { type: Number, required: true, min: 0 },
     platformFee: { type: Number, min: 0, default: 0 },
@@ -97,7 +97,7 @@ const payoutBatchSchema = new Schema<IPayoutBatch>(
   {
     reference: { type: String, required: true, trim: true, uppercase: true },
     kind: { type: String, enum: PAYOUT_KINDS, required: true, index: true },
-    currency: { type: String, enum: CURRENCIES, default: 'GHS', index: true },
+    currency: { type: String, enum: CURRENCIES, default: 'GMD', index: true },
 
     periodStart: { type: Date },
     periodEnd: { type: Date, index: true },

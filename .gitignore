@@ -13,6 +13,14 @@ coverage/
 .env
 .env.*
 !.env.example
+# One per market, and they hold different Stripe keys and different
+# database URIs. `npm run preflight` refuses a release where they do not.
+!.env.example.market
+
+# Python bytecode from the frontend verification suites. `lrmc_checks.pyc`
+# was tracked and turning up as a modification on every run.
+__pycache__/
+*.pyc
 
 # Logs and editor noise
 *.log

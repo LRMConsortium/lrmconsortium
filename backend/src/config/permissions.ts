@@ -25,6 +25,14 @@ export const RESOURCES = [
   'lease',
   'rentPayment',
   'maintenanceRequest',
+  /** A tenant asking to see a property, and LRMC agreeing to be there. */
+  'viewing',
+  /** A tenancy application: scored by LRMC, decided by a person. */
+  'application',
+  /** Evidence LRMC gathers about a person, never about itself. */
+  'reference',
+  'dispute',
+  'ususuLedger',
 
   // LRMC commercial clients
   'airbnbHostProfile',
@@ -44,6 +52,13 @@ export const RESOURCES = [
   'notification',
   'commercialClient',
   'document',
+
+  // Marketplace — merchants sell, customers buy, coordinators supervise both
+  'merchantProfile',
+  'customerProfile',
+  'listing',
+  'order',
+  'marketplace',
 
   // Governance & access control
   'fac',
@@ -77,6 +92,23 @@ export const ACTIONS = [
   'settle',
   'review',
   'revoke',
+  /**
+   * Write down something that already happened outside the system.
+   *
+   * Distinct from `create`, and the distinction is the point. `payment:create`
+   * means "start a payment" — a tenant initiating a transfer holds it, and
+   * rightly so. `payment:record` means "assert that money changed hands in a
+   * room", which is a completely different power: it writes a settled row into
+   * the ledger on somebody else's behalf.
+   *
+   * They were briefly the same grant, and the contract exposed what that meant
+   * — every tenant could reach `POST /payments/record` while the coordinators
+   * the endpoint exists for could not, because a coordinator holds
+   * `rentPayment:create` and not `payment:create`. Nothing would have failed
+   * loudly: the rules module refuses a tenant, so it would have been a 422 on a
+   * route advertised to them.
+   */
+  'record',
 ] as const;
 
 export type Action = (typeof ACTIONS)[number];

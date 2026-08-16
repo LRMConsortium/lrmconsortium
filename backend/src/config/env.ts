@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import { z } from 'zod';
 
 import { SECRET_GENERATION_HINT, secretProblem } from './secretHygiene.js';
+import { MARKET_IDS, marketFor, marketProblems } from './markets.js';
 
 dotenv.config();
 
@@ -11,8 +12,16 @@ dotenv.config();
  */
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().int().positive().default(3000),
+  /* 4000, because that is what `deploy/nginx.conf` proxies to — in four places.
+   * The default was 3000 and the example file said 3000, so a deployment that
+   * took either at its word answered nothing at all: every API call a 502, with
+   * both files individually correct and no error anywhere saying why.
+   * `verify.ts` now reads the nginx config and fails if the two disagree. */
+  PORT: z.coerce.number().int().positive().default(4000),
   API_PREFIX: z.string().default('/api/v1'),
+  /* Which market this deployment serves. Development defaults to gambia;
+   * production refuses to boot without an explicit one. */
+  LRMC_MARKET: z.string().optional(),
 
   MONGO_URI: z.string().min(1, 'MONGO_URI is required'),
   MONGO_MAX_POOL_SIZE: z.coerce.number().int().positive().default(25),
@@ -36,6 +45,14 @@ const envSchema = z.object({
    * same failure mode as losing the code itself: a founder issues a new one.
    */
   FAC_PEPPER: z.string().min(32, 'FAC_PEPPER must be at least 32 chars').optional(),
+
+  /* Stripe. Absent in development, where `checkoutProvider()` stays the stub
+   * that refuses — an unconfigured deployment must not be able to take an order
+   * and believe it was paid. */
+  STRIPE_SECRET_KEY: z.string().optional(),
+  /* The endpoint secret for `POST /payments/webhooks/stripe`. This is the only
+   * thing standing between the internet and marking any order paid. */
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
 
   CORS_ORIGINS: z.string().default('*'),
 
@@ -72,6 +89,46 @@ export const env = {
    */
   facPepper: raw.FAC_PEPPER ?? `${raw.JWT_SECRET}:fac-pepper`,
 } as const;
+
+/**
+ * Production refuses to boot without an explicit market.
+ *
+ * The US pilot and the Gambia launch are two deployments of one code line, and
+ * the constants that differ between them — country, currency, dialling code,
+ * both fee percentages — are selected by `LRMC_MARKET`. Development defaults to
+ * `gambia` so nothing local needs configuring.
+ *
+ * Production does not default, and that is the point. A silent default is how
+ * the pilot's configuration reaches Banjul: nothing crashes, nothing logs, and
+ * every Gambian tenant is quoted in dollars and told to ring +1. A missing
+ * environment variable should be a boot failure somebody reads, not a currency
+ * nobody notices.
+ */
+if (env.isProduction && !raw.LRMC_MARKET) {
+  throw new Error(
+    `LRMC_MARKET must be set in production. One of: ${MARKET_IDS.join(', ')}.`,
+  );
+}
+
+/**
+ * And production refuses to boot on a market that has not decided its terms.
+ *
+ * `marketProblems` returns the fields nobody has settled — the city every
+ * footer prints, and the two percentages the pricing page publishes and the
+ * ledger charges. They are `null` rather than carried over from another market,
+ * because a fee that arrived by being already typed somewhere is LRMC charging
+ * a rate nobody set. This platform has published a fee it had not agreed once
+ * already; the boot refusal is so it cannot happen quietly.
+ */
+if (env.isProduction) {
+  const undecided = marketProblems(marketFor(raw.LRMC_MARKET));
+  if (undecided.length) {
+    throw new Error(
+      `Market "${raw.LRMC_MARKET}" is not ready to serve anybody:\n`
+      + undecided.map((p) => `  • ${p.field}: ${p.message}`).join('\n'),
+    );
+  }
+}
 
 /**
  * Production refuses to boot on a derived pepper.

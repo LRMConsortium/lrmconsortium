@@ -26,6 +26,8 @@ import {
   PAYOUT_SOURCES,
   type LedgerRow,
   type PayoutKind,
+  RETRYABLE_BATCH_STATUSES,
+  spentSourceIds,
 } from '../payment/ledger.js';
 import { PayoutBatch, type IPayoutBatch } from './payout.model.js';
 import {
@@ -88,7 +90,7 @@ collectionRouter.post(
       notes?: string;
     };
 
-    const currency = body.currency ?? 'GHS';
+    const currency = body.currency ?? 'GMD';
     const filter: Record<string, unknown> = {
       kind: { $in: PAYOUT_SOURCES[body.kind] },
       status: 'succeeded',
@@ -102,20 +104,30 @@ collectionRouter.post(
       };
     }
 
-    // A row already claimed by a live batch must not be paid twice. The lines of
-    // any batch that is not cancelled or failed are treated as spent.
+    /* A row already claimed by a live batch must not be paid twice.
+     *
+     * ── The claim is per *line*, not per batch ──────────────────────────
+     * Batch-level was nearly right and stranded money. A batch where one
+     * transfer failed and the rest succeeded becomes `partiallySettled`, which
+     * is neither `cancelled` nor `failed` — so every one of its lines counted
+     * as spent, including the one that never paid. The landlord whose
+     * mobile-money number was wrong could then not be paid by any endpoint:
+     * settling refused the batch's status, cancelling refused it too, and a
+     * fresh batch skipped their rows as already claimed. Their rent needed a
+     * hand-written database update to recover.
+     *
+     * Releasing the whole batch would be worse: the lines that *did* pay would
+     * become claimable again and those landlords would be paid twice. So the
+     * question is asked of each line — a `failed` line releases its sources,
+     * anything else keeps them. */
     const claimed = await PayoutBatch.find({
       status: { $nin: ['cancelled', 'failed'] },
       deletedAt: null,
     })
-      .select('lines.sourcePayments')
+      .select('lines.sourcePayments lines.transferStatus')
       .lean()
       .exec();
-    const spent = new Set(
-      claimed.flatMap((b) =>
-        (b.lines ?? []).flatMap((l) => (l.sourcePayments ?? []).map((id) => String(id))),
-      ),
-    );
+    const spent = spentSourceIds(claimed as never);
 
     const rows = await Payment.find(filter)
       .sort('-paidAt')
@@ -216,7 +228,13 @@ itemRouter.post(
 
     const batch = await PayoutBatch.findOne({ _id: req.params.batchId, deletedAt: null }).exec();
     if (!batch) throw ApiError.notFound('Payout batch');
-    if (batch.status !== 'draft' && batch.status !== 'approved') {
+    /* `partiallySettled` is retry-eligible, and it is the whole reason this
+     * list is not just draft-or-approved: a batch that half-paid was otherwise
+     * a terminal state with no route out of it. The loop below skips lines that
+     * already settled, and every transfer carries the line's own `_id` as its
+     * idempotency key, so a retry re-drives the failed lines and cannot double
+     * up the paid ones. */
+    if (!(RETRYABLE_BATCH_STATUSES as readonly string[]).includes(batch.status)) {
       throw ApiError.conflict(`A batch in status "${batch.status}" cannot be settled`);
     }
     if (money(confirmNet) !== money(batch.net)) {
@@ -273,7 +291,18 @@ itemRouter.post(
     const batch = await PayoutBatch.findOne({ _id: req.params.batchId, deletedAt: null }).exec();
     if (!batch) throw ApiError.notFound('Payout batch');
     if (batch.status !== 'draft' && batch.status !== 'approved') {
-      throw ApiError.conflict(`A batch in status "${batch.status}" cannot be cancelled`);
+      /* `partiallySettled` stays uncancellable on purpose — some of its money
+       * has already left, and cancelling would record a lie about that. It is
+       * settleable again instead, which is the route that actually pays the
+       * people the first attempt missed. Said out loud, because "cannot be
+       * cancelled" with no further advice is what sent somebody to the database
+       * by hand. */
+      throw ApiError.conflict(
+        batch.status === 'partiallySettled'
+          ? 'Part of this batch has already paid, so it cannot be cancelled. '
+            + 'Settle it again to retry the lines that failed.'
+          : `A batch in status "${batch.status}" cannot be cancelled`,
+      );
     }
 
     batch.status = 'cancelled';

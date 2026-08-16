@@ -65,7 +65,7 @@ const tenantProfileSchema = new Schema<ITenantProfile>(
     leaseStart: { type: Date },
     leaseEnd: { type: Date, index: true },
     monthlyRent: { type: Number, min: 0, default: 0 },
-    rentCurrency: { type: String, default: 'GHS' },
+    rentCurrency: { type: String, default: 'GMD' },
     securityDeposit: { type: Number, min: 0 },
     paymentMethod: { type: String, enum: PAYMENT_METHODS, default: 'mobileMoney' },
     rentDueDay: { type: Number, min: 1, max: 31, default: 1 },

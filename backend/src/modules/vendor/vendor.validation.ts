@@ -17,7 +17,7 @@ const rateCardItem = z.object({
   item: z.string().trim().min(1).max(160),
   unit: z.string().trim().max(40).default('job'),
   amount: zMoney,
-  currency: zCurrency.default('GHS'),
+  currency: zCurrency.default('GMD'),
 });
 
 export const createVendorSchema = z

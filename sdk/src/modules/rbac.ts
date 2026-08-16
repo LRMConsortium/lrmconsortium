@@ -20,7 +20,7 @@ import { client, withMeta, type ListOptions, type RequestOptions } from './_runt
 /** Zone, roles and permissions for each operation, straight from the spec. */
 export const META = {
   assignRoles: { operationId: 'patchAuthUserByUserIdRoles', method: 'PATCH' as const, pathTemplate: '/auth/user/{userId}/roles', zone: 'FOUNDER_COMMAND_CENTER' as const, roles: ["founder"] as Role[], permissions: [], ownership: 'none' as const, auth: 'required' as const },
-  catalogue: { operationId: 'getAuthRoles', method: 'GET' as const, pathTemplate: '/auth/roles', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'none' as const },
+  catalogue: { operationId: 'getAuthRoles', method: 'GET' as const, pathTemplate: '/auth/roles', zone: null, roles: ["founder","hqExecutive","backOfficeStaff","coordinator","vendor","landlord","tenant","airbnbHost","hotelManager","resortManager","rentalCarCompany","driver","rider","advertiser","merchant","seller","customer","buyer","publicUser"] as Role[], permissions: [], ownership: 'none' as const, auth: 'none' as const },
   resolve: { operationId: 'getAuthResolve', method: 'GET' as const, pathTemplate: '/auth/resolve', zone: 'FOUNDER_COMMAND_CENTER' as const, roles: ["founder"] as Role[], permissions: [], ownership: 'none' as const, auth: 'required' as const },
 } satisfies Record<string, OperationMeta>;
 
@@ -44,7 +44,7 @@ export const rbac = {
    *
    * `GET /auth/roles`
    * Zone: —
-   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, publicUser
+   * Roles: founder, hqExecutive, backOfficeStaff, coordinator, vendor, landlord, tenant, airbnbHost, hotelManager, resortManager, rentalCarCompany, driver, rider, advertiser, merchant, seller, customer, buyer, publicUser
    * Ownership: none
    */
   catalogue(options?: RequestOptions): Promise<RoleCatalogue> {
