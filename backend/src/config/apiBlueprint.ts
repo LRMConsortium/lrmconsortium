@@ -2513,7 +2513,37 @@ export const CUSTOM_ENDPOINTS: EndpointSpec[] = customEndpoints.map((e) => ({
 
 /** The complete declared contract. */
 export const API_BLUEPRINT: EndpointSpec[] = [
+  {
+  method: "POST",
+  path: "/hq-init/init",
+  module: "hqInitModule",
+  summary: "Initialize HQ for an organization",
+  zone: "HQ_EXECUTIVE",
+  auth: "required",
+  permissions: [],
+  surface: "custom",
+  ownership: "none",
+  responseShape: "hqInitResponse"
+},
+
   ...CUSTOM_ENDPOINTS,
+
+  {
+  method: 'POST',
+  path: '/organizations',
+  module: 'organization',
+  summary: 'Create and manage LRMC organizations',
+  zone: null,
+  auth: 'required',
+  permissions: [],
+  ownership: 'none',
+  requestBody: 'organizationSchema',
+
+  responseShape: 'Organization',
+
+  surface: 'custom'
+},
+
   ...PROFILE_MODULES.flatMap(profileEndpoints),
 ];
 

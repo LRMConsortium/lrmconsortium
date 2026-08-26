@@ -32,7 +32,7 @@ export interface IUser {
   homeZone?: string;
   isVerified: boolean;
   verificationStatus: (typeof VERIFICATION_STATUSES)[number];
-  status: 'pending' | 'active' | 'suspended' | 'archived';
+  status: 'pending' | 'approved' | 'active' | 'suspended' | 'archived';
   locale: string;
   timezone: string;
   lastLoginAt?: Date;
@@ -85,20 +85,20 @@ const userSchema = new Schema<IUser, UserModel, IUserMethods>(
         validator: (v: string[]) => v.length > 0,
         message: 'A user must hold at least one role',
       },
-      index: true,
+      
     },
     primaryRole: { type: String, enum: ROLES, required: true, index: true },
     profiles: { type: [profileLinkSchema], default: [] },
 
-    organizationId: { type: Schema.Types.ObjectId, index: true },
+    organizationId: { type: Schema.Types.ObjectId },
     regions: { type: [String], default: [] },
     homeZone: { type: String, enum: HQ_ZONES },
 
-    isVerified: { type: Boolean, default: false, index: true },
+    isVerified: { type: Boolean, default: false,},
     verificationStatus: { type: String, enum: VERIFICATION_STATUSES, default: 'unsubmitted' },
     status: {
       type: String,
-      enum: ['pending', 'active', 'suspended', 'archived'],
+      enum: ['pending', 'approved', 'active', 'suspended', 'archived'],
       default: 'pending',
       index: true,
     },
@@ -120,7 +120,6 @@ userSchema.index({ email: 1, deletedAt: 1 });
 
 userSchema.pre('save', function hashPassword(next) {
   if (!this.isModified('passwordHash')) return next();
-  // Already hashed (bcrypt hashes start with $2)
   if (this.passwordHash.startsWith('$2')) return next();
   bcrypt
     .hash(this.passwordHash, env.BCRYPT_ROUNDS)
@@ -132,8 +131,7 @@ userSchema.pre('save', function hashPassword(next) {
     .catch(next);
 });
 
-/** `primaryRole` must always be one of `roles`. */
-userSchema.pre('validate', function normalizeRoles(next) {
+userSchema.pre('validate', function normalizeRoles(this: UserDocument, next) {
   if (this.roles?.length && !this.roles.includes(this.primaryRole)) {
     this.primaryRole = this.roles[0]!;
   }

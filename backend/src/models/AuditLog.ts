@@ -28,17 +28,17 @@ export interface IAuditLog {
 
 const auditLogSchema = new Schema<IAuditLog>(
   {
-    actor: { type: Schema.Types.ObjectId, ref: 'User', index: true },
+    actor: { type: Schema.Types.ObjectId, ref: 'User'},
     actorEmail: { type: String, trim: true },
     actorRoles: { type: [String], enum: ROLES, default: [] },
     action: { type: String, required: true },
-    resource: { type: String, required: true, index: true },
-    resourceId: { type: String, index: true },
+    resource: { type: String, required: true },
+    resourceId: { type: String },
     zone: { type: String, enum: HQ_ZONES },
     method: { type: String, required: true },
     path: { type: String, required: true },
     statusCode: { type: Number, required: true },
-    requestId: { type: String, index: true },
+    requestId: { type: String },
     ip: { type: String },
     userAgent: { type: String },
     before: { type: Schema.Types.Mixed },

@@ -13,6 +13,7 @@ export const VERIFICATION_STATUSES = [
   'unsubmitted',
   'pending',
   'inReview',
+  'approved',
   'verified',
   'rejected',
   'suspended',
