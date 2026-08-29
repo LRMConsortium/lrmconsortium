@@ -47,6 +47,7 @@ import { commercialClientModule } from '../modules/commercialClient/index.js';
 import { publicPortalModule } from '../modules/publicPortal/index.js';
 import organizationModule from '../modules/organization/index.js';
 import hqInitModule from "../modules/hqInit/index.js";
+import mobilityRoutes from "../modules/mobility/mobility.routes.js";
 
 export const MODULES = [
   authModule,
@@ -166,7 +167,7 @@ router.use("/hq-init", hqInitModule);
       ],
     );
   }
-
+router.use("/mobility", mobilityRoutes);
   return router;
 }
 

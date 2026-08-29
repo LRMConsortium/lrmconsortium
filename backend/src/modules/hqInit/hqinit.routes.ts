@@ -7,16 +7,30 @@ import { seedRegionManagersController } from "./hqinit.regionManagers.controller
 import { seedBackOfficeController } from "./hqinit.backoffice.controller.js";
 import { activateRentalSurfaceController } from "./hqinit.rentalSurface.controller.js";
 import { onboardPropertyController } from "./hqinit.propertyOnboarding.controller.js";
+import { enableRentalBookingsController } from "./hqinit.RentalBookings.controller.js";
+import { createRentalBookingController } from "./hqinit.rentalBooking.controller.js";
+import { defineRentalPricingRulesController } from "./hqinit.rentalPricingRules.controller.js";
+import { confirmRentalBookingController } from "./hqinit.confirmBooking.controller.js";
+import { cancelRentalBookingController } from "./hqinit.cancelBooking.controller.js";
+import { blockPropertyDatesController } from "./hqinit.blockDates.controller.js";
+import { activateMobilitySurfaceController } from "./hqinit.mobilitySurface.controller.js";
+import { onboardDriverController } from "./hqinit.onboardDriver.controller.js";
+
 const router = Router();
 router.post("/seed-region-managers", seedRegionManagersController);
 router.post("/seed-backoffice", seedBackOfficeController);
 router.post("/activate-rental-surface", activateRentalSurfaceController);
 router.post("/onboard-property", onboardPropertyController);
 router.post("/declare-region", declareRegionController);
-
+router.post("/enable-rental-bookings", enableRentalBookingsController);
 router.post("/init", initHQController);
-
+router.post("/create-rental-booking", createRentalBookingController);
 router.post("/seed-executives", seedHQExecutivesController);
 router.post("/attach-founder", attachFounderToHQController);
-
+router.post("/define-rental-pricing-rules", defineRentalPricingRulesController);
+router.post("/confirm-rental-booking", confirmRentalBookingController);
+router.post("/cancel-rental-booking", cancelRentalBookingController);
+router.post("/block-property-dates", blockPropertyDatesController);
+router.post("/activate-mobility-surface", activateMobilitySurfaceController);
+router.post("/onboard-driver", onboardDriverController);
 export default router;
