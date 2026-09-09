@@ -4,7 +4,7 @@ The **Legacy Rental Management Consortium** platform and **Ususu Rideshare**, as
 one backend, one typed SDK, and one governance console.
 
 | | |
-|---|---|
+| --- | --- |
 | Endpoints | 268 across 32 modules |
 | OpenAPI | 191 paths · 268 operations · 191 schemas |
 | Backend verification | 11,078 assertions |
@@ -13,7 +13,7 @@ one backend, one typed SDK, and one governance console.
 
 ## Layout
 
-```
+```text
 backend/     Express + Mongoose API. The source of truth for everything.
   src/config/apiBlueprint.ts   One declaration; four artefacts generated from it.
   docs/                        API-BLUEPRINT.md, openapi.json, openapi.yaml
