@@ -7,8 +7,8 @@ one backend, one typed SDK, and one governance console.
 |---|---|
 | Endpoints | 266 across 30 modules |
 | OpenAPI | 189 paths · 266 operations · 188 schemas |
-| Backend checks | 11,020 |
-| SDK checks | 1,858 |
+| Backend verification | 11,071 assertions |
+| SDK surface | 266 generated operations across 32 source modules |
 | Console smoke checks | 45 |
 
 ## Layout
@@ -32,8 +32,23 @@ npm run seed                  # a working institution: founder, exec, staff, mem
 npm run dev
 ```
 
-`npm test` runs the whole chain: typecheck, 11,020 assertions, blueprint
-regeneration, OpenAPI regeneration.
+From `backend/`, `npm test` runs the backend chain: typecheck, verification,
+blueprint regeneration, and OpenAPI regeneration. The SDK has its own test
+chain from `sdk/`:
+
+```bash
+cd ../sdk
+npm install
+npm test
+```
+
+The console smoke test runs separately from `console/` with Python and
+Playwright:
+
+```bash
+cd ../console
+python smoke-test.py
+```
 
 ## The one thing to get right before deploying
 

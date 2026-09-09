@@ -1,4 +1,4 @@
-import { Schema, model } from "mongoose";
+import mongoose, { Schema } from "mongoose";
 
 const HQInitSchema = new Schema(
   {
@@ -18,4 +18,6 @@ const HQInitSchema = new Schema(
   { timestamps: true }
 );
 
-export const HQInit = model("HQInit", HQInitSchema);
+export default mongoose.model("HQInit", HQInitSchema);
+
+

@@ -37,4 +37,6 @@ const HQSchema = new Schema(
   { timestamps: true },
 );
 
-export const HQ = model('HQ', HQSchema);
+module.exports = mongoose.model("HQ", HQSchema);
+
+

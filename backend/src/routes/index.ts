@@ -48,6 +48,7 @@ import { publicPortalModule } from '../modules/publicPortal/index.js';
 import organizationModule from '../modules/organization/index.js';
 import hqInitModule from "../modules/hqInit/index.js";
 import mobilityRoutes from "../modules/mobility/mobility.routes.js";
+import fleetRoutes from "../modules/fleet/fleet.routes.js";
 
 export const MODULES = [
   authModule,
@@ -167,7 +168,8 @@ router.use("/hq-init", hqInitModule);
       ],
     );
   }
-router.use("/mobility", mobilityRoutes);
+  router.use('/mobility', mobilityRoutes);
+  router.use('/fleet', fleetRoutes);
   return router;
 }
 
