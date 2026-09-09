@@ -278,6 +278,56 @@ const VERIFIED_PROFILE = [...PROFILE_BASE, ref('VerificationFields')];
 // ─────────────────────────────────────────────────────────────────────────────
 
 const RESOURCES: Record<string, JsonSchema> = {
+  Organization: {
+    type: 'object',
+    description: 'LRMC organization and its institutional configuration.',
+    properties: {
+      id: { ...oid(), readOnly: true },
+      name: str(),
+      country: str(),
+      currency: str(),
+      hqZone: str(),
+      regions: strArr(),
+      managementFeePercent: num({ minimum: 0, maximum: 100 }),
+      rideCommissionPercent: num({ minimum: 0, maximum: 100 }),
+      branding: {
+        type: 'object',
+        properties: {
+          primaryColor: str(),
+          secondaryColor: str(),
+          accentColor: str(),
+          logoUrl: str(),
+        },
+      },
+      locale: str(),
+      timezone: str(),
+      createdAt: { ...date(), readOnly: true },
+      updatedAt: { ...date(), readOnly: true },
+    },
+    required: [
+      'name', 'country', 'currency', 'hqZone', 'regions',
+      'managementFeePercent', 'rideCommissionPercent', 'locale', 'timezone',
+    ],
+  },
+
+  HQInitResponse: {
+    type: 'object',
+    description: 'The initial HQ structure created for an organization.',
+    properties: {
+      id: { ...oid(), readOnly: true },
+      organizationId: oid(),
+      founderProfileId: oid(),
+      hqCode: str(),
+      hqName: str(),
+      zones: strArr(),
+      surfaces: { type: 'object', additionalProperties: { type: 'boolean' } },
+      regionStructure: { type: 'object', additionalProperties: { type: 'string' } },
+      createdAt: { ...date(), readOnly: true },
+      updatedAt: { ...date(), readOnly: true },
+    },
+    required: ['organizationId', 'founderProfileId', 'hqCode', 'hqName', 'zones'],
+  },
+
   Founder: allOf(...PROFILE_BASE, {
     type: 'object',
     description: 'Founder profile — Zone A. The constitutional record of the consortium.',
@@ -3068,10 +3118,22 @@ const RESOURCES: Record<string, JsonSchema> = {
 
 };
 
+const REQUESTS: Record<string, JsonSchema> = {
+  HQInitRequest: {
+    type: 'object',
+    properties: {
+      organizationId: oid(),
+      founderProfileId: oid(),
+    },
+    required: ['organizationId', 'founderProfileId'],
+  },
+};
+
 export const COMPONENT_SCHEMAS: Record<string, JsonSchema> = {
   ...ENVELOPES,
   ...FRAGMENTS,
   ...RESOURCES,
+  ...REQUESTS,
 };
 
 /**
@@ -3080,6 +3142,8 @@ export const COMPONENT_SCHEMAS: Record<string, JsonSchema> = {
  * markdown reference come from.
  */
 export const RESPONSE_SCHEMA_BY_LABEL: Record<string, string> = {
+  Organization: 'Organization',
+  hqInitResponse: 'HQInitResponse',
   'Founder profile': 'Founder',
   'HQ executive profile': 'HQExecutive',
   'Back office staff profile': 'BackOfficeStaff',
@@ -3101,6 +3165,8 @@ export const RESPONSE_SCHEMA_BY_LABEL: Record<string, string> = {
 
 /** Zod schema name → request body component. */
 export const REQUEST_SCHEMA_BY_NAME: Record<string, string> = {
+  organizationSchema: 'Organization',
+  initHQSchema: 'HQInitRequest',
   createFounderSchema: 'Founder',
   updateFounderSchema: 'Founder',
   createHQExecutiveSchema: 'HQExecutive',

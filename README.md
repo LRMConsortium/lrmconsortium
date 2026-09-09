@@ -5,10 +5,10 @@ one backend, one typed SDK, and one governance console.
 
 | | |
 |---|---|
-| Endpoints | 266 across 30 modules |
-| OpenAPI | 189 paths · 266 operations · 188 schemas |
-| Backend verification | 11,071 assertions |
-| SDK surface | 266 generated operations across 32 source modules |
+| Endpoints | 268 across 32 modules |
+| OpenAPI | 191 paths · 268 operations · 191 schemas |
+| Backend verification | 11,078 assertions |
+| SDK surface | 268 generated operations across 32 source modules |
 | Console smoke checks | 45 |
 
 ## Layout

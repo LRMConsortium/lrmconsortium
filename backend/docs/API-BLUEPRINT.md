@@ -7,7 +7,7 @@
 
 All paths are relative to `API_PREFIX` (default `/api/v1`).
 
-**266 endpoints** — 123 from the generic profile surface across 14 collections, 143 hand-mounted.
+**268 endpoints** — 123 from the generic profile surface across 14 collections, 145 hand-mounted.
 
 ---
 
@@ -169,6 +169,18 @@ get the clauses below, OR-ed together.
 ---
 
 ## Endpoints by module
+
+### hqInitModule
+
+| Method | Path | Zone | Permission (any of) | Own | Request | Roles |
+|---|---|---|---|---|---|---|
+| `POST` | `/api/v1/hq-init/init` | B · HQ Exec | _auth only_ | — | body: `initHQSchema` | FN EX |
+
+### organization
+
+| Method | Path | Zone | Permission (any of) | Own | Request | Roles |
+|---|---|---|---|---|---|---|
+| `POST` | `/api/v1/organizations` | — | _auth only_ | — | body: `organizationSchema` | _all roles_ |
 
 ### Platform
 

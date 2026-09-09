@@ -15,6 +15,7 @@ import { cancelRentalBookingController } from "./hqinit.cancelBooking.controller
 import { blockPropertyDatesController } from "./hqinit.blockDates.controller.js";
 import { activateMobilitySurfaceController } from "./hqinit.mobilitySurface.controller.js";
 import { onboardDriverController } from "./hqinit.onboardDriver.controller.js";
+import { auditTrail } from "../../middleware/auditTrail.js";
 
 const router = Router();
 router.post("/seed-region-managers", seedRegionManagersController);
@@ -23,7 +24,7 @@ router.post("/activate-rental-surface", activateRentalSurfaceController);
 router.post("/onboard-property", onboardPropertyController);
 router.post("/declare-region", declareRegionController);
 router.post("/enable-rental-bookings", enableRentalBookingsController);
-router.post("/init", initHQController);
+router.post("/init", auditTrail('hqInit'), initHQController);
 router.post("/create-rental-booking", createRentalBookingController);
 router.post("/seed-executives", seedHQExecutivesController);
 router.post("/attach-founder", attachFounderToHQController);

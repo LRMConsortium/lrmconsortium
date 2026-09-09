@@ -2523,7 +2523,9 @@ export const API_BLUEPRINT: EndpointSpec[] = [
   permissions: [],
   surface: "custom",
   ownership: "none",
-  responseShape: "hqInitResponse"
+  requestBody: "initHQSchema",
+  responseShape: "{ success, data: hqInitResponse }",
+  audited: true,
 },
 
   ...CUSTOM_ENDPOINTS,
@@ -2538,10 +2540,10 @@ export const API_BLUEPRINT: EndpointSpec[] = [
   permissions: [],
   ownership: 'none',
   requestBody: 'organizationSchema',
+  responseShape: '{ success, data: Organization }',
 
-  responseShape: 'Organization',
-
-  surface: 'custom'
+  surface: 'custom',
+  audited: true,
 },
 
   ...PROFILE_MODULES.flatMap(profileEndpoints),
