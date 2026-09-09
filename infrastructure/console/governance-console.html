@@ -57,10 +57,14 @@
         .fade-in-up { animation:fadeInUp .4s ease forwards; }
         .tier-card { transition:all .3s ease; }
         .tier-card:hover { transform:translateY(-2px); }
-        .locked-overlay { backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); }
+        .locked-overlay { 
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
         .health-bar-fill { transition:width .8s ease; }
         .flow-arrow { width:40px; display:flex; align-items:center; justify-content:center; color:#c9a84c; font-size:1.2rem; }
-        .modal-backdrop { background:rgba(10,14,26,.85); backdrop-filter:blur(8px); }
+        .modal-backdrop { background:rgba(10,14,26,.85); -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); }
         .badge-pulse { animation:pulse 2s infinite; }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
         .toast { animation:fadeInUp .3s ease forwards; }
@@ -178,7 +182,7 @@
         <header class="sticky top-0 z-30 bg-base-800/90 backdrop-blur-md border-b border-base-500/50 px-4 md:px-6 py-3">
             <div class="flex items-center justify-between gap-3">
                 <div class="flex items-center gap-3 min-w-0">
-                    <button id="mobile-menu-btn" class="md:hidden p-2 rounded-lg hover:bg-base-600 text-txtc-300">
+                    <button id="mobile-menu-btn" class="md:hidden p-2 rounded-lg hover:bg-base-600 text-txtc-300" title="Open navigation menu" aria-label="Open navigation menu">
                         <i data-lucide="menu" class="w-5 h-5"></i>
                     </button>
                     <div class="min-w-0">
@@ -196,7 +200,7 @@
                         <button data-lens="backOfficeStaff" class="lens-btn text-xs font-semibold px-2.5 md:px-3 py-1.5 rounded-lg text-txtc-400 hover:text-txtc-200 transition-all">Staff</button>
                         <button data-lens="tenant" class="lens-btn text-xs font-semibold px-2.5 md:px-3 py-1.5 rounded-lg text-txtc-400 hover:text-txtc-200 transition-all">Member</button>
                     </div>
-                    <button id="refresh-btn" class="p-2 rounded-lg hover:bg-base-600 text-txtc-400 hover:text-txtc-200 transition-colors" title="Reload from the server">
+                    <button id="refresh-btn" type="button" class="p-2 rounded-lg hover:bg-base-600 text-txtc-400 hover:text-txtc-200 transition-colors" title="Reload from the server">
                         <i data-lucide="refresh-cw" class="w-[18px] h-[18px]"></i>
                     </button>
                 </div>
@@ -216,7 +220,7 @@
                                 <span id="health-band" class="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">—</span>
                             </div>
                             <div class="w-full h-3 bg-base-500 rounded-full overflow-hidden mb-3">
-                                <div id="health-bar" class="health-bar-fill h-full rounded-full" style="width:0%"></div>
+                                <div id="health-bar" class="health-bar-fill h-full w-0 rounded-full"></div>
                             </div>
                             <div class="flex items-center justify-between mb-1">
                                 <p id="health-score" class="text-2xl font-bold tabular-nums">—</p>
