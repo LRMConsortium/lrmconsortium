@@ -5,8 +5,8 @@ import {
   type LifecycleShape,
   type TimestampShape,
 } from '../../shared/schemaFragments.js';
-import { ROTATION_TRIGGERS } from './facRules.js';
 import { ATTEMPT_RESULTS } from './attempts.js';
+import { ROTATION_TRIGGERS } from './facRules.js';
 
 export const FAC_CODE_STATUSES = ['active', 'expired', 'revoked', 'superseded'] as const;
 
@@ -53,13 +53,13 @@ export interface IFacCode extends Omit<LifecycleShape, 'status'>, TimestampShape
 
 const facCodeSchema = new Schema<IFacCode>(
   {
-    generation: { type: Number, required: true, min: 1, index: true },
+    generation: { type: Number, required: true, min: 1 },
     codeHash: { type: String, required: true, select: false },
     label: { type: String, trim: true, maxlength: 120 },
 
     issuedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     issuedAt: { type: Date, required: true, index: true },
-    expiresAt: { type: Date, required: true, index: true },
+    expiresAt: { type: Date, required: true },
     rotationDays: { type: Number, required: true, min: 1 },
     trigger: { type: String, enum: ROTATION_TRIGGERS, default: 'scheduled' },
 
@@ -180,7 +180,7 @@ const facClearanceSchema = new Schema<IFacClearance>(
     actor: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     codeGeneration: { type: Number, required: true, min: 1 },
     grantedAt: { type: Date, required: true },
-    expiresAt: { type: Date, required: true, index: true },
+    expiresAt: { type: Date, required: true },
     revokedAt: { type: Date },
     lastUsedAt: { type: Date },
   },

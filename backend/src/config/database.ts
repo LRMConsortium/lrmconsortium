@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { env } from './env.js';
 import { logger } from './logger.js';
 
-mongoose.set('strictQuery', true);
+mongoose.set('autoIndex', false);
 
 let connecting: Promise<typeof mongoose> | null = null;
 
@@ -12,9 +12,9 @@ export async function connectDatabase(uri: string = env.MONGO_URI): Promise<type
 
   connecting = mongoose
     .connect(uri, {
+      autoIndex: false,
       maxPoolSize: env.MONGO_MAX_POOL_SIZE,
       serverSelectionTimeoutMS: 10_000,
-      autoIndex: !env.isProduction,
     })
     .then((m) => {
       logger.info('MongoDB connected', { host: m.connection.host, db: m.connection.name });

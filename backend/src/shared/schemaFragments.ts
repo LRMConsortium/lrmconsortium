@@ -53,7 +53,6 @@ export const contactFields: SchemaDefinition = {
     trim: true,
     lowercase: true,
     match: [EMAIL_REGEX, 'Invalid email address'],
-    index: true,
   },
   phone: {
     type: String,
@@ -80,7 +79,7 @@ export const locationFields: SchemaDefinition = {
   residenceCountry: { type: String, trim: true, default: 'Ghana' },
   address: { type: String, trim: true },
   city: { type: String, trim: true },
-  region: { type: String, trim: true, index: true },
+  region: { type: String, trim: true },
   geo: {
     type: {
       type: String,
@@ -102,7 +101,6 @@ export const verificationFields: SchemaDefinition = {
     type: String,
     enum: VERIFICATION_STATUSES,
     default: 'unsubmitted',
-    index: true,
   },
   verifiedAt: { type: Date },
   verifiedBy: { type: Schema.Types.ObjectId, ref: 'User' },
@@ -112,17 +110,16 @@ export const verificationFields: SchemaDefinition = {
 
 /** Lifecycle every profile shares: who owns it, is it live, is it archived. */
 export const lifecycleFields: SchemaDefinition = {
-  user: { type: Schema.Types.ObjectId, ref: 'User', index: true },
+  user: { type: Schema.Types.ObjectId, ref: 'User' },
   status: {
     type: String,
     enum: ['draft', 'active', 'inactive', 'suspended', 'archived'],
     default: 'active',
-    index: true,
   },
-  hqZone: { type: String, index: true },
+  hqZone: { type: String },
   createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
   updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
-  deletedAt: { type: Date, default: null, index: true },
+  deletedAt: { type: Date, default: null },
 };
 
 export const ratingFields: SchemaDefinition = {
